@@ -1,0 +1,21 @@
+apiVersion: db.payu.com/v1
+kind: RedisOperator
+metadata:
+  name: ro-test
+  namespace: monitoring
+spec:
+  leaderReplicas: 3
+  leaderFollowersCount: 0
+  image: "docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:1.4.0"
+  imagePullSecrets: "regcred"
+  podLabelSelector:
+    app: "redis"
+  podAnnotations:
+    sidecar.istio.io/inject: "false"
+  redisContainerEnvVariables:
+    - name: PORT
+      value: '6379'
+    - name: CONF_PATH
+      value: '/usr/local/etc/redis/redis.conf'
+
+
