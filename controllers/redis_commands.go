@@ -1,6 +1,8 @@
 package controllers
 
-func executeCommand
+func executeCommand() {
+
+}
 
 func groupMasterNodesAsCluster(addresses []string) {
 

@@ -11,27 +11,40 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CurrentClusterState describes the current
+// RedisClusterState describes the current
 // reconcile state of the redis cluster
-type CurrentClusterState string
+type RedisClusterState string
 
 const (
 	// NotExists means there is no redis pods in the k8s cluster
-	NotExists CurrentClusterState = "NotExists"
+	NotExists RedisClusterState = "NotExists"
+
+	// Initializing means the cluster is during he's first startup
+	Initializing RedisClusterState = "Initializing"
+
+	// Ready means cluster is up & running as expected
+	Ready RedisClusterState = "Ready"
 
 	// Unknown means that we are not able to identify the current state
-	Unknown CurrentClusterState = "Unknown"
+	Unknown RedisClusterState = "Unknown"
 )
 
-func computeCurrentClusterState(logger logr.Logger, leaderPods *corev1.PodList, followerPods *corev1.PodList) CurrentClusterState {
+var currentRedisClusterState RedisClusterState
+
+func computeCurrentClusterState(logger logr.Logger, desiredLeaders int, desiredFollowers int, leaderPods *corev1.PodList, followerPods *corev1.PodList) RedisClusterState {
 	clusterState := Unknown
-	logger.Info(fmt.Sprintf("Current number of leader nodes:%d", len(leaderPods.Items)))
 
 	if len(leaderPods.Items) == 0 {
-		clusterState = NotExists
+		if currentRedisClusterState == Initializing {
+			clusterState = Initializing
+		} else {
+			clusterState = NotExists
+		}
+	} else if len(leaderPods.Items) == desiredLeaders && len(followerPods.Items) == desiredLeaders*desiredFollowers {
+		clusterState = Ready
 	}
 
-	logger.Info(fmt.Sprintf("Current cluster state is:%s", clusterState))
+	logger.Info(fmt.Sprintf("current cluster state is:%s", clusterState))
 	return clusterState
 }
 
@@ -54,33 +67,45 @@ func (r *RedisOperatorReconciler) getClusterPods(ctx context.Context, redisOpera
 }
 
 func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
+	currentRedisClusterState = Initializing
 	desiredLeaders := int(redisOperator.Spec.LeaderReplicas)
 
 	// create config map
 	configMap, err := r.createSettingsConfigMap(redisOperator)
 	err = r.Create(ctx, &configMap)
-	if err != nil && !strings.Contains(err.Error(), "already exists") {
-		return err
+	if err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			return err
+		}
+
+		r.Log.Info("config map already exists")
 	}
 
 	// create service
 	service, err := r.serviceResource(redisOperator)
 	err = r.Create(ctx, &service)
-	if err != nil && !strings.Contains(err.Error(), "already exists") {
-		return err
+	if err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			return err
+		}
+
+		r.Log.Info("service already exists")
 	}
 
 	// create headless service
 	headlessService, err := r.headlessServiceResource(redisOperator)
 	err = r.Create(ctx, &headlessService)
-	if err != nil && !strings.Contains(err.Error(), "already exists") {
-		return err
+	if err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			return err
+		}
+
+		r.Log.Info("headless service already exists")
 	}
 
 	// deploy all cluster leaders
 	for i := 0; i < desiredLeaders; i++ {
 		leaderPod, err := r.leaderPod(redisOperator, i)
-
 		if err != nil {
 			return err
 		}
@@ -89,11 +114,16 @@ func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOpe
 
 		err = r.Create(ctx, &leaderPod)
 		if err != nil {
-			return err
+			if !strings.Contains(err.Error(), "already exists") {
+				return err
+			}
+
+			r.Log.Info(fmt.Sprintf("leader-%d already exists", i))
 		}
 	}
 
 	// deploy all cluster leaders followers
+	r.Log.Info("current cluster state is:ready")
 
 	return nil
 }

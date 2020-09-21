@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -67,10 +68,14 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	*/
 	leaderPods, err := r.getClusterPods(ctx, &redisOperator, true)
 	followerPods, err := r.getClusterPods(ctx, &redisOperator, false)
-	clusterState := computeCurrentClusterState(r.Log, leaderPods, followerPods)
+	clusterState := computeCurrentClusterState(r.Log, int(redisOperator.Spec.LeaderReplicas), int(*redisOperator.Spec.LeaderFollowersCount), leaderPods, followerPods)
 
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+
+	for _, event := range redisOperator.Status.Events {
+		log.Info(fmt.Sprintf("the event action is:%s", event.Action))
 	}
 
 	/*
@@ -80,6 +85,9 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	switch clusterState {
 	case NotExists:
 		err = r.createNewCluster(ctx, &redisOperator)
+		break
+	case Initializing:
+
 		break
 	}
 

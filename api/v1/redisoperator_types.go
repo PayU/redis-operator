@@ -64,6 +64,10 @@ type RedisOperatorStatus struct {
 	// A list of pointers to currently running pods.
 	// +optional
 	Pods []corev1.ObjectReference `json:"active,omitempty"`
+
+	// A list of events currently occuerd on the pods.
+	// +optional
+	Events []corev1.Event `json:"event,omitempty"`
 }
 
 // +kubebuilder:object:root=true
