@@ -65,9 +65,9 @@ type RedisOperatorStatus struct {
 	// +optional
 	Pods []corev1.ObjectReference `json:"active,omitempty"`
 
-	// A list of events currently occuerd on the pods.
+	// the current state of the cluster
 	// +optional
-	Events []corev1.Event `json:"event,omitempty"`
+	ClusterState string `json:"clusterState,omitempty"`
 }
 
 // +kubebuilder:object:root=true

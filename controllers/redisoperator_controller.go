@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,36 +61,29 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		// on deleted requests.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	/*
-		### 2: List all the Pods matching the PodLabelSelector Labels
-		for both master and slave nodes & understand the current cluster state
-	*/
-	leaderPods, err := r.getClusterPods(ctx, &redisOperator, true)
-	followerPods, err := r.getClusterPods(ctx, &redisOperator, false)
-	clusterState := computeCurrentClusterState(r.Log, int(redisOperator.Spec.LeaderReplicas), int(*redisOperator.Spec.LeaderFollowersCount), leaderPods, followerPods)
-
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	for _, event := range redisOperator.Status.Events {
-		log.Info(fmt.Sprintf("the event action is:%s", event.Action))
-	}
 
 	/*
-		### 3: act according to the current state
+		### 2: act according to the current state
 	*/
+	clusterState := computeCurrentClusterState(r.Log, &redisOperator)
 
 	switch clusterState {
 	case NotExists:
 		err = r.createNewCluster(ctx, &redisOperator)
 		break
 	case Initializing:
-
+		err = r.handleInitializingCluster()
 		break
 	}
 
 	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	/*
+		### 3: Update the current status
+	*/
+	if err = r.Status().Update(ctx, &redisOperator); err != nil {
 		return ctrl.Result{}, err
 	}
 

@@ -31,20 +31,19 @@ const (
 
 var currentRedisClusterState RedisClusterState
 
-func computeCurrentClusterState(logger logr.Logger, desiredLeaders int, desiredFollowers int, leaderPods *corev1.PodList, followerPods *corev1.PodList) RedisClusterState {
+func computeCurrentClusterState(logger logr.Logger, redisOperator *dbv1.RedisOperator) RedisClusterState {
 	clusterState := Unknown
 
-	if len(leaderPods.Items) == 0 {
-		if currentRedisClusterState == Initializing {
-			clusterState = Initializing
-		} else {
-			clusterState = NotExists
-		}
-	} else if len(leaderPods.Items) == desiredLeaders && len(followerPods.Items) == desiredLeaders*desiredFollowers {
-		clusterState = Ready
+	if len(redisOperator.Status.ClusterState) == 0 {
+		return NotExists
 	}
 
-	logger.Info(fmt.Sprintf("current cluster state is:%s", clusterState))
+	switch redisOperator.Status.ClusterState {
+	case string(Initializing):
+		clusterState = Initializing
+		break
+	}
+
 	return clusterState
 }
 
@@ -67,8 +66,9 @@ func (r *RedisOperatorReconciler) getClusterPods(ctx context.Context, redisOpera
 }
 
 func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
-	currentRedisClusterState = Initializing
+	r.Log.Info("creating new cluster")
 	desiredLeaders := int(redisOperator.Spec.LeaderReplicas)
+	applyOpts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("redis-operator-controller")}
 
 	// create config map
 	configMap, err := r.createSettingsConfigMap(redisOperator)
@@ -112,7 +112,7 @@ func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOpe
 
 		r.Log.Info(fmt.Sprintf("deploying leader-%d", i))
 
-		err = r.Create(ctx, &leaderPod)
+		err = r.Patch(ctx, &leaderPod, client.Apply, applyOpts...)
 		if err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
 				return err
@@ -122,8 +122,13 @@ func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOpe
 		}
 	}
 
-	// deploy all cluster leaders followers
-	r.Log.Info("current cluster state is:ready")
+	redisOperator.Status.ClusterState = string(Initializing)
+
+	return nil
+}
+
+func (r *RedisOperatorReconciler) handleInitializingCluster() error {
+	r.Log.Info("handling initializing cluster")
 
 	return nil
 }
