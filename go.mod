@@ -5,9 +5,11 @@ go 1.14
 require (
 	github.com/Azure/go-autorest v11.1.2+incompatible // indirect
 	github.com/go-logr/logr v0.1.0
+	github.com/go-redis/redis v6.15.9+incompatible
+	github.com/go-redis/redis/v8 v8.1.3 // indirect
 	github.com/jessevdk/go-flags v1.4.0 // indirect
 	github.com/onsi/ginkgo v1.14.1
-	github.com/onsi/gomega v1.10.1
+	github.com/onsi/gomega v1.10.2
 	golang.org/x/crypto v0.0.0-20200220183623-bac4c82f6975 // indirect
 	k8s.io/api v0.18.6
 	k8s.io/apimachinery v0.18.6

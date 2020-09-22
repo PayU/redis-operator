@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -71,8 +73,8 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	case NotExists:
 		err = r.createNewCluster(ctx, &redisOperator)
 		break
-	case Initializing:
-		err = r.handleInitializingCluster()
+	case Deploying:
+		err = r.handleDeployingCluster(ctx, &redisOperator)
 		break
 	}
 
@@ -83,8 +85,11 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	/*
 		### 3: Update the current status
 	*/
+	log.Info(fmt.Sprintf("update cluster state to:%s", redisOperator.Status.ClusterState))
 	if err = r.Status().Update(ctx, &redisOperator); err != nil {
-		return ctrl.Result{}, err
+		if !strings.Contains(err.Error(), "please apply your changes to the latest version") {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil

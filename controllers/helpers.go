@@ -19,7 +19,11 @@ const (
 	// NotExists means there is no redis pods in the k8s cluster
 	NotExists RedisClusterState = "NotExists"
 
-	// Initializing means the cluster is during he's first startup
+	// Deploying means the cluster is during he's first startup
+	Deploying RedisClusterState = "Deploying"
+
+	// Initializing all cluster resources (pods, service, etc..)
+	// are deployed and ready to group together as cluster
 	Initializing RedisClusterState = "Initializing"
 
 	// Ready means cluster is up & running as expected
@@ -39,8 +43,8 @@ func computeCurrentClusterState(logger logr.Logger, redisOperator *dbv1.RedisOpe
 	}
 
 	switch redisOperator.Status.ClusterState {
-	case string(Initializing):
-		clusterState = Initializing
+	case string(Deploying):
+		clusterState = Deploying
 		break
 	}
 
@@ -122,12 +126,37 @@ func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOpe
 		}
 	}
 
-	redisOperator.Status.ClusterState = string(Initializing)
+	redisOperator.Status.ClusterState = string(Deploying)
 
 	return nil
 }
 
-func (r *RedisOperatorReconciler) handleInitializingCluster() error {
+func (r *RedisOperatorReconciler) handleDeployingCluster(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
+	r.Log.Info("handling deploying cluster")
+
+	leadersAreReady := true
+	followersAreReady := true
+	leaderPods, err := r.getClusterPods(ctx, redisOperator, true)
+	if err != nil {
+		return err
+	}
+
+	for _, leaderPod := range leaderPods.Items {
+		for _, podCondition := range leaderPod.Status.Conditions {
+			leadersAreReady = leadersAreReady && podCondition.Status == corev1.ConditionTrue
+		}
+	}
+
+	r.Log.Info(fmt.Sprintf("leaders ready:%t", leadersAreReady))
+
+	if leadersAreReady && followersAreReady {
+		redisOperator.Status.ClusterState = string(Initializing)
+	}
+
+	return nil
+}
+
+func (r *RedisOperatorReconciler) handleInitializingCluster(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
 	r.Log.Info("handling initializing cluster")
 
 	return nil

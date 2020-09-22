@@ -2,7 +2,7 @@ apiVersion: db.payu.com/v1
 kind: RedisOperator
 metadata:
   name: ro-test
-  namespace: monitoring
+  namespace: logs
 spec:
   leaderReplicas: 3
   leaderFollowersCount: 0
