@@ -68,7 +68,7 @@ func (r *RedisOperatorReconciler) getClusterPods(ctx context.Context, redisOpera
 func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
 	r.Log.Info("creating new cluster")
 	desiredLeaders := int(redisOperator.Spec.LeaderReplicas)
-	applyOpts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("redis-operator-controller")}
+	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
 	// create config map
 	configMap, err := r.createSettingsConfigMap(redisOperator)
@@ -112,7 +112,7 @@ func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOpe
 
 		r.Log.Info(fmt.Sprintf("deploying leader-%d", i))
 
-		err = r.Patch(ctx, &leaderPod, client.Apply, applyOpts...)
+		err = r.Create(ctx, &leaderPod, applyOpts...)
 		if err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
 				return err

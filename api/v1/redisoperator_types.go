@@ -71,6 +71,7 @@ type RedisOperatorStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=ro
 
 // RedisOperator is the Schema for the redisoperators API
