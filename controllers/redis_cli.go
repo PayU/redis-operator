@@ -25,7 +25,7 @@ func executeCommand(log logr.Logger, args []string) (string, error) {
 	log.Info(fmt.Sprintf("executing redis-cli command:%v", args))
 	err := cmd.Run()
 	if err != nil {
-		log.Error(err, fmt.Sprintf("unexpected error occurred when execute redis-cli:%s", stderr.String()))
+		log.Error(err, fmt.Sprintf("unexpected error occurred when executing redis-cli command:%s", stderr.String()))
 		return "", err
 	}
 

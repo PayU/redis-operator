@@ -45,7 +45,7 @@ deploy: manifests
 	kustomize build config/default | kubectl apply -f -
 
 # Deploy controller in a local kind cluster
-deploy-local: manifests docker-build-local kind-load deploy
+deploy-local: manifests docker-build kind-load deploy
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen

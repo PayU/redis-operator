@@ -1,6 +1,4 @@
 from enum import Enum
-from colorama import init, Fore, Style
-init(autoreset=True)
 
 class ClusterParams:
     CONFIG_FILENAME = 'cloud.yaml'
@@ -43,7 +41,7 @@ def gen_kind_config():
         for i in range(get_node_count()):
             fh.write('- role: worker')
             fh.write(patches[i])
-    print(Fore.GREEN + ' Done')
+    print('Done')
 
 
 def main():

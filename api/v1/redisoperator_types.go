@@ -43,7 +43,7 @@ type RedisOperatorSpec struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// The number of followers that each leader will have
-	LeaderFollowersCount *int32 `json:"leaderFollowersCount,omitempty"`
+	LeaderFollowersCount int32 `json:"leaderFollowersCount,omitempty"`
 
 	// +kubebuilder:validation:MinLength=2
 	// full path of the redis docker image

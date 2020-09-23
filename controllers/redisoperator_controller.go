@@ -68,20 +68,29 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	/*
 		### 2: act according to the current state
 	*/
-	clusterState := computeCurrentClusterState(r.Log, &redisOperator)
+	clusterState := getCurrentClusterState(r.Log, &redisOperator)
 
 	switch clusterState {
 	case NotExists:
 		err = r.createNewCluster(ctx, &redisOperator)
 		break
-	case Deploying:
-		err = r.handleDeployingCluster(ctx, &redisOperator)
+	case DeployingLeaders:
+		err = r.handleDeployingLeaders(ctx, &redisOperator)
 		break
-	case Initializing:
-		err = r.handleInitializingCluster(ctx, &redisOperator)
+	case InitializingLeaders:
+		err = r.handleInitializingLeaders(ctx, &redisOperator)
 		break
-	case MasterCohesive:
-		err = r.handleMasterCohesiveCluster(ctx, &redisOperator)
+	case ClusteringLeaders:
+		err = r.handleClusteringLeaders(ctx, &redisOperator)
+		break
+	case DeployingFollowers:
+		err = r.handleDeployingFollowers(ctx, &redisOperator)
+		break
+	case InitializingFollowers:
+		err = r.handleInitializingFollowers(ctx, &redisOperator)
+		break
+	case ClusteringFollowers:
+		err = r.handleClusteringFollowers(ctx, &redisOperator)
 		break
 	}
 
