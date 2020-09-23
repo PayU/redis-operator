@@ -46,6 +46,9 @@ func computeCurrentClusterState(logger logr.Logger, redisOperator *dbv1.RedisOpe
 	case string(Deploying):
 		clusterState = Deploying
 		break
+	case string(Initializing):
+		clusterState = Initializing
+		break
 	}
 
 	return clusterState
@@ -158,6 +161,17 @@ func (r *RedisOperatorReconciler) handleDeployingCluster(ctx context.Context, re
 
 func (r *RedisOperatorReconciler) handleInitializingCluster(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
 	r.Log.Info("handling initializing cluster")
+	leaderPods, err := r.getClusterPods(ctx, redisOperator, true)
+	if err != nil {
+		return err
+	}
+
+	leaderPodIPAddresses := make([]string, len(leaderPods.Items), len(leaderPods.Items))
+	for _, leaderPod := range leaderPods.Items {
+		leaderPodIPAddresses = append(leaderPodIPAddresses, fmt.Sprintf("%s:6379", leaderPod.Status.PodIP))
+	}
+
+	r.initRedisClient(leaderPodIPAddresses)
 
 	return nil
 }

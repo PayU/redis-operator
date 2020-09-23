@@ -1,16 +1,26 @@
 package controllers
 
-import "github.com/go-redis/redis"
+import (
+	"fmt"
+
+	"github.com/go-redis/redis"
+)
 
 var redisClient *redis.ClusterClient
 
-func (r *RedisOperatorReconciler) initRedisClient(leaderAddrs []string) {
-	r.Log.Info("initializing redis client")
+func (r *RedisOperatorReconciler) initRedisClient(leaderPodIPAddresses []string) {
+	r.Log.Info(fmt.Sprintf("initializing redis client. leader addresses:%v", leaderPodIPAddresses))
 	redisClient = redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs: leaderAddrs,
+		Addrs: leaderPodIPAddresses,
 	})
 
-	redisClient.Ping()
+	status := redisClient.Ping()
+
+	r.Log.Info(status.Result())
+	r.Log.Info(status.String())
+	r.Log.Info(status.Err().Error())
+
+	r.Log.Info("redis client was initialized successfully")
 }
 
 func executeCommand() {

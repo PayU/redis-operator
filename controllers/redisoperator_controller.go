@@ -76,6 +76,9 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	case Deploying:
 		err = r.handleDeployingCluster(ctx, &redisOperator)
 		break
+	case Initializing:
+		err = r.handleInitializingCluster(ctx, &redisOperator)
+		break
 	}
 
 	if err != nil {
