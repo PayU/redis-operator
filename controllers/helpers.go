@@ -79,9 +79,61 @@ func (r *RedisOperatorReconciler) getClusterPods(ctx context.Context, redisOpera
 	return pods, nil
 }
 
+func (r *RedisOperatorReconciler) createFollowers(ctx context.Context,
+	applyOpts []client.CreateOption, redisOperator *dbv1.RedisOperator, followerCount int, leaderCount int) error {
+	currentFollower := 0
+	nodeID := leaderCount
+	for leaderID := 0; leaderID < leaderCount; leaderID++ {
+		for i := 0; i < followerCount; i++ {
+			followerPod, err := r.followerPod(redisOperator, currentFollower, fmt.Sprintf("%d", nodeID), fmt.Sprintf("%d", leaderID))
+			currentFollower++
+			nodeID++
+			if err != nil {
+				return err
+			}
+
+			r.Log.Info(fmt.Sprintf("deploying follower-%s-%d", fmt.Sprintf("%d", leaderID), i))
+
+			err = r.Create(ctx, &followerPod, applyOpts...)
+			if err != nil {
+				if !strings.Contains(err.Error(), "already exists") {
+					return err
+				}
+
+				r.Log.Info(fmt.Sprintf("follower-%s-%d already exists", fmt.Sprintf("%d", leaderID), i))
+			}
+		}
+	}
+	return nil
+}
+
+func (r *RedisOperatorReconciler) createLeaders(ctx context.Context, applyOpts []client.CreateOption, redisOperator *dbv1.RedisOperator, nodeCount int) error {
+	var leaderIDs []string
+	for i := 0; i < nodeCount; i++ {
+		leaderPod, err := r.leaderPod(redisOperator, i, fmt.Sprintf("%d", i))
+		leaderIDs = append(leaderIDs, fmt.Sprintf("%d", i))
+		if err != nil {
+			return err
+		}
+
+		r.Log.Info(fmt.Sprintf("deploying leader-%d", i))
+
+		err = r.Create(ctx, &leaderPod, applyOpts...)
+		if err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				return err
+			}
+
+			r.Log.Info(fmt.Sprintf("leader-%d already exists", i))
+		}
+	}
+	return nil
+}
+
 func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
 	r.Log.Info("creating new cluster")
 	desiredLeaders := int(redisOperator.Spec.LeaderReplicas)
+	desiredFollowers := int(redisOperator.Spec.LeaderFollowersCount)
 	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
 	// create config map
@@ -117,24 +169,8 @@ func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOpe
 		r.Log.Info("headless service already exists")
 	}
 
-	// deploy all cluster leaders
-	for i := 0; i < desiredLeaders; i++ {
-		leaderPod, err := r.leaderPod(redisOperator, i)
-		if err != nil {
-			return err
-		}
-
-		r.Log.Info(fmt.Sprintf("deploying leader-%d", i))
-
-		err = r.Create(ctx, &leaderPod, applyOpts...)
-		if err != nil {
-			if !strings.Contains(err.Error(), "already exists") {
-				return err
-			}
-
-			r.Log.Info(fmt.Sprintf("leader-%d already exists", i))
-		}
-	}
+	err = r.createLeaders(ctx, applyOpts, redisOperator, desiredLeaders)
+	err = r.createFollowers(ctx, applyOpts, redisOperator, desiredFollowers, desiredLeaders)
 
 	redisOperator.Status.ClusterState = string(Deploying)
 

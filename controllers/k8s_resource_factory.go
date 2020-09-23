@@ -10,14 +10,15 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, number int) (corev1.Pod, error) {
+func redisPod(redisOperator *dbv1.RedisOperator, nodeType string, number int, nodeID string) corev1.Pod {
 	podLabels := make(map[string]string)
 	redisContainerEnvVariables := []corev1.EnvVar{
 		{Name: "PORT", Value: "6379"},
 	}
 
 	podLabels["app"] = redisOperator.Spec.PodLabelSelector.App
-	podLabels["redis-node-role"] = "leader"
+	podLabels["redis-node-role"] = nodeType
+	podLabels["redis-node-id"] = nodeID
 
 	for _, envStruct := range redisOperator.Spec.RedisContainerEnvVariables {
 		if envStruct.Name != "PORT" {
@@ -34,7 +35,7 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 
 	containers := []corev1.Container{
 		{
-			Name:  "redis-master",
+			Name:  fmt.Sprintf("redis-%s", nodeType),
 			Image: redisOperator.Spec.Image,
 			Env:   redisContainerEnvVariables,
 			Ports: []corev1.ContainerPort{
@@ -93,7 +94,7 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("redis-leader-%d", number),
+			Name:        fmt.Sprintf("redis-%s-%d", nodeType, number),
 			Namespace:   redisOperator.ObjectMeta.Namespace,
 			Labels:      podLabels,
 			Annotations: redisOperator.Spec.PodAnnotations,
@@ -106,9 +107,38 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 		},
 	}
 
+	return pod
+}
+
+func (r *RedisOperatorReconciler) followerPod(redisOperator *dbv1.RedisOperator, number int, nodeID string, leaderID string) (corev1.Pod, error) {
+	pod := redisPod(redisOperator, "follower", number, nodeID)
+
+	// follower pods should not be on the same zone with their leader
+	selectorRequirement := &pod.Spec.Affinity.PodAntiAffinity.
+		PreferredDuringSchedulingIgnoredDuringExecution[0].
+		PodAffinityTerm.LabelSelector.
+		MatchExpressions
+
+	*selectorRequirement = append(*selectorRequirement,
+		metav1.LabelSelectorRequirement{Key: "redis-node-id", Operator: metav1.LabelSelectorOpIn, Values: []string{leaderID}})
+
+	pod.ObjectMeta.Labels["redis-node-id"] = nodeID
+
 	if err := ctrl.SetControllerReference(redisOperator, &pod, r.Scheme); err != nil {
 		return pod, err
 	}
+
+	return pod, nil
+}
+
+func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, number int, nodeID string) (corev1.Pod, error) {
+	pod := redisPod(redisOperator, "leader", number, nodeID)
+
+	if err := ctrl.SetControllerReference(redisOperator, &pod, r.Scheme); err != nil {
+		return pod, err
+	}
+
+	pod.ObjectMeta.Labels["redis-node-id"] = nodeID
 
 	return pod, nil
 }
