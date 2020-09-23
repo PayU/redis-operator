@@ -27,6 +27,12 @@ type PodLabelSelector struct {
 	App string `json:"app"`
 }
 
+// TopologyKeys deifines the topology keys used inside affinity rules
+type TopologyKeys struct {
+	HostTopologyKey string `json:"hostTopologyKey,omitempty"`
+	ZoneTopologyKey string `json:"zoneTopologyKey,omitempty"`
+}
+
 // RedisOperatorSpec defines the desired state of RedisOperator
 type RedisOperatorSpec struct {
 
@@ -52,6 +58,8 @@ type RedisOperatorSpec struct {
 	PodLabelSelector PodLabelSelector `json:"podLabelSelector"`
 
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
+
+	Affinity TopologyKeys `json:"affinity,omitempty"`
 
 	RedisContainerEnvVariables []corev1.EnvVar `json:"redisContainerEnvVariables,omitempty"`
 }

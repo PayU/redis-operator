@@ -28,6 +28,69 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 		}
 	}
 
+	imagePullSecrets := []corev1.LocalObjectReference{
+		{Name: redisOperator.Spec.ImagePullSecrets},
+	}
+
+	containers := []corev1.Container{
+		{
+			Name:  "redis-master",
+			Image: redisOperator.Spec.Image,
+			Env:   redisContainerEnvVariables,
+			Ports: []corev1.ContainerPort{
+				{ContainerPort: 6379, Name: "redis", Protocol: "TCP"},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "redis-node-configuration", MountPath: "/usr/local/etc/redis"},
+			},
+		},
+	}
+
+	volumes := []corev1.Volume{
+		{
+			Name: "redis-node-configuration",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "redis-node-settings-config-map",
+					},
+				},
+			},
+		},
+	}
+
+	var affinity *corev1.Affinity = nil
+	if redisOperator.Spec.Affinity != (dbv1.TopologyKeys{}) {
+		affinity = &corev1.Affinity{PodAntiAffinity: &corev1.PodAntiAffinity{}}
+		if redisOperator.Spec.Affinity.HostTopologyKey != "" {
+			affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{
+				{
+					LabelSelector: &metav1.LabelSelector{
+						MatchExpressions: []metav1.LabelSelectorRequirement{
+							{Key: "app", Operator: metav1.LabelSelectorOpIn, Values: []string{redisOperator.Spec.PodLabelSelector.App}},
+						},
+					},
+					TopologyKey: redisOperator.Spec.Affinity.HostTopologyKey,
+				},
+			}
+		}
+		if redisOperator.Spec.Affinity.ZoneTopologyKey != "" {
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
+				{
+					Weight: 100,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						LabelSelector: &metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{
+								{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}},
+							},
+						},
+						TopologyKey: redisOperator.Spec.Affinity.ZoneTopologyKey,
+					},
+				},
+			}
+		}
+	}
+
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("redis-leader-%d", number),
@@ -36,34 +99,10 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 			Annotations: redisOperator.Spec.PodAnnotations,
 		},
 		Spec: corev1.PodSpec{
-			ImagePullSecrets: []corev1.LocalObjectReference{
-				{Name: redisOperator.Spec.ImagePullSecrets},
-			},
-			Containers: []corev1.Container{
-				{
-					Name:  "redis-leader",
-					Image: redisOperator.Spec.Image,
-					Env:   redisContainerEnvVariables,
-					Ports: []corev1.ContainerPort{
-						{ContainerPort: 6379, Name: "redis", Protocol: "TCP"},
-					},
-					VolumeMounts: []corev1.VolumeMount{
-						{Name: "redis-node-configuration", MountPath: "/usr/local/etc/redis"},
-					},
-				},
-			},
-			Volumes: []corev1.Volume{
-				{
-					Name: "redis-node-configuration",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "redis-node-settings-config-map",
-							},
-						},
-					},
-				},
-			},
+			ImagePullSecrets: imagePullSecrets,
+			Containers:       containers,
+			Volumes:          volumes,
+			Affinity:         affinity,
 		},
 	}
 
