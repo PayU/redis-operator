@@ -19,6 +19,8 @@ spec:
   replicas: 1
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
       labels:
         control-plane: controller-manager
     spec:
@@ -32,7 +34,7 @@ spec:
         args:
         - --enable-leader-election
         image: controller:latest
-        imagePullPolicy: "IfNotPresent"
+        imagePullPolicy: "Always"
         name: manager
         resources:
           limits:

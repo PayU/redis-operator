@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,6 +15,16 @@ import (
 // RedisClusterState describes the current
 // reconcile state of the redis cluster
 type RedisClusterState string
+
+type RedisGroups map[string]RedisGroup
+
+// RedisGroup describes a leader and its followers
+type RedisGroup struct {
+	LeaderNumber string // number given at pod creation time
+	LeaderID     string
+	LeaderPod    corev1.Pod
+	FollowerPods []corev1.Pod
+}
 
 const (
 	// NotExists means there is no redis pods in the k8s cluster
@@ -85,14 +94,56 @@ func getCurrentClusterState(logger logr.Logger, redisOperator *dbv1.RedisOperato
 	return clusterState
 }
 
-func (r *RedisOperatorReconciler) getClusterPods(ctx context.Context, redisOperator *dbv1.RedisOperator, getLeaderPods bool) (*corev1.PodList, error) {
+// Return Redis groups as an array
+func (g *RedisGroups) Flatten() []RedisGroup {
+	groupArray := make([]RedisGroup, len(*g))
+	i := 0
+	for _, group := range *g {
+		groupArray[i] = group
+		i++
+	}
+	return groupArray
+}
+
+func (g *RedisGroup) String() string {
+	strResult := fmt.Sprintf("%s (id:%s) =>", g.LeaderPod.Status.PodIP, g.LeaderNumber)
+	for _, follower := range g.FollowerPods {
+		strResult += (" " + follower.Status.PodIP)
+	}
+	return strResult
+}
+
+func NewRedisGroups(redisPods *corev1.PodList) *RedisGroups {
+	groups := make(RedisGroups)
+	for _, redisPod := range redisPods.Items {
+		leaderNumber := redisPod.ObjectMeta.Labels["leader-number"]
+
+		group, found := groups[leaderNumber]
+		if !found {
+			groups[leaderNumber] = RedisGroup{
+				LeaderNumber: leaderNumber,
+				LeaderPod:    corev1.Pod{},
+				FollowerPods: nil,
+			}
+		}
+		if redisPod.ObjectMeta.Labels["redis-node-role"] == "leader" {
+			group.LeaderPod = redisPod
+		} else {
+			group.FollowerPods = append(group.FollowerPods, redisPod)
+		}
+		groups[leaderNumber] = group
+	}
+
+	return &groups
+}
+
+func (r *RedisOperatorReconciler) getRedisClusterPods(ctx context.Context, redisOperator *dbv1.RedisOperator, podType string) (*corev1.PodList, error) {
 	pods := &corev1.PodList{}
 	matchingLabels := make(map[string]string)
 	matchingLabels["app"] = redisOperator.Spec.PodLabelSelector.App
-	matchingLabels["redis-node-role"] = "follower"
 
-	if getLeaderPods {
-		matchingLabels["redis-node-role"] = "leader"
+	if podType != "any" {
+		matchingLabels["redis-node-role"] = podType
 	}
 
 	err := r.List(ctx, pods, client.InNamespace(redisOperator.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
@@ -197,7 +248,7 @@ func (r *RedisOperatorReconciler) createNewCluster(ctx context.Context, redisOpe
 
 func (r *RedisOperatorReconciler) checkRedisNodes(ctx context.Context, redisOperator *dbv1.RedisOperator, nodeRole string) (bool, error) {
 	podsReady := true
-	pods, err := r.getClusterPods(ctx, redisOperator, nodeRole == "leader")
+	pods, err := r.getRedisClusterPods(ctx, redisOperator, nodeRole)
 	if err != nil {
 		return false, err
 	}
@@ -243,31 +294,19 @@ func (r *RedisOperatorReconciler) handleDeployingFollowers(ctx context.Context, 
 	return nil
 }
 
-func getPodIPs(pods *corev1.PodList) ([]string, error) {
-	podIPAddr := make([]string, 0)
-	for _, pod := range pods.Items {
-		if pod.Status.PodIP != "" {
-			podIPAddr = append(podIPAddr, fmt.Sprintf("%s:6379", pod.Status.PodIP))
-		} else {
-			return nil, errors.New("Leader pod network is not ready")
-		}
-	}
-	return podIPAddr, nil
-}
-
 func (r *RedisOperatorReconciler) handleInitializingLeaders(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
 	r.Log.Info("handling initializing leaders")
-	leaderPods, err := r.getClusterPods(ctx, redisOperator, true)
+	leaderPods, err := r.getRedisClusterPods(ctx, redisOperator, "leader")
 	if err != nil {
 		return err
 	}
 
-	leaderPodIPAddresses, err := getPodIPs(leaderPods)
-	if err != nil {
-		return err
+	leaderPodIPAddresses := make([]string, 0)
+	for _, leaderPod := range leaderPods.Items {
+		leaderPodIPAddresses = append(leaderPodIPAddresses, fmt.Sprintf("%s:6379", leaderPod.Status.PodIP))
 	}
 
-	if err = r.redisCliClusterCreate(leaderPodIPAddresses); err != nil {
+	if err = r.RedisCLI.ClusterCreate(leaderPodIPAddresses); err != nil {
 		return err
 	}
 
@@ -277,15 +316,34 @@ func (r *RedisOperatorReconciler) handleInitializingLeaders(ctx context.Context,
 }
 
 func (r *RedisOperatorReconciler) handleInitializingFollowers(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
-	r.Log.Info("handling initializing leaders")
-	followerPods, err := r.getClusterPods(ctx, redisOperator, false)
+	r.Log.Info("handling initializing followers")
+
+	redisPods, err := r.getRedisClusterPods(ctx, redisOperator, "any")
 	if err != nil {
 		return err
 	}
 
-	_, err = getPodIPs(followerPods)
+	// wait for network interfaces to be configured
+	for _, pod := range redisPods.Items {
+		if pod.Status.PodIP == "" {
+			return fmt.Errorf("Pods not ready - waiting for IP")
+		}
+	}
+
+	redisGroups := NewRedisGroups(redisPods).Flatten()
+
 	if err != nil {
 		return err
+	}
+
+	for _, group := range redisGroups {
+		for _, follower := range group.FollowerPods {
+			redisLeaderID, err := r.RedisCLI.GetMyClusterID(group.LeaderPod.Status.PodIP)
+			if err != nil {
+				return err
+			}
+			r.RedisCLI.AddFollower(follower.Status.PodIP, group.LeaderPod.Status.PodIP, redisLeaderID)
+		}
 	}
 
 	redisOperator.Status.ClusterState = string(ClusteringFollowers)
@@ -295,7 +353,7 @@ func (r *RedisOperatorReconciler) handleInitializingFollowers(ctx context.Contex
 func (r *RedisOperatorReconciler) handleClusteringLeaders(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
 	r.Log.Info("handling clustering leaders")
 	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
-	leaderPods, err := r.getClusterPods(ctx, redisOperator, true)
+	leaderPods, err := r.getRedisClusterPods(ctx, redisOperator, "leader")
 	if err != nil {
 		return err
 	}
@@ -317,6 +375,24 @@ func (r *RedisOperatorReconciler) handleClusteringLeaders(ctx context.Context, r
 }
 
 func (r *RedisOperatorReconciler) handleClusteringFollowers(ctx context.Context, redisOperator *dbv1.RedisOperator) error {
+	redisPods, err := r.getRedisClusterPods(ctx, redisOperator, "any")
+	if err != nil {
+		return err
+	}
+
+	redisGroups := NewRedisGroups(redisPods).Flatten()
+	clusterNodes, err := r.RedisCLI.GetClusterNodesInfo(redisGroups[0].LeaderPod.Status.PodIP)
+	if err != nil {
+		return err
+	}
+
+	if len(*clusterNodes) != len(redisPods.Items) {
+		return fmt.Errorf("Follower clustering incomplete - not all pods are inside the cluster")
+		// TODO: do a more thorough check, see if all followers are linked to the right leader
+	} else {
+		r.Log.Info("follower clustering complete")
+	}
+
 	redisOperator.Status.ClusterState = string(Ready)
 	return nil
 }
