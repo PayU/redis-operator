@@ -39,6 +39,7 @@ type RedisOperatorReconciler struct {
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisoperators,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisoperators/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=*,resources=pods;services;configmaps,verbs=create;update;patch;get;list;watch;delete
 
 func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
@@ -78,6 +79,9 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 		break
 	case Initializing:
 		err = r.handleInitializingCluster(ctx, &redisOperator)
+		break
+	case MasterCohesive:
+		err = r.handleMasterCohesiveCluster(ctx, &redisOperator)
 		break
 	}
 

@@ -1,7 +1,21 @@
 # Build the manager binary
-FROM golang:1.13 as builder
+FROM golang:1.14 as builder
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /workspace
+
+# install curl
+RUN apt-get update \
+    && apt-get install -y curl
+
+# install redis cli
+RUN cd /tmp &&\
+    curl http://download.redis.io/redis-stable.tar.gz | tar xz &&\
+    make -C redis-stable &&\
+    cp redis-stable/src/redis-cli /bin &&\
+    rm -rf /tmp/redis-stable
+
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
@@ -19,9 +33,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager 
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/base-debian10
 WORKDIR /
 COPY --from=builder /workspace/manager .
+COPY --from=builder /bin/redis-cli .
 USER nonroot:nonroot
 
-ENTRYPOINT ["/manager"]
+ENTRYPOINT [ "/manager" ]
