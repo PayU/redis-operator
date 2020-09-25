@@ -4,7 +4,7 @@ metadata:
   labels:
     control-plane: controller-manager
   name: system
----
+---  
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,18 +22,23 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
+      imagePullSecrets:
+        - name: regcred
       containers:
       - command:
         - /manager
+        workingDir:
+          "/"
         args:
         - --enable-leader-election
         image: controller:latest
+        imagePullPolicy: "Always"
         name: manager
         resources:
           limits:
-            cpu: 100m
-            memory: 30Mi
+            cpu: 1000m
+            memory: 1024Mi
           requests:
             cpu: 100m
-            memory: 20Mi
+            memory: 256Mi
       terminationGracePeriodSeconds: 10

@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,6 +39,7 @@ type RedisOperatorReconciler struct {
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisoperators,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisoperators/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=*,resources=pods;services;configmaps,verbs=create;update;patch;get;list;watch;delete
 
 func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
@@ -71,8 +74,14 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	case NotExists:
 		err = r.createNewCluster(ctx, &redisOperator)
 		break
+	case Deploying:
+		err = r.handleDeployingCluster(ctx, &redisOperator)
+		break
 	case Initializing:
-		err = r.handleInitializingCluster()
+		err = r.handleInitializingCluster(ctx, &redisOperator)
+		break
+	case MasterCohesive:
+		err = r.handleMasterCohesiveCluster(ctx, &redisOperator)
 		break
 	}
 
@@ -83,8 +92,11 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	/*
 		### 3: Update the current status
 	*/
+	log.Info(fmt.Sprintf("update cluster state to:%s", redisOperator.Status.ClusterState))
 	if err = r.Status().Update(ctx, &redisOperator); err != nil {
-		return ctrl.Result{}, err
+		if !strings.Contains(err.Error(), "please apply your changes to the latest version") {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil

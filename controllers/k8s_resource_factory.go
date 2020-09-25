@@ -17,7 +17,7 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 	}
 
 	podLabels["app"] = redisOperator.Spec.PodLabelSelector.App
-	podLabels["redis-node-role"] = "master"
+	podLabels["redis-node-role"] = "leader"
 
 	for _, envStruct := range redisOperator.Spec.RedisContainerEnvVariables {
 		if envStruct.Name != "PORT" {
@@ -30,7 +30,7 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("redis-master-%d", number),
+			Name:        fmt.Sprintf("redis-leader-%d", number),
 			Namespace:   redisOperator.ObjectMeta.Namespace,
 			Labels:      podLabels,
 			Annotations: redisOperator.Spec.PodAnnotations,
@@ -41,7 +41,7 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 			},
 			Containers: []corev1.Container{
 				{
-					Name:  "redis-master",
+					Name:  "redis-leader",
 					Image: redisOperator.Spec.Image,
 					Env:   redisContainerEnvVariables,
 					Ports: []corev1.ContainerPort{
