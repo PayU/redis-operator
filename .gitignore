@@ -28,3 +28,7 @@ bin
 !.vscode/launch.json
 !.vscode/extensions.json
 .history/
+*.orig
+
+# here during the development, used for local-specific setting
+**/dev_redisoperator.yaml

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -62,7 +63,7 @@ func (r *RedisOperatorReconciler) redisCliClusterCreate(leaderPodIPAddresses []s
 				if keyValue[0] == "cluster_state" {
 					clusterExists = clusterExists && keyValue[1] == "ok"
 				} else if keyValue[0] == "cluster_size" {
-					clusterExists = clusterExists && keyValue[1] == string(len(leaderPodIPAddresses))
+					clusterExists = clusterExists && keyValue[1] == strconv.Itoa(len(leaderPodIPAddresses))
 				}
 			}
 

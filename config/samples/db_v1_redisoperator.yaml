@@ -12,6 +12,9 @@ spec:
     app: "redis"
   podAnnotations:
     sidecar.istio.io/inject: "false"
+  affinity:
+    hostTopologyKey: "kubernetes.io/hostname"
+    zoneTopologyKey: "failure-domain.beta.kubernetes.io/zone"
   redisContainerEnvVariables:
     - name: PORT
       value: '6379'
