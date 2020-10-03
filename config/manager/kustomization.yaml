@@ -4,4 +4,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker
+  newName: redis-operator-docker
+  newTag: testing

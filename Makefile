@@ -1,6 +1,12 @@
 
 # Image URL to use all building/pushing image targets
 IMG ?= docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker
+
+ifdef DEV
+	IMG ?= redis-operator-docker:testing
+endif
+
+CLUSTER_NAME ?= redis-test
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
@@ -38,6 +44,9 @@ deploy: manifests
 	cd config/manager && kustomize edit set image controller=${IMG}
 	kustomize build config/default | kubectl apply -f -
 
+# Deploy controller in a local kind cluster
+deploy-local: manifests docker-build-local kind-load deploy
+
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
@@ -61,6 +70,10 @@ docker-build: test
 # Push the docker image
 docker-push:
 	docker push ${IMG}
+
+# Load the controller image on the nodes of a kind cluster
+kind-load:
+	kind load docker-image ${IMG} --name ${CLUSTER_NAME}
 
 # find or download controller-gen
 # download controller-gen if necessary
