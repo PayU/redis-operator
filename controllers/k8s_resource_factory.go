@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"fmt"
+	"strconv"
 
 	dbv1 "github.com/PayU/Redis-Operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -10,14 +11,15 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, number int) (corev1.Pod, error) {
+func createRedisPod(redisOperator *dbv1.RedisOperator, nodeRole string, nodeNumber int, leaderNumber int, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
 	podLabels := make(map[string]string)
 	redisContainerEnvVariables := []corev1.EnvVar{
 		{Name: "PORT", Value: "6379"},
 	}
 
 	podLabels["app"] = redisOperator.Spec.PodLabelSelector.App
-	podLabels["redis-node-role"] = "leader"
+	podLabels["redis-node-role"] = nodeRole
+	podLabels["leader-number"] = strconv.Itoa(leaderNumber)
 
 	for _, envStruct := range redisOperator.Spec.RedisContainerEnvVariables {
 		if envStruct.Name != "PORT" {
@@ -34,7 +36,7 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 
 	containers := []corev1.Container{
 		{
-			Name:  "redis-master",
+			Name:  fmt.Sprintf("redis-%s", nodeRole),
 			Image: redisOperator.Spec.Image,
 			Env:   redisContainerEnvVariables,
 			Ports: []corev1.ContainerPort{
@@ -74,15 +76,14 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 				},
 			}
 		}
+
 		if redisOperator.Spec.Affinity.ZoneTopologyKey != "" {
 			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
 				{
 					Weight: 100,
 					PodAffinityTerm: corev1.PodAffinityTerm{
 						LabelSelector: &metav1.LabelSelector{
-							MatchExpressions: []metav1.LabelSelectorRequirement{
-								{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}},
-							},
+							MatchExpressions: preferredLabelSelectorRequirement,
 						},
 						TopologyKey: redisOperator.Spec.Affinity.ZoneTopologyKey,
 					},
@@ -91,9 +92,16 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 		}
 	}
 
+	var podName string
+	if nodeRole == "leader" {
+		podName = fmt.Sprintf("redis-leader-%d", nodeNumber)
+	} else {
+		podName = fmt.Sprintf("redis-follower-%d-%d", leaderNumber, nodeNumber)
+	}
+
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("redis-leader-%d", number),
+			Name:        podName,
 			Namespace:   redisOperator.ObjectMeta.Namespace,
 			Labels:      podLabels,
 			Annotations: redisOperator.Spec.PodAnnotations,
@@ -105,6 +113,24 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 			Affinity:         affinity,
 		},
 	}
+
+	return pod
+}
+
+func (r *RedisOperatorReconciler) followerPod(redisOperator *dbv1.RedisOperator, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
+	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-number", Operator: metav1.LabelSelectorOpIn, Values: []string{strconv.Itoa(leaderNumber)}}}
+	pod := createRedisPod(redisOperator, "follower", nodeNumber, leaderNumber, preferredLabelSelectorRequirement)
+
+	if err := ctrl.SetControllerReference(redisOperator, &pod, r.Scheme); err != nil {
+		return pod, err
+	}
+
+	return pod, nil
+}
+
+func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
+	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
+	pod := createRedisPod(redisOperator, "leader", nodeNumber, leaderNumber, preferredLabelSelectorRequirement)
 
 	if err := ctrl.SetControllerReference(redisOperator, &pod, r.Scheme); err != nil {
 		return pod, err
