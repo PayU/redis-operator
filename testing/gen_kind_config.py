@@ -3,7 +3,7 @@ from enum import Enum
 class ClusterParams:
     CONFIG_FILENAME = 'cloud.yaml'
     NODE_LAYOUT = [['eu-central-1a']*3, ['eu-central-1b']*3, ['eu-central-1c']*3]
-    ZONE_KEY = 'failure-domain.beta.kubernetes.io'
+    ZONE_KEY = 'failure-domain.beta.kubernetes.io/zone'
     KIND_API_VERSION = 'kind.x-k8s.io/v1alpha4'
     KUBERNETES_VERSION = 'v1.15.12'
 

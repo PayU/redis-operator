@@ -38,5 +38,6 @@ WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
 USER nonroot:nonroot
+ENV PATH="./:${PATH}"
 
 ENTRYPOINT [ "/manager" ]

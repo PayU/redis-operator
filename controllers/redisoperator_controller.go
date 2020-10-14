@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,13 +28,17 @@ import (
 
 	dbv1 "github.com/PayU/Redis-Operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/PayU/Redis-Operator/controllers/rediscli"
 )
 
 // RedisOperatorReconciler reconciles a RedisOperator object
 type RedisOperatorReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	Log      logr.Logger
+	Scheme   *runtime.Scheme
+	RedisCLI *rediscli.RedisCLI
+	State    RedisClusterState
 }
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisoperators,verbs=get;list;watch;create;update;patch;delete
@@ -101,11 +105,15 @@ func (r *RedisOperatorReconciler) Reconcile(req ctrl.Request) (ctrl.Result, erro
 	/*
 		### 3: Update the current status
 	*/
-	log.Info(fmt.Sprintf("update cluster state to:%s", redisOperator.Status.ClusterState))
-	if err = r.Status().Update(ctx, &redisOperator); err != nil {
-		if !strings.Contains(err.Error(), "please apply your changes to the latest version") {
-			return ctrl.Result{}, err
+	clusterState = getCurrentClusterState(r.Log, &redisOperator)
+	if clusterState != r.State {
+		log.Info(fmt.Sprintf("update cluster state to: %s", redisOperator.Status.ClusterState))
+		if err = r.Status().Update(ctx, &redisOperator); err != nil {
+			if !strings.Contains(err.Error(), "please apply your changes to the latest version") {
+				return ctrl.Result{}, err
+			}
 		}
+		r.State = clusterState
 	}
 
 	return ctrl.Result{}, nil

@@ -30,5 +30,5 @@ bin
 .history/
 *.orig
 
-# here during the development, used for local-specific setting
-**/dev_redisoperator.yaml
+telepresence.log
+manager

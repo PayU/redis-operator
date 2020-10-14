@@ -1,9 +1,20 @@
 
 # Image URL to use all building/pushing image targets
 IMG ?= docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker
+DEV_IMAGE ?= redis-operator:dev
+DEPLOY_TARGET ?= deploy-default
 
-ifdef DEV
-	IMG ?= redis-operator-docker:testing
+TEST := test
+
+ifdef NOTEST
+	TEST := skip
+endif
+
+ifdef LOCAL
+	IMG := redis-operator-docker:local
+	REDIS_LOAD := kind-load-redis
+	REDIS_BUILD := docker-build-local-redis
+	DEPLOY_TARGET := deploy-local
 endif
 
 CLUSTER_NAME ?= redis-test
@@ -39,13 +50,15 @@ install: manifests
 uninstall: manifests
 	kustomize build config/crd | kubectl delete -f -
 
+deploy: $(DEPLOY_TARGET)
+
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests
-	cd config/manager && kustomize edit set image controller=${IMG}
+deploy-default: manifests
+	cd config/manager && kustomize edit set image controller=$(IMG)
 	kustomize build config/default | kubectl apply -f -
 
 # Deploy controller in a local kind cluster
-deploy-local: manifests docker-build kind-load deploy
+deploy-local: manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) kind-load-controller deploy-default
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
@@ -64,16 +77,31 @@ generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 # Build the docker image
-docker-build: test
-	docker build . -t ${IMG}
+docker-build: $(TEST)
+	docker build . -t $(IMG)
+
+# Build the development Docker image
+docker-build-dev: $(TEST)
+	docker build ./testing -f $(PWD)/testing/dev.Dockerfile -t $(DEV_IMAGE)
+
+# Builds a local image for the Redis pods from the latest Dockerhub image
+docker-build-local-redis:
+	docker build ./testing -f $(PWD)/testing/redis.Dockerfile -t redis:testing
 
 # Push the docker image
 docker-push:
-	docker push ${IMG}
+	docker push $(IMG)
 
 # Load the controller image on the nodes of a kind cluster
-kind-load:
-	kind load docker-image ${IMG} --name ${CLUSTER_NAME}
+kind-load-controller:
+	kind load docker-image $(IMG) --name $(CLUSTER_NAME)
+
+# Load the local redis image
+kind-load-redis:
+	kind load docker-image redis:testing --name $(CLUSTER_NAME)
+
+# Used for skipping targets
+skip: ;
 
 # find or download controller-gen
 # download controller-gen if necessary

@@ -5,8 +5,8 @@ metadata:
   namespace: logs
 spec:
   leaderReplicas: 3
-  leaderFollowersCount: 0
-  image: "docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:1.4.0"
+  leaderFollowersCount: 2
+  image: "redis:testing"
   imagePullSecrets: "regcred"
   podLabelSelector:
     app: "redis"
@@ -20,5 +20,3 @@ spec:
       value: '6379'
     - name: CONF_PATH
       value: '/usr/local/etc/redis/redis.conf'
-
-

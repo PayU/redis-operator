@@ -12,6 +12,7 @@ import (
 
 	dbv1 "github.com/PayU/Redis-Operator/api/v1"
 	"github.com/PayU/Redis-Operator/controllers"
+	"github.com/PayU/Redis-Operator/controllers/rediscli"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -54,10 +55,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	log := ctrl.Log.WithName("controllers").WithName("RedisOperator")
+
 	if err = (&controllers.RedisOperatorReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("RedisOperator"),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Log:      log,
+		Scheme:   mgr.GetScheme(),
+		RedisCLI: rediscli.NewRedisCLI(log),
+		State:    controllers.NotExists,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisOperator")
 		os.Exit(1)
