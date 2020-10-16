@@ -23,7 +23,7 @@ rules:
 - apiGroups:
   - db.payu.com
   resources:
-  - redisoperators
+  - redisclusters
   verbs:
   - create
   - delete
@@ -35,7 +35,7 @@ rules:
 - apiGroups:
   - db.payu.com
   resources:
-  - redisoperators/status
+  - redisclusters/status
   verbs:
   - get
   - patch

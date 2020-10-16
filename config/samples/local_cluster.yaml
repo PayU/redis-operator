@@ -1,7 +1,7 @@
 apiVersion: db.payu.com/v1
-kind: RedisOperator
+kind: RedisCluster
 metadata:
-  name: ro-test
+  name: rdc-test
   namespace: logs
 spec:
   leaderReplicas: 3

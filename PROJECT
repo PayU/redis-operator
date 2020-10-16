@@ -2,6 +2,6 @@ domain: payu.com
 repo: github.com/PayU/Redis-Operator
 resources:
 - group: db
-  kind: RedisOperator
+  kind: RedisCluster
   version: v1
 version: "2"
