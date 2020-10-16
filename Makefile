@@ -82,11 +82,11 @@ docker-build: $(TEST)
 
 # Build the development Docker image
 docker-build-dev: $(TEST)
-	docker build ./testing -f $(PWD)/testing/dev.Dockerfile -t $(DEV_IMAGE)
+	docker build ./hack -f $(PWD)/hack/dev.Dockerfile -t $(DEV_IMAGE)
 
 # Builds a local image for the Redis pods from the latest Dockerhub image
 docker-build-local-redis:
-	docker build ./testing -f $(PWD)/testing/redis.Dockerfile -t redis:testing
+	docker build ./hack -f $(PWD)/hack/redis.Dockerfile -t redis:testing
 
 # Push the docker image
 docker-push:
