@@ -17,7 +17,7 @@ How to deploy the controller to a cluster (using the current context):
 For testing the Redis operator on a local `kind` cluster:
 
 ```bash
-cd testing
+cd hack
 python gen_kind_config.py # creates a new kind cluster config file
 sh ./install.sh # you might need to run this as sudo if a regular user can't use docker
 ```
@@ -25,6 +25,13 @@ sh ./install.sh # you might need to run this as sudo if a regular user can't use
 If the `.kube/config` file was not updated it can be populated using
 
 `kind --name redis-test get kubeconfig > ~/.kube/config`
+
+After having a running `kind` cluster we should install the operator crd.
+
+```bash
+ cd ..
+ make install
+```
 
 After having a running `kind` cluster the operator can be deployed using
 
