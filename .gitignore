@@ -32,3 +32,4 @@ bin
 
 telepresence.log
 manager
+Redis-Operator

@@ -6,22 +6,22 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.2.5
   creationTimestamp: null
-  name: redisoperators.db.payu.com
+  name: redisclusters.db.payu.com
 spec:
   group: db.payu.com
   names:
-    kind: RedisOperator
-    listKind: RedisOperatorList
-    plural: redisoperators
+    kind: RedisCluster
+    listKind: RedisClusterList
+    plural: redisclusters
     shortNames:
-    - ro
-    singular: redisoperator
+    - rdc
+    singular: rediscluster
   scope: Namespaced
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
-      description: RedisOperator is the Schema for the redisoperators API
+      description: RedisCluster is the Schema for the redisclusters API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -36,7 +36,7 @@ spec:
         metadata:
           type: object
         spec:
-          description: RedisOperatorSpec defines the desired state of RedisOperator
+          description: RedisClusterSpec defines the desired state of RedisCluster
           properties:
             Podresources:
               description: ResourceRequirements describes the compute resource requirements.
@@ -213,7 +213,7 @@ spec:
           - podLabelSelector
           type: object
         status:
-          description: RedisOperatorStatus defines the observed state of RedisOperator
+          description: RedisClusterStatus defines the observed state of RedisCluster
           properties:
             active:
               description: A list of pointers to currently running pods.

@@ -33,8 +33,8 @@ type TopologyKeys struct {
 	ZoneTopologyKey string `json:"zoneTopologyKey,omitempty"`
 }
 
-// RedisOperatorSpec defines the desired state of RedisOperator
-type RedisOperatorSpec struct {
+// RedisClusterSpec defines the desired state of RedisCluster
+type RedisClusterSpec struct {
 
 	// +kubebuilder:validation:Minimum=3
 	// The number of leader instances to run.
@@ -64,8 +64,8 @@ type RedisOperatorSpec struct {
 	RedisContainerEnvVariables []corev1.EnvVar `json:"redisContainerEnvVariables,omitempty"`
 }
 
-// RedisOperatorStatus defines the observed state of RedisOperator
-type RedisOperatorStatus struct {
+// RedisClusterStatus defines the observed state of RedisCluster
+type RedisClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -80,26 +80,26 @@ type RedisOperatorStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=ro
+// +kubebuilder:resource:shortName=rdc
 
-// RedisOperator is the Schema for the redisoperators API
-type RedisOperator struct {
+// RedisCluster is the Schema for the redisclusters API
+type RedisCluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RedisOperatorSpec   `json:"spec,omitempty"`
-	Status RedisOperatorStatus `json:"status,omitempty"`
+	Spec   RedisClusterSpec   `json:"spec,omitempty"`
+	Status RedisClusterStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// RedisOperatorList contains a list of RedisOperator
-type RedisOperatorList struct {
+// RedisClusterList contains a list of RedisCluster
+type RedisClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RedisOperator `json:"items"`
+	Items           []RedisCluster `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&RedisOperator{}, &RedisOperatorList{})
+	SchemeBuilder.Register(&RedisCluster{}, &RedisClusterList{})
 }

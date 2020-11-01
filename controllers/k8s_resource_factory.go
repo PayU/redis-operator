@@ -11,7 +11,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func createRedisPod(redisOperator *dbv1.RedisOperator, nodeRole string, nodeNumber int, leaderNumber int, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
+func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, nodeNumber int, leaderNumber int, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
 	podLabels := make(map[string]string)
 	redisContainerEnvVariables := []corev1.EnvVar{
 		{Name: "PORT", Value: "6379"},
@@ -117,7 +117,7 @@ func createRedisPod(redisOperator *dbv1.RedisOperator, nodeRole string, nodeNumb
 	return pod
 }
 
-func (r *RedisOperatorReconciler) followerPod(redisOperator *dbv1.RedisOperator, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
+func (r *RedisClusterReconciler) followerPod(redisOperator *dbv1.RedisCluster, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-number", Operator: metav1.LabelSelectorOpIn, Values: []string{strconv.Itoa(leaderNumber)}}}
 	pod := createRedisPod(redisOperator, "follower", nodeNumber, leaderNumber, preferredLabelSelectorRequirement)
 
@@ -128,7 +128,7 @@ func (r *RedisOperatorReconciler) followerPod(redisOperator *dbv1.RedisOperator,
 	return pod, nil
 }
 
-func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
+func (r *RedisClusterReconciler) leaderPod(redisOperator *dbv1.RedisCluster, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
 	pod := createRedisPod(redisOperator, "leader", nodeNumber, leaderNumber, preferredLabelSelectorRequirement)
 
@@ -139,7 +139,7 @@ func (r *RedisOperatorReconciler) leaderPod(redisOperator *dbv1.RedisOperator, n
 	return pod, nil
 }
 
-func (r *RedisOperatorReconciler) serviceResource(redisOperator *dbv1.RedisOperator) (corev1.Service, error) {
+func (r *RedisClusterReconciler) serviceResource(redisOperator *dbv1.RedisCluster) (corev1.Service, error) {
 	r.Log.Info("creating cluster service")
 
 	serviceSelector := make(map[string]string)
@@ -169,7 +169,7 @@ func (r *RedisOperatorReconciler) serviceResource(redisOperator *dbv1.RedisOpera
 	return service, nil
 }
 
-func (r *RedisOperatorReconciler) headlessServiceResource(redisOperator *dbv1.RedisOperator) (corev1.Service, error) {
+func (r *RedisClusterReconciler) headlessServiceResource(redisOperator *dbv1.RedisCluster) (corev1.Service, error) {
 	r.Log.Info("creating cluster headless service")
 
 	serviceSelector := make(map[string]string)
@@ -200,7 +200,7 @@ func (r *RedisOperatorReconciler) headlessServiceResource(redisOperator *dbv1.Re
 	return headlessService, nil
 }
 
-func (r *RedisOperatorReconciler) createSettingsConfigMap(redisOperator *dbv1.RedisOperator) (corev1.ConfigMap, error) {
+func (r *RedisClusterReconciler) createSettingsConfigMap(redisOperator *dbv1.RedisCluster) (corev1.ConfigMap, error) {
 	r.Log.Info("creating cluster config map")
 
 	data := make(map[string]string)
