@@ -55,7 +55,7 @@ A development operator YAML file can be found in `Redis-Operator/config/samples/
 
 To develop directly on a deployed operator without rebuilding and loading/deploying the image you need to have access to a cluster (can be remote or local) and [Telepresence](https://www.telepresence.io/) tool.
 
-<b>Note: If this is your first time using Telepresence you should make sure it has the right system permissions to work properly.<b><br>
+<b>Note: If this is your first time using Telepresence you should make sure it has the right system permissions to work properly.</b><br>
 
 1. Build the development image:
 
