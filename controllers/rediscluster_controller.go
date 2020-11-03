@@ -96,6 +96,9 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	case ClusteringFollowers:
 		err = r.handleClusteringFollowers(ctx, &redisCluster)
 		break
+	case Ready:
+		err = r.handleClusterReadyState(ctx, &redisCluster)
+		break
 	}
 
 	if err != nil {

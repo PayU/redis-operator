@@ -2,9 +2,9 @@
   "apiVersion": "v1",
   "kind": "Namespace",
   "metadata": {
-    "name": "logs",
+    "name": "infra",
     "labels": {
-      "name": "logs"
+      "name": "infra"
     }
   }
 }

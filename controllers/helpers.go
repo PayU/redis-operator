@@ -94,7 +94,7 @@ func getCurrentClusterState(logger logr.Logger, redisOperator *dbv1.RedisCluster
 	return clusterState
 }
 
-// Return Redis groups as an array
+// Flatten returns Redis groups as an array
 func (g *RedisGroups) Flatten() []RedisGroup {
 	groupArray := make([]RedisGroup, len(*g))
 	i := 0
@@ -113,6 +113,7 @@ func (g *RedisGroup) String() string {
 	return strResult
 }
 
+// NewRedisGroups is the constructor of RedisGroups struct
 func NewRedisGroups(redisPods *corev1.PodList) *RedisGroups {
 	groups := make(RedisGroups)
 	for _, redisPod := range redisPods.Items {
@@ -375,6 +376,7 @@ func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, re
 }
 
 func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+	r.Log.Info("handling clustering followers")
 	redisPods, err := r.getRedisClusterPods(ctx, redisOperator, "any")
 	if err != nil {
 		return err
@@ -395,4 +397,19 @@ func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, 
 
 	redisOperator.Status.ClusterState = string(Ready)
 	return nil
+}
+
+/*
+* when handleClusterReadyState is called, it means that the Reconcile function was triggered after the redis cluster
+* was already function as expected and was working properly. this trigger can occur from various reasons like losing
+* one (or many) of the redis cluster pods, a new deployment was initiated and so on..
+* at first, we will identify the exact change of the state and only after that we will response to it.
+* in addition, this function will trigger when we just finished to deploy the cluster for the very first time.
+ */
+func (r *RedisClusterReconciler) handleClusterReadyState(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
+	r.Log.Info("Reconcile function was triggered while the last known cluster state was ready. checking cluster status..")
+
+	r.Log.Info("Redis cluster is fully operational")
+	return nil
+
 }

@@ -1,3 +1,11 @@
+# PayU Redis Operator
+
+## Project status: Alpha
+
+The basic features have been completed, and while no breaking API changes are currently planned, the API can change in a backwards incompatible way before the project is declared stable and more features are expected for the stable version
+
+## Quick start
+
 How to update the crd:
 
 `make install`
@@ -47,14 +55,16 @@ A development operator YAML file can be found in `Redis-Operator/config/samples/
 
 To develop directly on a deployed operator without rebuilding and loading/deploying the image you need to have access to a cluster (can be remote or local) and [Telepresence](https://www.telepresence.io/) tool.
 
+<b>Note: If this is your first time using Telepresence you should make sure it has the right system permissions to work properly.<b><br>
+
 1. Build the development image:
 
-`make docker-build-dev`
+`make docker-build-dev NOTEST=true`
 
 2. Swap the dev image with the operator deploy using Telepresence
 
 ```
-telepresence --mount /tmp/podtoken  --context kind-redis-test --namespace logs --swap-deployment redis-operator-controller-manager --docker-run --rm -it -v $(pwd):/app -v=/tmp/podtoken/var/run/secrets:/var/run/secrets redis-operator:dev
+telepresence --mount /tmp/podtoken  --context kind-redis-test --namespace infra --swap-deployment redis-operator-controller-manager --docker-run --rm -it -v $(pwd):/app -v=/tmp/podtoken/var/run/secrets:/var/run/secrets redis-operator:dev
 ```
 
 **How it works**
