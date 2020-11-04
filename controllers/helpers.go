@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	dbv1 "github.com/PayU/Redis-Operator/api/v1"
+	"github.com/PayU/Redis-Operator/controllers/rediscli"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -16,6 +18,9 @@ import (
 // reconcile state of the redis cluster
 type RedisClusterState string
 
+// RedisGroups is a map of leaders and their corresponding followrs
+// the map key is the leader number (0, 1, 2 and so on)
+// and the map value is the group data
 type RedisGroups map[string]RedisGroup
 
 // RedisGroup describes a leader and its followers
@@ -155,26 +160,29 @@ func (r *RedisClusterReconciler) getRedisClusterPods(ctx context.Context, redisO
 	return pods, nil
 }
 
-func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, applyOpts []client.CreateOption, redisOperator *dbv1.RedisCluster, leaderNumber int) error {
+// createFollowersForLeader create all followers pods for a specifc leader pod
+// the function return the number of created followers for the specific leader
+func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, applyOpts []client.CreateOption, redisOperator *dbv1.RedisCluster, leaderNumber int, startingSequentialNumber int) (int, error) {
 	followersCount := int(redisOperator.Spec.LeaderFollowersCount)
 
 	for i := 0; i < followersCount; i++ {
-		followerPod, err := r.followerPod(redisOperator, i, leaderNumber)
+		followerPod, err := r.followerPod(redisOperator, leaderNumber, startingSequentialNumber+i)
 		if err != nil {
-			return err
+			return 0, err
 		}
+
 		r.Log.Info(fmt.Sprintf("deploying follower-%d-%d", leaderNumber, i))
 
 		err = r.Create(ctx, &followerPod, applyOpts...)
 		if err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
-				return err
+				return 0, err
 			}
 			r.Log.Info(fmt.Sprintf("follower-%d-%d already exists", leaderNumber, i))
 		}
 	}
 
-	return nil
+	return followersCount, nil
 }
 
 func (r *RedisClusterReconciler) createLeaders(ctx context.Context, applyOpts []client.CreateOption, redisOperator *dbv1.RedisCluster, nodeCount int) error {
@@ -359,15 +367,20 @@ func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, re
 		return err
 	}
 
+	startingfollowerSequentialNumber := len(leaderPods.Items)
+
 	for _, leaderPod := range leaderPods.Items {
 		leaderNumber, err := strconv.Atoi(leaderPod.ObjectMeta.Labels["leader-number"])
 		if err != nil {
 			return err
 		}
-		err = r.createFollowersForLeader(ctx, applyOpts, redisOperator, leaderNumber)
+
+		createdFollowers, err := r.createFollowersForLeader(ctx, applyOpts, redisOperator, leaderNumber, startingfollowerSequentialNumber)
 		if err != nil {
 			return err
 		}
+
+		startingfollowerSequentialNumber += createdFollowers
 	}
 
 	redisOperator.Status.ClusterState = string(DeployingFollowers)
@@ -391,11 +404,12 @@ func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, 
 	if len(*clusterNodes) != len(redisPods.Items) {
 		return fmt.Errorf("Follower clustering incomplete - not all pods are inside the cluster")
 		// TODO: do a more thorough check, see if all followers are linked to the right leader
-	} else {
-		r.Log.Info("follower clustering complete")
 	}
 
+	r.Log.Info("follower clustering complete")
+	redisOperator.Status.TotalExpectedPods = redisOperator.Spec.LeaderReplicas * (redisOperator.Spec.LeaderFollowersCount + 1)
 	redisOperator.Status.ClusterState = string(Ready)
+
 	return nil
 }
 
@@ -407,9 +421,160 @@ func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, 
 * in addition, this function will trigger when we just finished to deploy the cluster for the very first time.
  */
 func (r *RedisClusterReconciler) handleClusterReadyState(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
-	r.Log.Info("Reconcile function was triggered while the last known cluster state was ready. checking cluster status..")
+	r.Log.Info("reconcile function was triggered while the last known cluster state was ready. checking cluster status..")
+	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
+	var actionApply bool = false
+	var err error = nil
 
-	r.Log.Info("Redis cluster is fully operational")
+	// first step is checking for failing nodes. if we found any we will
+	// clean them by using CLUSTER FORGET redis command
+	actionApply, err = r.forgetFailingNodesIfExists(ctx, redisCluster, applyOpts)
+	if err != nil {
+		return err
+	}
+
+	if !actionApply {
+		r.Log.Info("redis cluster is fully operational")
+	}
+
+	return err
+}
+
+func (r *RedisClusterReconciler) forgetFailingNodesIfExists(ctx context.Context, redisCluster *dbv1.RedisCluster, applyOpts []client.CreateOption) (bool, error) {
+	result := false
+	failingNodes := make([]rediscli.RedisClusterNode, 0)
+
+	// waiting for [1.2 * cluster-node-timeout] amount in case 1 or more nodes
+	// are unreachable so the cluster will considered them in failure state.
+	wait(r.Log, 5000*1.2)
+
+	r.Log.Info("looking for failing cluster nodes..")
+
+	redisPods, err := r.getRedisClusterPods(ctx, redisCluster, "any")
+	if err != nil {
+		return result, err
+	}
+
+	redisGroups := NewRedisGroups(redisPods)
+	flattenRedisGroups := redisGroups.Flatten()
+
+	clusterNodesList, err := r.RedisCLI.GetClusterNodesInfo(flattenRedisGroups[0].LeaderPod.Status.PodIP)
+	if err != nil {
+		return result, err
+	}
+
+	// search for failing nodes in the cluster
+	for _, clusterNode := range *clusterNodesList {
+		if clusterNode.IsFailing {
+			failingNodes = append(failingNodes, clusterNode)
+		}
+	}
+
+	if len(failingNodes) > 0 {
+		r.Log.Info(fmt.Sprintf("found %d failing redis nodes. starting cluster forget process..", len(failingNodes)))
+
+		// iterate over all cluster nodes, for every healthy node do
+		// CLUSTER FORGET command on all other failing nodes
+		for _, clusterNode := range *clusterNodesList {
+			if !clusterNode.IsFailing {
+				if isLeader {
+					clusterNode.Addr
+				}
+				for _, failingNode := range failingNodes {
+					nodeIP := strings.Split(clusterNode.Addr, ":")[0]
+					r.RedisCLI.ForgetNode(nodeIP, failingNode.ID)
+				}
+			}
+		}
+
+		// test
+		missingPodNumbers := make([]int, 0)
+		podNumbersArray := make([]int, redisCluster.Status.TotalExpectedPods)
+		for _, redisPod := range redisPods.Items {
+			redisPod.Status.PodIP
+			podNumber, err := strconv.Atoi(strings.Split(redisPod.Name, "-")[2]) // redis pod name format is 'redis-node-<number>'
+			if err != nil {
+				return result, err
+			}
+
+			podNumbersArray[podNumber] = 1
+		}
+
+		for podIndex, value := range podNumbersArray {
+			if value == 0 {
+				r.Log.Info(fmt.Sprintf("missing pod number found: %d", podIndex))
+				missingPodNumbers = append(missingPodNumbers, podIndex)
+			}
+		}
+
+		err = r.replaceK8sFailedNodes(ctx, redisCluster, applyOpts, failingNodes, redisGroups, missingPodNumbers)
+		if err != nil {
+			return result, err
+		}
+
+		result = true
+	} else {
+		r.Log.Info("no failing nodes has found in the cluster")
+	}
+
+	return result, nil
+}
+
+// after we forgot the failing nodes, we need to deploy new pod(s) to replace the failing once.
+// there are 2 cases here - a failing leader or a failing follower.
+// in both cases all the new nodes should be a slave nodes since in a leader failing scenario
+// a "master failover" will occur and one of he's followers will be promoted to a leader (and needs a new follower to replace him).
+// in a follower failing scenario we are just replacing the failing follower with a new one.
+func (r *RedisClusterReconciler) replaceK8sFailedNodes(ctx context.Context, redisCluster *dbv1.RedisCluster, applyOpts []client.CreateOption,
+	failingNodes []rediscli.RedisClusterNode, redisGroups *RedisGroups, missingPodNumbers []int) error {
+	var err error = nil
+	var podSequentialNumber int
+
+	for _, failingNode := range failingNodes {
+
+		if failingNode.Leader != "0" { // if true, then the failing node was a follower
+			var leaderNumber int = -1
+
+			// test
+			for _, redisGroup := range *redisGroups {
+				r.Log.Info(fmt.Sprintf("for testing. group leader-id: [%s]. fail node leader id: [%s]", redisGroup.LeaderID, failingNode.Leader))
+				if redisGroup.LeaderID == failingNode.Leader {
+					leaderNumber, err = strconv.Atoi(redisGroup.LeaderNumber)
+					if err != nil {
+						return err
+					}
+
+					break
+				}
+			}
+
+			// Pop Front/Shift from slice
+			podSequentialNumber, missingPodNumbers = missingPodNumbers[0], missingPodNumbers[1:]
+			followerPod, err := r.followerPod(redisCluster, leaderNumber, podSequentialNumber)
+			if err != nil {
+				return err
+			}
+
+			r.Log.Info(fmt.Sprintf("deploying follower for leader %d", leaderNumber))
+			err = r.Create(ctx, &followerPod, applyOpts...)
+			if err != nil {
+				if !strings.Contains(err.Error(), "already exists") {
+					return err
+				}
+
+				r.Log.Info(fmt.Sprintf("follower for leader %d already exists", leaderNumber))
+			}
+
+		} else {
+			// the failing node was a leader
+		}
+	}
+
 	return nil
+}
 
+// wait pauses the current goroutine for at least the duration milliseconds.
+func wait(logger logr.Logger, milliseconds int32) {
+	logger.Info(fmt.Sprintf("sleeping for %d milliseconds", milliseconds))
+	time.Sleep(time.Duration(milliseconds) * time.Millisecond)
 }

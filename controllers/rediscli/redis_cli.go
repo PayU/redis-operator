@@ -20,6 +20,10 @@ func NewRedisCLI(log logr.Logger) *RedisCLI {
 	}
 }
 
+const (
+	defaultRedisCliTimeout string = "5" // seconds
+)
+
 /*
  * executeCommand returns the exec command stdout response
  * or an error strcut in case something goes wrong
@@ -27,11 +31,13 @@ func NewRedisCLI(log logr.Logger) *RedisCLI {
 func (r *RedisCLI) executeCommand(args []string) (string, error) {
 	var stdout, stderr bytes.Buffer
 
-	cmd := exec.Command("redis-cli", args...)
+	args = append([]string{defaultRedisCliTimeout, "redis-cli"}, args...)
+
+	cmd := exec.Command("timeout", args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	r.Log.Info(fmt.Sprintf("executing redis-cli command:%v", args))
+	r.Log.Info(fmt.Sprintf("executing redis-cli command:%v", args[1:]))
 	err := cmd.Run()
 	if err != nil {
 		r.Log.Error(err, fmt.Sprintf("unexpected error occurred when executing redis-cli command:%s", stderr.String()))
@@ -128,8 +134,25 @@ func (r *RedisCLI) GetMyClusterID(nodeIP string) (string, error) {
 
 	stdout, err := r.executeCommand(args) // TODO: check stdout for errors
 	if err != nil {
-		r.Log.Info("unable to get cluster nodes using redis-cli")
+		r.Log.Error(err, "unable to get cluster nodes using redis-cli")
 		return "", err
 	}
 	return strings.TrimSpace(stdout), nil
+}
+
+// ForgetNode command is used in order to remove a node, specified via its node ID, from the set of known nodes of the Redis Cluster node receiving the command.
+// In other words the specified node is removed from the nodes table of the node receiving the command.
+func (r *RedisCLI) ForgetNode(nodeIP string, forgetNodeID string) error {
+	r.Log.Info(fmt.Sprintf("sending cluster forget command on [%s] node-ip. node-id to be forgotten [%s]", nodeIP, forgetNodeID))
+	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
+
+	stdout, err := r.executeCommand(args)
+	if err != nil {
+		r.Log.Error(err, fmt.Sprintf("unable to forget node-id [%s] for node [%s]", forgetNodeID, nodeIP))
+		return err
+	}
+
+	r.Log.Info(stdout)
+
+	return nil
 }

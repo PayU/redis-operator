@@ -21,13 +21,26 @@ type RedisInfo struct {
 // https://redis.io/commands/cluster-info
 type RedisClusterInfo map[string]string
 
-// https://redis.io/commands/cluster-nodes
+// RedisClusterNodes command: https://redis.io/commands/cluster-nodes
+/*
+example:
+a917cda34af85862ba032a39fe0f9e7391dc7320 10.244.3.3:6379@16379 slave 8bac63eb45663020b4cc96b0cecdf233b54aa4be 0 1604407449303 3 connected
+1e8af559bebe994b3a7a14b07f0cae06570fc6f4 10.244.7.2:6379@16379 slave 3729be2f3ba0fa056b71c275d587d43d23c9b593 0 1604407450000 1 connected
+8bac63eb45663020b4cc96b0cecdf233b54aa4be 10.244.6.3:6379@16379 myself,master - 0 1604407448000 3 connected 10923-16383
+ed35cf6b591e1463b43bb67d0639b9a78f0ab6c6 10.244.9.2:6379@16379 slave a58a2cac1ab0dab0add6a0f541f426b2504e9c13 0 1604407450110 2 connected
+fabfc4389ead75f86bc1190ce1a990bfeee74ea9 10.244.8.2:6379@16379 slave a58a2cac1ab0dab0add6a0f541f426b2504e9c13 0 1604407450511 2 connected
+3735d298fee93f2f4062c88b80bee1d51331bde0 10.244.1.2:6379@16379 slave 3729be2f3ba0fa056b71c275d587d43d23c9b593 0 1604407450511 1 connected
+3729be2f3ba0fa056b71c275d587d43d23c9b593 10.244.5.2:6379@16379 master - 0 1604407449000 1 connected 0-5460
+a58a2cac1ab0dab0add6a0f541f426b2504e9c13 10.244.2.2:6379@16379 master - 0 1604407450310 2 connected 5461-10922
+d980857e202c9fc237b27616994c9e9e30f5c5a6 10.244.4.2:6379@16379 slave 8bac63eb45663020b4cc96b0cecdf233b54aa4be 0 1604407450000 3 connected
+*/
 type RedisClusterNodes []RedisClusterNode
 
 type RedisClusterNode struct {
 	ID          string
 	Addr        string
 	Flags       string
+	IsFailing   bool
 	Leader      string
 	PingSend    string
 	PingRecv    string
@@ -110,10 +123,12 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 	for _, nodeLine := range nodeLines {
 		nodeInfo := strings.Split(nodeLine, " ")
 		if len(nodeInfo) >= 8 {
+
 			nodes = append(nodes, RedisClusterNode{
 				ID:          nodeInfo[0],
 				Addr:        nodeInfo[1],
 				Flags:       nodeInfo[2],
+				IsFailing:   strings.Contains(nodeInfo[2], "fail"),
 				Leader:      nodeInfo[3],
 				PingSend:    nodeInfo[4],
 				PingRecv:    nodeInfo[5],

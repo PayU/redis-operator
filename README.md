@@ -43,7 +43,7 @@ After having a running `kind` cluster we should install the operator crd.
 
 After having a running `kind` cluster the operator can be deployed using
 
-`make deploy LOCAL=true`
+`make deploy LOCAL=true NOTEST=true`
 
 A development operator YAML file can be found in `Redis-Operator/config/samples/local_cluster.yaml`, apply it to the cluster after the operator deployment is up with:
 

@@ -11,7 +11,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, nodeNumber int, leaderNumber int, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
+func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, leaderNumber int, podSequentialNumber int, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
 	podLabels := make(map[string]string)
 	redisContainerEnvVariables := []corev1.EnvVar{
 		{Name: "PORT", Value: "6379"},
@@ -92,16 +92,9 @@ func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, nodeNumbe
 		}
 	}
 
-	var podName string
-	if nodeRole == "leader" {
-		podName = fmt.Sprintf("redis-leader-%d", nodeNumber)
-	} else {
-		podName = fmt.Sprintf("redis-follower-%d-%d", leaderNumber, nodeNumber)
-	}
-
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        podName,
+			Name:        fmt.Sprintf("redis-node-%d", podSequentialNumber),
 			Namespace:   redisOperator.ObjectMeta.Namespace,
 			Labels:      podLabels,
 			Annotations: redisOperator.Spec.PodAnnotations,
@@ -117,9 +110,9 @@ func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, nodeNumbe
 	return pod
 }
 
-func (r *RedisClusterReconciler) followerPod(redisOperator *dbv1.RedisCluster, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
+func (r *RedisClusterReconciler) followerPod(redisOperator *dbv1.RedisCluster, leaderNumber int, podSequentialNumber int) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-number", Operator: metav1.LabelSelectorOpIn, Values: []string{strconv.Itoa(leaderNumber)}}}
-	pod := createRedisPod(redisOperator, "follower", nodeNumber, leaderNumber, preferredLabelSelectorRequirement)
+	pod := createRedisPod(redisOperator, "follower", leaderNumber, podSequentialNumber, preferredLabelSelectorRequirement)
 
 	if err := ctrl.SetControllerReference(redisOperator, &pod, r.Scheme); err != nil {
 		return pod, err
@@ -128,9 +121,9 @@ func (r *RedisClusterReconciler) followerPod(redisOperator *dbv1.RedisCluster, n
 	return pod, nil
 }
 
-func (r *RedisClusterReconciler) leaderPod(redisOperator *dbv1.RedisCluster, nodeNumber int, leaderNumber int) (corev1.Pod, error) {
+func (r *RedisClusterReconciler) leaderPod(redisOperator *dbv1.RedisCluster, leaderNumber int, podSequentialNumber int) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
-	pod := createRedisPod(redisOperator, "leader", nodeNumber, leaderNumber, preferredLabelSelectorRequirement)
+	pod := createRedisPod(redisOperator, "leader", leaderNumber, podSequentialNumber, preferredLabelSelectorRequirement)
 
 	if err := ctrl.SetControllerReference(redisOperator, &pod, r.Scheme); err != nil {
 		return pod, err
