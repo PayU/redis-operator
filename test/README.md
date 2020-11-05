@@ -6,7 +6,7 @@ End-to-end automated testing for the Redis cluster.
 
 ### How it works
 
-The tests use a framework that has features for setting up the necessary K8s resources and for interactig with a cluster. It runs kustomize to generate the K8s resources.
+The tests use a framework that has features for setting up the necessary K8s resources and for interacting with a cluster. It runs kustomize to generate the K8s resources.
 
 ### How to run tests
 
@@ -14,26 +14,26 @@ The tests use a framework that has features for setting up the necessary K8s res
 
 If you don't already have a Kubernetes cluster running check the steps from the repository readme to create one. The following steps assume a local kind cluster is up and running.
 
-The e2e test can be run with the `e2e-test` makefile target, it will first build the required images and load them in kind.
+1. Build images for the operator and Redis
 
 ```
-make e2e-test
+make e2e-test-setup
 ```
 
-`go test` can be used directly to avoid rebuilding the images and just run the test code
+2. Run the e2e tests
 
 ```
 cd test/e2e
-go test -tags=e2e_redis_op
+go test -tags=e2e_redis_op -count=1
 ```
 
-TODO
+*It is important to add the `-count=1` flag otherwise the test resutls will be cached between multiple runs with unexpected results*
 
 ---
 
 ### Developing tests
 
-The testsuite and framework are kept behind a build tag and are only compiled and included in the binary if the tag is provided.
+The test suite and framework are kept behind a build tag and are only compiled and included in the binary if the tag is provided.
 
 If using Neovim with CoC `gopls` checks can be enabled from `coc-settings.json` with:
 

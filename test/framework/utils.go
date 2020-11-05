@@ -52,6 +52,11 @@ func (f *Framework) runKubectlApply(yamlData string) {
 	if err != nil {
 		fmt.Printf("[kubectl] kubectl apply failed: %v\n", err)
 	}
+	// TODO
+	// need to wait for kubectl resource to be created to avoid flaky tests
+	// must be replaced with kubectl wait
+	// https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#wait
+	time.Sleep(3 * time.Second)
 }
 
 func (f *Framework) runKustomizeCommand(command []string, path string) (string, string, error) {
@@ -170,6 +175,8 @@ func (f *Framework) ParseKustomizeConfig(yamlConfig string) (*KustomizeConfig, m
 	}
 	yamlMap["deployment"] = string(yamlRes[6])
 
+	f.KustomizeConfig = kustRes
+
 	return kustRes, yamlMap, nil
 }
 
@@ -184,6 +191,14 @@ func (f *Framework) BuildAndParseKustomizeConfig(configPath string, image string
 		return nil, nil, err
 	}
 	return kustRes, yamlMap, nil
+}
+
+func (f *Framework) isKubectlWarning(serr string) bool {
+	errMsg := strings.Split(strings.TrimSpace(serr), " ")
+	if len(errMsg) > 0 && errMsg[0] == "Warning:" {
+		return true
+	}
+	return false
 }
 
 func (f *Framework) executeKubectlCommand(yamlRes string, args []string, timeout time.Duration, dryRun bool) (string, string, error) {
@@ -202,8 +217,9 @@ func (f *Framework) executeKubectlCommand(yamlRes string, args []string, timeout
 
 	if err != nil {
 		return sout.String(), serr.String(), errors.Wrap(err, "kubctl command returned an error")
-	} else if strings.TrimSpace(serr.String()) != "" {
-		return sout.String(), serr.String(), errors.Errorf("kubctl command returned an error %s", serr.String())
+	} else if strings.TrimSpace(serr.String()) != "" && !f.isKubectlWarning(serr.String()) {
+		fmt.Printf("Kubectl output: %s\n", serr.String())
+		return sout.String(), serr.String(), errors.Errorf("kubctl command returned an error: %s", serr.String())
 	}
 	return sout.String(), serr.String(), err
 }
