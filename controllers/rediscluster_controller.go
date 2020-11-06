@@ -99,6 +99,9 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	case Ready:
 		err = r.handleClusterReadyState(ctx, &redisCluster)
 		break
+	case RecoverFromFailingNodes:
+		err = r.handleRecoverFromFailingNodesState(ctx, &redisCluster)
+		break
 	}
 
 	if err != nil {

@@ -117,6 +117,7 @@ func NewRedisClusterInfo(rawData string) *RedisClusterInfo {
 	return &info
 }
 
+// NewRedisClusterNodes is a constructor for RedisClusterNodes
 func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 	nodes := RedisClusterNodes{}
 	nodeLines := strings.Split(rawData, "\n")

@@ -142,6 +142,7 @@ func (r *RedisCLI) GetMyClusterID(nodeIP string) (string, error) {
 
 // ForgetNode command is used in order to remove a node, specified via its node ID, from the set of known nodes of the Redis Cluster node receiving the command.
 // In other words the specified node is removed from the nodes table of the node receiving the command.
+// https://redis.io/commands/cluster-forget
 func (r *RedisCLI) ForgetNode(nodeIP string, forgetNodeID string) error {
 	r.Log.Info(fmt.Sprintf("sending cluster forget command on [%s] node-ip. node-id to be forgotten [%s]", nodeIP, forgetNodeID))
 	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
