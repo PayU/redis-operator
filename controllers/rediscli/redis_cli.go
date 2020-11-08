@@ -147,13 +147,26 @@ func (r *RedisCLI) ForgetNode(nodeIP string, forgetNodeID string) error {
 	r.Log.Info(fmt.Sprintf("sending cluster forget command on [%s] node-ip. node-id to be forgotten [%s]", nodeIP, forgetNodeID))
 	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
 
-	stdout, err := r.executeCommand(args)
+	_, err := r.executeCommand(args)
 	if err != nil {
 		r.Log.Error(err, fmt.Sprintf("unable to forget node-id [%s] for node [%s]", forgetNodeID, nodeIP))
 		return err
 	}
 
-	r.Log.Info(stdout)
-
 	return nil
+}
+
+// GetLeaderReplicas ommand provides a list of replica nodes replicating from the specified leader node
+// https://redis.io/commands/cluster-replicas
+func (r *RedisCLI) GetLeaderReplicas(nodeIP string, leaderNodeID string) (*LeaderReplicas, error) {
+	r.Log.Info(fmt.Sprintf("sending 'CLUSTER REPLICAS' command for leader [%s] on node-ip [%s]", leaderNodeID, nodeIP))
+	args := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID}
+
+	stdout, err := r.executeCommand(args)
+	if err != nil {
+		r.Log.Error(err, fmt.Sprintf("unable to get cluster cluster replicas for [%s] when connection to node [%s]", leaderNodeID, nodeIP))
+		return nil, err
+	}
+
+	return NewLeaderReplicas(stdout), err
 }
