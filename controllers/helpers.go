@@ -167,9 +167,7 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, a
 
 		r.Log.Info(fmt.Sprintf("deploying follower-%d-%d", leaderNumber, i))
 
-		patchOpts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("redis-operator-controller")}
-
-		err = r.Patch(ctx, &followerPod, client.Apply, patchOpts...)
+		err = r.Create(ctx, &followerPod, applyOpts...)
 		if err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
 				return 0, err
