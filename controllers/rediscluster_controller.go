@@ -103,7 +103,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		err = r.handleFollowerNodesRecoverState(ctx, &redisCluster)
 		break
 	case RecoverLeaderNodes:
-		err = r.handleLeaderNodesRecoverState(ctx, &redisCluster)
+		err = r.handleLeaderNodesRecoverState(ctx, &redisCluster, req.NamespacedName.Namespace)
 		break
 	}
 

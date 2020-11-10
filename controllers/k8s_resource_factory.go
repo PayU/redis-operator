@@ -36,7 +36,7 @@ func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, leaderNum
 
 	containers := []corev1.Container{
 		{
-			Name:  fmt.Sprintf("redis-%s", nodeRole),
+			Name:  "redis-container",
 			Image: redisOperator.Spec.Image,
 			Env:   redisContainerEnvVariables,
 			Ports: []corev1.ContainerPort{
@@ -77,22 +77,23 @@ func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, leaderNum
 			}
 		}
 
-		if redisOperator.Spec.Affinity.ZoneTopologyKey != "" {
-			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
-				{
-					Weight: 100,
-					PodAffinityTerm: corev1.PodAffinityTerm{
-						LabelSelector: &metav1.LabelSelector{
-							MatchExpressions: preferredLabelSelectorRequirement,
-						},
-						TopologyKey: redisOperator.Spec.Affinity.ZoneTopologyKey,
-					},
-				},
-			}
-		}
+		// if redisOperator.Spec.Affinity.ZoneTopologyKey != "" {
+		// 	affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
+		// 		{
+		// 			Weight: 100,
+		// 			PodAffinityTerm: corev1.PodAffinityTerm{
+		// 				LabelSelector: &metav1.LabelSelector{
+		// 					MatchExpressions: preferredLabelSelectorRequirement,
+		// 				},
+		// 				TopologyKey: redisOperator.Spec.Affinity.ZoneTopologyKey,
+		// 			},
+		// 		},
+		// 	}
+		// }
 	}
 
 	pod := corev1.Pod{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf("redis-node-%d", podSequentialNumber),
 			Namespace:   redisOperator.ObjectMeta.Namespace,

@@ -11,6 +11,7 @@ import (
 	"github.com/PayU/Redis-Operator/controllers/rediscli"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -30,6 +31,10 @@ type RedisGroup struct {
 	LeaderPod    corev1.Pod
 	FollowerPods []corev1.Pod
 }
+
+var (
+	patchOpts = []client.PatchOption{client.FieldOwner("redis-operator-controller")}
+)
 
 const (
 	// NotExists means there is no redis pods in the k8s cluster
@@ -156,7 +161,7 @@ func (r *RedisClusterReconciler) getRedisClusterPods(ctx context.Context, redisO
 
 // createFollowersForLeader create all followers pods for a specifc leader pod
 // the function return the number of created followers for the specific leader
-func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, applyOpts []client.CreateOption, redisOperator *dbv1.RedisCluster, leaderNumber int, startingSequentialNumber int) (int, error) {
+func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, redisOperator *dbv1.RedisCluster, leaderNumber int, startingSequentialNumber int) (int, error) {
 	followersCount := int(redisOperator.Spec.LeaderFollowersCount)
 
 	for i := 0; i < followersCount; i++ {
@@ -167,7 +172,7 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, a
 
 		r.Log.Info(fmt.Sprintf("deploying follower-%d-%d", leaderNumber, i))
 
-		err = r.Create(ctx, &followerPod, applyOpts...)
+		err = r.Patch(ctx, &followerPod, client.Apply, patchOpts...)
 		if err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
 				return 0, err
@@ -179,7 +184,7 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, a
 	return followersCount, nil
 }
 
-func (r *RedisClusterReconciler) createLeaders(ctx context.Context, applyOpts []client.CreateOption, redisOperator *dbv1.RedisCluster, nodeCount int) error {
+func (r *RedisClusterReconciler) createLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster, nodeCount int) error {
 	for i := 0; i < nodeCount; i++ {
 		leaderPod, err := r.leaderPod(redisOperator, i, i)
 		if err != nil {
@@ -188,7 +193,7 @@ func (r *RedisClusterReconciler) createLeaders(ctx context.Context, applyOpts []
 
 		r.Log.Info(fmt.Sprintf("deploying leader-%d", i))
 
-		err = r.Create(ctx, &leaderPod, applyOpts...)
+		err = r.Patch(ctx, &leaderPod, client.Apply, patchOpts...)
 		if err != nil {
 			if !strings.Contains(err.Error(), "already exists") {
 				return err
@@ -203,7 +208,6 @@ func (r *RedisClusterReconciler) createLeaders(ctx context.Context, applyOpts []
 func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
 	r.Log.Info("creating new cluster")
 	desiredLeaders := int(redisOperator.Spec.LeaderReplicas)
-	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
 	// create config map
 	configMap, err := r.createSettingsConfigMap(redisOperator)
@@ -239,7 +243,7 @@ func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOper
 	}
 
 	// deploy the leader redis nodes
-	err = r.createLeaders(ctx, applyOpts, redisOperator, desiredLeaders)
+	err = r.createLeaders(ctx, redisOperator, desiredLeaders)
 	if err != nil {
 		return err
 	}
@@ -355,7 +359,6 @@ func (r *RedisClusterReconciler) handleInitializingFollowers(ctx context.Context
 
 func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
 	r.Log.Info("handling clustering leaders")
-	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 	leaderPods, err := r.getRedisClusterPods(ctx, redisOperator, "leader")
 	if err != nil {
 		return err
@@ -369,7 +372,7 @@ func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, re
 			return err
 		}
 
-		createdFollowers, err := r.createFollowersForLeader(ctx, applyOpts, redisOperator, leaderNumber, startingfollowerSequentialNumber)
+		createdFollowers, err := r.createFollowersForLeader(ctx, redisOperator, leaderNumber, startingfollowerSequentialNumber)
 		if err != nil {
 			return err
 		}
@@ -407,17 +410,12 @@ func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, 
 	return nil
 }
 
-func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Context, redisCluster *dbv1.RedisCluster, namespace string) error {
 	r.Log.Info("handling leader nodes recover state")
 	var clusterInfo *rediscli.RedisClusterNodes
 	var redisGroups *RedisGroups
 	var k8sRedisPods *corev1.PodList
 	var err error
-
-	// waiting for [1.2 * cluster-node-timeout] amount in case 1 or more nodes
-	// are UNEXPECTEDLY unreachable so the cluster will considered them in failure state.
-	// if any nodes are in failure state it means it happend between the last reconcile event and now
-	wait(r.Log, 5000*1.2)
 
 	k8sRedisPods, err = r.getRedisClusterPods(ctx, redisCluster, "any")
 	if err != nil {
@@ -436,28 +434,36 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 	}
 
 	redisGroups = NewRedisGroups(k8sRedisPods, clusterInfo)
-	patchOpts := []client.PatchOption{client.ForceOwnership, client.FieldOwner("redis-operator-controller")}
 
 	for _, redisNode := range *clusterInfo {
 		if redisNode.Leader == "-" {
 			leaderNumber, err := getLeaderNumberByLeaderID(redisGroups, redisNode.ID, r.Log)
-			if err != nil {
-				return err
+			if err != nil || leaderNumber == -1 {
+				return fmt.Errorf("unexpected error occurred while getting leader number by id %v", err)
 			}
 
 			// check tag from follower to leader if needed
 			for _, k8sRedisPod := range k8sRedisPods.Items {
 				if strings.HasPrefix(redisNode.Addr, k8sRedisPod.Status.PodIP) {
 					if k8sRedisPod.Labels["redis-node-role"] == "follower" {
-						r.Log.Info(fmt.Sprintf("update k8s pod [%s] with value of 'leader' to the tag 'redis-node-role'. leader number - %d", k8sRedisPod.Status.PodIP, leaderNumber))
+						r.Log.Info(fmt.Sprintf("update k8s pod [%s, %s] with value of 'leader' to the tag 'redis-node-role'. leader number - %d", k8sRedisPod.Name, k8sRedisPod.Status.PodIP, leaderNumber))
 
-						podNumber, _ := strconv.Atoi(strings.Split(k8sRedisPod.Name, "-")[2]) // redis pod name format is 'redis-node-<number>'
-						leaderPod, err := r.leaderPod(redisCluster, leaderNumber, podNumber)
+						var curretPodDeployed corev1.Pod
+						err = r.Client.Get(ctx, types.NamespacedName{
+							Namespace: namespace,
+							Name:      k8sRedisPod.Name,
+						}, &curretPodDeployed)
 						if err != nil {
 							return err
 						}
 
-						err = r.Client.Patch(ctx, &leaderPod, client.Merge, patchOpts...)
+						podNumber, _ := strconv.Atoi(strings.Split(k8sRedisPod.Name, "-")[2]) // redis pod name format is 'redis-node-<number>'
+						updatedLeaderPod, err := r.leaderPod(redisCluster, leaderNumber, podNumber)
+						if err != nil {
+							return err
+						}
+
+						err = r.Client.Patch(ctx, &updatedLeaderPod, client.MergeFrom(&curretPodDeployed))
 						if err != nil {
 							return err
 						}
