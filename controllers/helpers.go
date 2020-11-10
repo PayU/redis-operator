@@ -413,8 +413,8 @@ func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, 
 func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Context, redisCluster *dbv1.RedisCluster, namespace string) error {
 	r.Log.Info("handling leader nodes recover state")
 	var clusterInfo *rediscli.RedisClusterNodes
-	var redisGroups *RedisGroups
 	var k8sRedisPods *corev1.PodList
+	var k8sInfoRedisPod corev1.Pod
 	var err error
 
 	k8sRedisPods, err = r.getRedisClusterPods(ctx, redisCluster, "any")
@@ -425,6 +425,7 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 	for _, k8sRedisPod := range k8sRedisPods.Items {
 		clusterInfo, err = r.RedisCLI.GetClusterNodesInfo(k8sRedisPod.Status.PodIP)
 		if err == nil {
+			k8sInfoRedisPod = k8sRedisPod
 			break
 		}
 	}
@@ -433,48 +434,69 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 		return err
 	}
 
-	redisGroups = NewRedisGroups(k8sRedisPods, clusterInfo)
+	redisGroups := NewRedisGroups(k8sRedisPods, clusterInfo)
 
 	for _, redisNode := range *clusterInfo {
-		if redisNode.Leader == "-" {
-			leaderNumber, err := getLeaderNumberByLeaderID(redisGroups, redisNode.ID, r.Log)
-			if err != nil || leaderNumber == -1 {
-				return fmt.Errorf("unexpected error occurred while getting leader number by id %v", err)
-			}
+		if redisNode.Leader != "-" {
+			continue
+		}
 
-			// check tag from follower to leader if needed
-			for _, k8sRedisPod := range k8sRedisPods.Items {
-				if strings.HasPrefix(redisNode.Addr, k8sRedisPod.Status.PodIP) {
-					if k8sRedisPod.Labels["redis-node-role"] == "follower" {
-						r.Log.Info(fmt.Sprintf("update k8s pod [%s, %s] with value of 'leader' to the tag 'redis-node-role'. leader number - %d", k8sRedisPod.Name, k8sRedisPod.Status.PodIP, leaderNumber))
+		//
+		for _, k8sRedisPod := range k8sRedisPods.Items {
+			if strings.HasPrefix(redisNode.Addr, k8sRedisPod.Status.PodIP) {
+				if k8sRedisPod.Labels["redis-node-role"] == "follower" {
+					r.Log.Info(fmt.Sprintf("update k8s pod [%s, %s] with value of 'leader' to the tag 'redis-node-role'", k8sRedisPod.Name, k8sRedisPod.Status.PodIP))
 
-						var curretPodDeployed corev1.Pod
-						err = r.Client.Get(ctx, types.NamespacedName{
-							Namespace: namespace,
-							Name:      k8sRedisPod.Name,
-						}, &curretPodDeployed)
-						if err != nil {
-							return err
-						}
+					var curretPodDeployed corev1.Pod
+					err = r.Client.Get(ctx, types.NamespacedName{
+						Namespace: namespace,
+						Name:      k8sRedisPod.Name,
+					}, &curretPodDeployed)
+					if err != nil {
+						return err
+					}
 
-						podNumber, _ := strconv.Atoi(strings.Split(k8sRedisPod.Name, "-")[2]) // redis pod name format is 'redis-node-<number>'
-						updatedLeaderPod, err := r.leaderPod(redisCluster, leaderNumber, podNumber)
-						if err != nil {
-							return err
-						}
+					patch := []byte(`{"metadata":{"labels":{"redis-node-role": "leader"}}}`)
+					err = r.Client.Patch(ctx, &curretPodDeployed, client.RawPatch(types.StrategicMergePatchType, patch))
 
-						err = r.Client.Patch(ctx, &updatedLeaderPod, client.MergeFrom(&curretPodDeployed))
-						if err != nil {
-							return err
-						}
+					if err != nil {
+						return err
 					}
 				}
 			}
+		}
 
-			// check for any missing followers and create then if needed
+		// after we updated all new leaders with the 'leader' tag, we now need to deploy all of the missing pods as followers.
+		// first, we will find all missing pod suffix number
+		missingPodNumbers, err := getMissingPodsNumber(k8sRedisPods, redisCluster.Status.TotalExpectedPods, r.Log)
+		if err != nil {
+			return err
+		}
 
+		// second, we will deploy all the missing followers for leaders
+		for _, redisNode := range *clusterInfo {
+			if redisNode.Leader == "-" {
+				leaderReplicas, err := r.RedisCLI.GetLeaderReplicas(k8sInfoRedisPod.Status.PodIP, redisNode.ID)
+
+				if err != nil {
+					return err
+				}
+
+				for leaderReplicas.Count < redisCluster.Spec.LeaderFollowersCount {
+					leaderNumber, err := getLeaderNumberByLeaderID(redisGroups, redisNode.ID, r.Log)
+					if err != nil {
+						return err
+					}
+
+					missingPodNumbers, err = r.deployFollowerAfterFailure(ctx, redisCluster, leaderNumber, &missingPodNumbers)
+					leaderReplicas.Count = leaderReplicas.Count + 1
+				}
+
+			}
 		}
 	}
+
+	redisCluster.Status.ClusterState = string(RecoverFollowersNodes)
 
 	return nil
 }

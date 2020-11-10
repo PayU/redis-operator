@@ -168,5 +168,5 @@ func (r *RedisCLI) GetLeaderReplicas(nodeIP string, leaderNodeID string) (*Leade
 		return nil, err
 	}
 
-	return NewLeaderReplicas(stdout), err
+	return NewLeaderReplicas(stdout, r.Log), err
 }

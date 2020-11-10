@@ -1,7 +1,10 @@
 package rediscli
 
 import (
+	"fmt"
 	"strings"
+
+	"github.com/go-logr/logr"
 )
 
 // https://redis.io/commands/info
@@ -142,18 +145,20 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 }
 
 // NewLeaderReplicas is a constructor for CLUSTER REPLICAS node-id command raw data
-func NewLeaderReplicas(rawData string) *LeaderReplicas {
+func NewLeaderReplicas(rawData string, log logr.Logger) *LeaderReplicas {
 	replicas := make([]LeaderReplica, 0)
 	replicasLines := strings.Split(rawData, "\n")
 
 	for _, replicaLine := range replicasLines {
 		replicaInfo := strings.Split(replicaLine, " ")
 
-		if len(replicaInfo) == 0 {
+		log.V(9).Info(fmt.Sprintf("leader replica info: %v", replicaInfo))
+
+		if len(replicaInfo) < 2 {
 			continue
 		}
 
-		replicaID := replicaInfo[1][1:]
+		replicaID := replicaInfo[0][1:]
 		replicaAddr := replicaInfo[2]
 
 		replicas = append(replicas, LeaderReplica{
