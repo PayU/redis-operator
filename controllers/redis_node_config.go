@@ -373,7 +373,7 @@ var redisConf = `
     # this interval with the repl_ping_replica_period option. The default value is 10
     # seconds.
     #
-    # repl-ping-replica-period 10
+    repl-ping-replica-period 5
 
     # The following option sets the replication timeout for:
     #
@@ -385,7 +385,7 @@ var redisConf = `
     # specified for repl-ping-replica-period otherwise a timeout will be detected
     # every time there is low traffic between the master and the replica.
     #
-    # repl-timeout 60
+    repl-timeout 60
 
     # Disable TCP_NODELAY on the replica socket after SYNC?
     #

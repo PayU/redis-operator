@@ -147,9 +147,12 @@ func (r *RedisCLI) ForgetNode(nodeIP string, forgetNodeID string) error {
 	r.Log.Info(fmt.Sprintf("sending cluster forget command on [%s] node-ip. node-id to be forgotten [%s]", nodeIP, forgetNodeID))
 	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
 
-	_, err := r.executeCommand(args)
+	stdout, err := r.executeCommand(args)
+	if strings.Contains(stdout, "Can't forget my master") {
+		return fmt.Errorf(stdout)
+	}
+
 	if err != nil {
-		r.Log.Error(err, fmt.Sprintf("unable to forget node-id [%s] for node [%s]", forgetNodeID, nodeIP))
 		return err
 	}
 

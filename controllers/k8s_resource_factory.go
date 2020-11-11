@@ -77,19 +77,19 @@ func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, leaderNum
 			}
 		}
 
-		// if redisOperator.Spec.Affinity.ZoneTopologyKey != "" {
-		// 	affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
-		// 		{
-		// 			Weight: 100,
-		// 			PodAffinityTerm: corev1.PodAffinityTerm{
-		// 				LabelSelector: &metav1.LabelSelector{
-		// 					MatchExpressions: preferredLabelSelectorRequirement,
-		// 				},
-		// 				TopologyKey: redisOperator.Spec.Affinity.ZoneTopologyKey,
-		// 			},
-		// 		},
-		// 	}
-		// }
+		if redisOperator.Spec.Affinity.ZoneTopologyKey != "" {
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
+				{
+					Weight: 100,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						LabelSelector: &metav1.LabelSelector{
+							MatchExpressions: preferredLabelSelectorRequirement,
+						},
+						TopologyKey: redisOperator.Spec.Affinity.ZoneTopologyKey,
+					},
+				},
+			}
+		}
 	}
 
 	pod := corev1.Pod{
