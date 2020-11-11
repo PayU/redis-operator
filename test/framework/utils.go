@@ -216,10 +216,10 @@ func (f *Framework) executeKubectlCommand(yamlRes string, args []string, timeout
 	err := cmd.Run()
 
 	if err != nil {
-		return sout.String(), serr.String(), errors.Wrap(err, "kubctl command returned an error")
+		return sout.String(), serr.String(), errors.Wrap(err, "kubectl command returned an error")
 	} else if strings.TrimSpace(serr.String()) != "" && !f.isKubectlWarning(serr.String()) {
 		fmt.Printf("Kubectl output: %s\n", serr.String())
-		return sout.String(), serr.String(), errors.Errorf("kubctl command returned an error: %s", serr.String())
+		return sout.String(), serr.String(), errors.Errorf("kubectl command returned an error: %s", serr.String())
 	}
 	return sout.String(), serr.String(), err
 }

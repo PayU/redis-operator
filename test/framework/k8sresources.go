@@ -17,6 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,8 +54,15 @@ func (f *Framework) CreateResource(ctx *TestCtx, obj runtime.Object, timeout tim
 	case err != nil:
 		return err
 	default:
-		fmt.Printf("Object already exists (%s). Updating.\n", obj.GetObjectKind().GroupVersionKind().Kind)
-		// TODO the resource version should also be updated
+		if obj.GetObjectKind().GroupVersionKind().Kind == "Namespace" {
+			fmt.Printf("Object already exists (%s). Skipping.\n", obj.GetObjectKind().GroupVersionKind().Kind)
+			break
+		}
+		fmt.Printf("Object already exists (%s). Recreating.\n", obj.GetObjectKind().GroupVersionKind().Kind)
+		err = f.DeleteResource(obj, 20*time.Second)
+		if err != nil {
+			return err
+		}
 		if err = f.RuntimeClient.Update(context.TODO(), obj); err != nil {
 			return err
 		}
@@ -82,6 +90,7 @@ func (f *Framework) CreateResource(ctx *TestCtx, obj runtime.Object, timeout tim
 	return nil
 }
 
+// TODO: replace the method with a variadric version of CreateYAMLResource
 func (f *Framework) CreateYAMLResources(ctx *TestCtx, yamlResources []string, timeout time.Duration) error {
 	for _, res := range yamlResources {
 		if err := f.CreateYAMLResource(ctx, res, timeout); err != nil {
@@ -158,16 +167,15 @@ func (f *Framework) InitializeDefaultResources(ctx *TestCtx, kustPath string, op
 		yamlMap["crd"],
 	}
 
-	err = f.CreateResources(ctx, resources, timeout)
-	if err != nil {
-		return errors.Wrap(err, "Could not create all resources")
-	}
-
 	err = f.CreateYAMLResources(ctx, yamlResources, timeout)
 	if err != nil {
 		return errors.Wrap(err, "Could not create all YAML resources")
 	}
 
+	err = f.CreateResources(ctx, resources, timeout)
+	if err != nil {
+		return errors.Wrap(err, "Could not create all resources")
+	}
 	return nil
 }
 
@@ -182,4 +190,13 @@ func (f *Framework) GetPods(opts ...client.ListOption) (*corev1.PodList, error) 
 		return nil, err
 	}
 	return &podList, nil
+}
+
+func (f *Framework) PatchResource(obj runtime.Object, patch []byte) error {
+	err := f.RuntimeClient.Patch(context.TODO(), obj, client.RawPatch(types.MergePatchType, patch))
+	if err != nil {
+		return err
+	}
+	return nil
+
 }

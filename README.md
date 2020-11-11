@@ -1,8 +1,12 @@
 # PayU Redis Operator
 
+Kubernetes operator that creates and manages Redis HA clustered databases - [Redis docs](https://redislabs.com/redis-enterprise/technology/redis-enterprise-cluster-architecture/).
+
 ## Project status: Alpha
 
 The basic features have been completed, and while no breaking API changes are currently planned, the API can change in a backwards incompatible way before the project is declared stable and more features are expected for the stable version
+
+[ Feature state wiki page ](https://github.com/PayU/Redis-Operator/wiki/Feature-state)
 
 ## Quick start
 

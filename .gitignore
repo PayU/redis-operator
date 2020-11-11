@@ -7,7 +7,7 @@
 *.dylib
 bin
 /manager
-
+/Redis-Operator
 
 # Test binary, build with `go test -c`
 *.test
@@ -34,4 +34,3 @@ bin
 *kubeconfig.yaml
 
 telepresence.log
-Redis-Operator

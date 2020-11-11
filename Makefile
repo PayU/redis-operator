@@ -43,9 +43,11 @@ all: manager
 test: generate fmt vet manifests
 	go test ./... -coverprofile cover.out
 
-# Run e2e tests
+# Setup e2e tests
 e2e-test-setup: IMG=redis-operator-docker:local
 e2e-test-setup: docker-build docker-build-local-redis kind-load-redis kind-load-controller
+	docker build ./hack -f ./hack/redis.Dockerfile -t redis:update
+	kind load docker-image redis:update --name $(CLUSTER_NAME)
 
 # Build manager binary
 manager: generate fmt vet
@@ -81,7 +83,7 @@ config-build-development:
 	kustomize build config/development | kubectl apply -f -
 
 # Deploy controller in a local kind cluster
-deploy-local: manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) kind-load-controller deploy-default
+deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) kind-load-controller deploy-default
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen

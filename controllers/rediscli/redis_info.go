@@ -1,11 +1,8 @@
 package rediscli
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/go-logr/logr"
 )
 
 // https://redis.io/commands/info
@@ -24,17 +21,6 @@ type RedisInfo struct {
 
 // https://redis.io/commands/cluster-info
 type RedisClusterInfo map[string]string
-
-// LeaderReplicas is a result of CLUSTER REPLICA <node_id> command: https://redis.io/commands/cluster-replicas
-type LeaderReplicas struct {
-	Replicas []LeaderReplica
-	Count    int32
-}
-
-type LeaderReplica struct {
-	ID   string
-	Addr string
-}
 
 // RedisClusterNodes command: https://redis.io/commands/cluster-nodes
 type RedisClusterNodes []RedisClusterNode
@@ -110,7 +96,7 @@ func NewRedisClusterInfo(rawData string) *RedisClusterInfo {
 	}
 
 	info := RedisClusterInfo{}
-	lines := strings.Split(rawData, "\n")
+	lines := strings.Split(rawData, "\r\n")
 	for _, line := range lines {
 		lineInfo := strings.Split(line, ":")
 		info[lineInfo[0]] = lineInfo[1]
@@ -123,9 +109,12 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 	nodes := RedisClusterNodes{}
 	nodeLines := strings.Split(rawData, "\n")
 	for _, nodeLine := range nodeLines {
+		nodeLine := strings.TrimSpace(nodeLine)
 		nodeInfo := strings.Split(nodeLine, " ")
+		if strings.Contains(nodeInfo[0], ")") { // special case for CLUSTER REPLICAS output
+			nodeInfo = nodeInfo[1:]
+		}
 		if len(nodeInfo) >= 8 {
-
 			nodes = append(nodes, RedisClusterNode{
 				ID:          nodeInfo[0],
 				Addr:        nodeInfo[1],
@@ -142,35 +131,6 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 	return &nodes
 }
 
-// NewLeaderReplicas is a constructor for CLUSTER REPLICAS node-id command raw data
-func NewLeaderReplicas(rawData string, log logr.Logger) *LeaderReplicas {
-	replicas := make([]LeaderReplica, 0)
-	replicasLines := strings.Split(rawData, "\n")
-
-	for _, replicaLine := range replicasLines {
-		replicaInfo := strings.Split(replicaLine, " ")
-
-		log.V(9).Info(fmt.Sprintf("leader replica info: %v", replicaInfo))
-
-		if len(replicaInfo) < 2 {
-			continue
-		}
-
-		replicaID := replicaInfo[0][1:]
-		replicaAddr := replicaInfo[2]
-
-		replicas = append(replicas, LeaderReplica{
-			ID:   replicaID,
-			Addr: replicaAddr,
-		})
-	}
-
-	return &LeaderReplicas{
-		Replicas: replicas,
-		Count:    int32(len(replicas)),
-	}
-}
-
 // IsFailing method return true when the current redis node is in failing state
 // and needs to be forgotten by the cluster
 func (r *RedisClusterNode) IsFailing() bool {
@@ -181,4 +141,22 @@ func (r *RedisClusterNode) IsFailing() bool {
 	}
 
 	return match
+}
+
+// Returns the estimated completion percentage or the empty string if SYNC is
+// not in progress
+func (r *RedisInfo) GetSyncStatus() string {
+	if r.Replication["role"] == "slave" {
+		if r.Replication["master_sync_in_progress"] != "0" {
+			p, found := r.Replication["master_sync_perc"]
+			if found {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+func (r *RedisClusterInfo) IsClusterFail() bool {
+	return (*r)["cluster_state"] == "fail"
 }

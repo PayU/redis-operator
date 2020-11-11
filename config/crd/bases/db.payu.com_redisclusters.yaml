@@ -38,34 +38,8 @@ spec:
         spec:
           description: RedisClusterSpec defines the desired state of RedisCluster
           properties:
-            Podresources:
-              description: ResourceRequirements describes the compute resource requirements.
-              properties:
-                limits:
-                  additionalProperties:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  description: 'Limits describes the maximum amount of compute resources
-                    allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
-                  type: object
-                requests:
-                  additionalProperties:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  description: 'Requests describes the minimum amount of compute resources
-                    required. If Requests is omitted for a container, it defaults
-                    to Limits if that is explicitly specified, otherwise to an implementation-defined
-                    value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
-                  type: object
-              type: object
             affinity:
-              description: TopologyKeys deifines the topology keys used inside affinity
+              description: TopologyKeys defines the topology keys used inside affinity
                 rules
               properties:
                 hostTopologyKey:
@@ -74,7 +48,7 @@ spec:
                   type: string
               type: object
             image:
-              description: full path of the redis docker image
+              description: full path of the Redis docker image
               minLength: 2
               type: string
             imagePullPolicy:
@@ -83,15 +57,13 @@ spec:
               type: string
             imagePullSecrets:
               type: string
+            leaderCount:
+              description: The number of leader instances to run
+              minimum: 3
+              type: integer
             leaderFollowersCount:
               description: The number of followers that each leader will have
-              format: int32
               minimum: 0
-              type: integer
-            leaderReplicas:
-              description: The number of leader instances to run.
-              format: int32
-              minimum: 3
               type: integer
             podAnnotations:
               additionalProperties:
@@ -208,6 +180,32 @@ spec:
                 - name
                 type: object
               type: array
+            redisContainerResources:
+              description: ResourceRequirements describes the compute resource requirements.
+              properties:
+                limits:
+                  additionalProperties:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  description: 'Limits describes the maximum amount of compute resources
+                    allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                  type: object
+                requests:
+                  additionalProperties:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  description: 'Requests describes the minimum amount of compute resources
+                    required. If Requests is omitted for a container, it defaults
+                    to Limits if that is explicitly specified, otherwise to an implementation-defined
+                    value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
+                  type: object
+              type: object
           required:
           - image
           - podLabelSelector
@@ -283,7 +281,6 @@ spec:
             totalExpectedPods:
               description: the total expected pod number when the cluster is ready
                 and stable
-              format: int32
               type: integer
           type: object
       type: object

@@ -5,14 +5,31 @@ package e2e
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	// "k8s.io/apimachinery/pkg/version"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dbv1 "github.com/PayU/Redis-Operator/api/v1"
 	"github.com/PayU/Redis-Operator/test/framework"
 )
+
+func printAZMap(azMap map[string]map[string][]*corev1.Pod) {
+	fmt.Println("*** Redis cluster AZ map")
+	for az, groups := range azMap {
+		fmt.Printf("%s\n", az)
+		for leaderID, pods := range groups {
+			fmt.Printf("Group [%s]:", leaderID)
+			for _, pod := range pods {
+				fmt.Printf(" %s", pod.Name)
+			}
+			fmt.Println()
+		}
+		fmt.Println()
+	}
+}
 
 func testCreateDeleteRedisCluster(t *testing.T) {
 
@@ -44,39 +61,35 @@ func testCreateDeleteRedisCluster(t *testing.T) {
 	fmt.Println("[E2E] Finished deleting redis cluster")
 }
 
-func TestRedisClusterAvailabilityZoneDistribution(t *testing.T) {
-
-	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
-
-	ctx := framework.NewTestCtx(t, t.Name())
-	defer ctx.Cleanup()
-
-	// the availability zone label differs between K8s 1.17+ and older
-	// https://kubernetes.io/docs/reference/kubernetes-api/labels-annotations-taints/#failure-domainbetakubernetesiozone
-	var zoneLabel string
-
-	if tfw.K8sServerVersion.String() < "v1.17" {
-		zoneLabel = "failure-domain.beta.kubernetes.io/zone"
-	} else {
-		zoneLabel = "topology.kubernetes.io/zone"
-	}
-
-	err := tfw.InitializeDefaultResources(&ctx, defaultConfig.KustomizePath,
+func createDefaultCluster(ctx *framework.TestCtx, t *testing.T) (*dbv1.RedisCluster, error) {
+	err := tfw.InitializeDefaultResources(ctx, defaultConfig.KustomizePath,
 		defaultConfig.OperatorImage, defaultConfig.RedisClusterSetupTimeout)
 	Check(err, t.Fatalf, "Failed to initialize resources")
-
-	ns := tfw.KustomizeConfig.Namespace
 
 	redisCluster, err := tfw.MakeRedisCluster(defaultConfig.RedisClusterYAMLPath)
 	Check(err, t.Fatalf, "Failed to make Redis cluster resource")
 
 	fmt.Println("[E2E] Creating redis cluster...")
 
-	err = tfw.CreateRedisClusterAndWaitUntilReady(&ctx, redisCluster, defaultConfig.RedisClusterSetupTimeout)
+	err = tfw.CreateRedisClusterAndWaitUntilReady(ctx, redisCluster, defaultConfig.RedisClusterSetupTimeout)
 	Check(err, t.Fatalf, "Failed to create Redis cluster")
 
 	fmt.Println("[E2E] Finished creating redis cluster")
 
+	return redisCluster, err
+}
+
+func makeAZMap(ctx *framework.TestCtx, t *testing.T) map[string]map[string]([]*corev1.Pod) {
+	var zoneLabel string
+	// the availability zone label differs between K8s 1.17+ and older
+	// https://kubernetes.io/docs/reference/kubernetes-api/labels-annotations-taints/#failure-domainbetakubernetesiozone
+	if tfw.K8sServerVersion.String() < "v1.17" {
+		zoneLabel = "failure-domain.beta.kubernetes.io/zone"
+	} else {
+		zoneLabel = "topology.kubernetes.io/zone"
+	}
+
+	ns := tfw.KustomizeConfig.Namespace
 	nodes, err := tfw.GetNodes()
 	Check(err, t.Fatalf, "Failed to get Kubernetes nodes")
 
@@ -130,7 +143,10 @@ func TestRedisClusterAvailabilityZoneDistribution(t *testing.T) {
 
 		azMap[node.Labels[zoneLabel]] = az
 	}
+	return azMap
+}
 
+func checkAZCorrectness(azMap map[string]map[string]([]*corev1.Pod), t *testing.T) {
 	// check if any AZ has two leaders or two nodes from the same Redis group
 	for az, groups := range azMap {
 		leaderCount := 0
@@ -148,20 +164,60 @@ func TestRedisClusterAvailabilityZoneDistribution(t *testing.T) {
 			t.Errorf("Found more then one leader in %s\n", az)
 		}
 	}
-	printAZMap(azMap)
 }
 
-func printAZMap(azMap map[string]map[string][]*corev1.Pod) {
-	fmt.Println("*** Redis cluster AZ map")
-	for az, groups := range azMap {
-		fmt.Printf("%s\n", az)
-		for leaderID, pods := range groups {
-			fmt.Printf("Group [%s]:", leaderID)
-			for _, pod := range pods {
-				fmt.Printf(" %s", pod.Name)
-			}
-			fmt.Println()
-		}
-		fmt.Println()
+func testRedisClusterAvailabilityZoneDistribution(t *testing.T) {
+	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
+	ctx := framework.NewTestCtx(t, t.Name())
+	defer ctx.Cleanup()
+
+	createDefaultCluster(&ctx, t)
+	azMap := makeAZMap(&ctx, t)
+	printAZMap(azMap)
+	checkAZCorrectness(azMap, t)
+}
+
+/* Rolling update test
+1. Create a default Redis cluster
+2. Change the Redis container resource requirements and wait for cluster update
+3. Set a non-existing Redis image and wait for the controller to detect the failed update
+4. Set an existing updated Redis image and wait for cluster update
+*/
+func TestRollingUpdate(t *testing.T) {
+	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
+	ctx := framework.NewTestCtx(t, t.Name())
+	defer ctx.Cleanup()
+
+	redisCluster, err := createDefaultCluster(&ctx, t)
+	Check(err, t.Fatalf, "Failed to create default cluster")
+
+	Check(tfw.PatchResource(redisCluster, defaultConfig.ContainerResourcePatch), t.Fatalf, "Failed to update resources in CR")
+	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	fmt.Printf("\n[E2E] Cluster container resource update started...")
+	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	fmt.Printf("\n[E2E] Cluster update successful\n")
+
+	azMap := makeAZMap(&ctx, t)
+	printAZMap(azMap)
+	checkAZCorrectness(azMap, t)
+
+	fmt.Printf("\n[E2E] Testing response to missing image...")
+	Check(tfw.UpdateImage(redisCluster, "redis:noimage"), t.Fatalf, "Failed to update image in CR")
+	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	fmt.Printf("\n[E2E] Cluster image update started...")
+	timeoutErr := tfw.WaitForState(redisCluster, "Ready", 30*time.Second)
+	if timeoutErr == nil {
+		t.Fatalf("Cluster entered Ready state when update failed")
 	}
+
+	fmt.Printf("\n[E2E] Cluster update failed. Restoring...")
+	Check(tfw.UpdateImage(redisCluster, defaultConfig.UpdateImage), t.Fatalf, "Failed to update image in CR")
+	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	fmt.Printf("\n[E2E] Cluster image update continued...")
+	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	fmt.Printf("\n[E2E] Cluster update successful\n")
+
+	azMap = makeAZMap(&ctx, t)
+	printAZMap(azMap)
+	checkAZCorrectness(azMap, t)
 }

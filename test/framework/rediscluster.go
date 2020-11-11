@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,7 +57,6 @@ func (f *Framework) CreateRedisCluster(ctx *TestCtx, redisCluster *dbv1.RedisClu
 }
 
 func (f *Framework) CreateRedisClusterAndWaitUntilReady(ctx *TestCtx, redisCluster *dbv1.RedisCluster, timeout time.Duration) error {
-	buf := dbv1.RedisCluster{}
 	if err := f.CreateRedisCluster(ctx, redisCluster, timeout); err != nil {
 		return err
 	}
@@ -65,22 +65,7 @@ func (f *Framework) CreateRedisClusterAndWaitUntilReady(ctx *TestCtx, redisClust
 		return nil
 	}
 
-	key, err := client.ObjectKeyFromObject(redisCluster)
-	if err != nil {
-		return errors.Wrap(err, "Could not create resource - object key error")
-	}
-
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		if err = f.RuntimeClient.Get(context.TODO(), key, &buf); err != nil {
-			return false, err
-		}
-		if string(buf.Status.ClusterState) != "Ready" {
-			return false, nil
-		}
-		return true, nil
-	})
-
-	if err != nil {
+	if err := f.WaitForState(redisCluster, "Ready", timeout); err != nil {
 		return errors.Wrap(err, "Creation of Redis cluster timed out")
 	}
 
@@ -89,4 +74,34 @@ func (f *Framework) CreateRedisClusterAndWaitUntilReady(ctx *TestCtx, redisClust
 
 func (f *Framework) DeleteRedisCluster(obj runtime.Object, timeout time.Duration) error {
 	return f.DeleteResource(obj, timeout)
+}
+
+func (f *Framework) UpdateImage(obj runtime.Object, image string) error {
+	patch := []byte(fmt.Sprintf(`{"spec":{"image":"%s"}}`, image))
+	err := f.RuntimeClient.Patch(context.TODO(), obj, client.RawPatch(types.MergePatchType, patch))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (f *Framework) WaitForState(redisCluster *dbv1.RedisCluster, state string, timeout ...time.Duration) error {
+	buf := dbv1.RedisCluster{}
+	t := 10 * time.Second
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
+	return wait.PollImmediate(2*time.Second, t, func() (bool, error) {
+		key, err := client.ObjectKeyFromObject(redisCluster)
+		if err != nil {
+			return false, err
+		}
+		if err = f.RuntimeClient.Get(context.Background(), key, &buf); err != nil {
+			return false, err
+		}
+		if buf.Status.ClusterState == state {
+			return true, nil
+		}
+		return false, nil
+	})
 }

@@ -4,10 +4,17 @@ metadata:
   name: rdc-test
   namespace: infra
 spec:
-  leaderReplicas: 3
+  leaderCount: 3
   leaderFollowersCount: 2
   image: "redis:testing"
   imagePullSecrets: "regcred"
+  redisContainerResources:
+    limits:
+      cpu: 500m
+      memory: 500Mi
+    requests:
+      cpu: 50m
+      memory: 50Mi
   podLabelSelector:
     app: "redis"
   podAnnotations:

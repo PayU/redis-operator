@@ -19,12 +19,13 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	dbv1 "github.com/PayU/Redis-Operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -46,96 +47,75 @@ type RedisClusterReconciler struct {
 // +kubebuilder:rbac:groups=*,resources=pods;services;configmaps,verbs=create;update;patch;get;list;watch;delete
 
 func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	ctx := context.Background()
-	log := r.Log.WithValues("rediscluster", req.NamespacedName)
-	log.Info("Starting redis-cluster reconciling")
+	r.Log.Info("Reconciling RedisCluster")
 
 	r.Status()
 
-	/*
-		### 1: Load the redis operator by name
-		We'll fetch the RO using our client. All client methods take a
-		context (to allow for cancellation) as their first argument, and the object
-		in question as their last.  Get is a bit special, in that it takes a
-		[`NamespacedName`](https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/client?tab=doc#ObjectKey)
-		as the middle argument (most don't have a middle argument, as we'll see below).
-	*/
 	var redisCluster dbv1.RedisCluster
 	var err error
 
-	if err := r.Get(ctx, req.NamespacedName, &redisCluster); err != nil {
-		log.Error(err, "unable to fetch Redis Operator")
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
+	if err = r.Get(context.Background(), req.NamespacedName, &redisCluster); err != nil {
+		r.Log.Info("Unable to fetch RedisCluster resource")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	/*
-		### 2: act according to the current state
-	*/
-	clusterState := getCurrentClusterState(r.Log, &redisCluster)
+	r.State = getCurrentClusterState(&redisCluster)
 
-	switch clusterState {
+	switch r.State {
 	case NotExists:
-		err = r.createNewCluster(ctx, &redisCluster)
+		redisCluster.Status.ClusterState = string(InitializingCluster)
+		err = r.handleInitializingCluster(&redisCluster)
 		break
-	case DeployingLeaders:
-		err = r.handleDeployingLeaders(ctx, &redisCluster)
-		break
-	case InitializingLeaders:
-		err = r.handleInitializingLeaders(ctx, &redisCluster)
-		break
-	case ClusteringLeaders:
-		err = r.handleClusteringLeaders(ctx, &redisCluster)
-		break
-	case DeployingFollowers:
-		err = r.handleDeployingFollowers(ctx, &redisCluster)
+	case InitializingCluster:
+		err = r.handleInitializingCluster(&redisCluster)
 		break
 	case InitializingFollowers:
-		err = r.handleInitializingFollowers(ctx, &redisCluster)
-		break
-	case ClusteringFollowers:
-		err = r.handleClusteringFollowers(ctx, &redisCluster)
+		err = r.handleInitializingFollowers(&redisCluster)
 		break
 	case Ready:
-		err = r.handleClusterReadyState(ctx, &redisCluster)
+		err = r.handleReadyState(&redisCluster)
 		break
-	case RecoverFollowerNodes:
-		err = r.handleFollowerNodesRecoverState(ctx, &redisCluster)
+	case Recovering:
+		err = r.handleRecoveringState(&redisCluster)
 		break
-	case RecoverLeaderNodes:
-		err = r.handleLeaderNodesRecoverState(ctx, &redisCluster)
+	case Updating:
+		err = r.handleUpdatingState(&redisCluster)
 		break
 	}
 
 	if err != nil {
-		return ctrl.Result{}, err
+		r.Log.Error(err, "Handling error")
 	}
 
-	/*
-		### 3: Update the current status
-	*/
-	clusterState = getCurrentClusterState(r.Log, &redisCluster)
+	clusterState := getCurrentClusterState(&redisCluster)
 	if clusterState != r.State {
-		log.Info(fmt.Sprintf("update cluster state to: %s", redisCluster.Status.ClusterState))
-		if err = r.Status().Update(ctx, &redisCluster); err != nil {
-			if !strings.Contains(err.Error(), "please apply your changes to the latest version") {
-				return ctrl.Result{}, err
-			}
+		err := r.Status().Update(context.Background(), &redisCluster)
+		if err != nil && !apierrors.IsConflict(err) {
+			r.Log.Info("Failed to update state to " + string(clusterState))
+			return ctrl.Result{}, err
+		}
+		if apierrors.IsConflict(err) {
+			r.Log.Info("Conflict when updating state to " + string(clusterState))
 		}
 
 		r.Client.Status()
-
 		r.State = clusterState
+		r.Log.Info(fmt.Sprintf("Updated state to: [%s]", clusterState))
 	}
 
 	return ctrl.Result{}, nil
 }
 
 func (r *RedisClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, "status.podIP", func(rawObj runtime.Object) []string {
+		pod := rawObj.(*corev1.Pod)
+		return []string{pod.Status.PodIP}
+	}); err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbv1.RedisCluster{}).
 		Owns(&corev1.Pod{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
 }

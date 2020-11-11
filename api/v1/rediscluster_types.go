@@ -27,7 +27,7 @@ type PodLabelSelector struct {
 	App string `json:"app"`
 }
 
-// TopologyKeys deifines the topology keys used inside affinity rules
+// TopologyKeys defines the topology keys used inside affinity rules
 type TopologyKeys struct {
 	HostTopologyKey string `json:"hostTopologyKey,omitempty"`
 	ZoneTopologyKey string `json:"zoneTopologyKey,omitempty"`
@@ -37,23 +37,23 @@ type TopologyKeys struct {
 type RedisClusterSpec struct {
 
 	// +kubebuilder:validation:Minimum=3
-	// The number of leader instances to run.
-	LeaderReplicas int32 `json:"leaderReplicas,omitempty"`
+	// The number of leader instances to run
+	LeaderCount int `json:"leaderCount,omitempty"`
 
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// The number of followers that each leader will have
-	LeaderFollowersCount int32 `json:"leaderFollowersCount,omitempty"`
+	LeaderFollowersCount int `json:"leaderFollowersCount,omitempty"`
 
 	// +kubebuilder:validation:MinLength=2
-	// full path of the redis docker image
+	// full path of the Redis docker image
 	Image string `json:"image"`
 
 	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
 
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 
-	PodResources corev1.ResourceRequirements `json:"Podresources,omitempty"`
+	RedisContainerResources corev1.ResourceRequirements `json:"redisContainerResources,omitempty"`
 
 	PodLabelSelector PodLabelSelector `json:"podLabelSelector"`
 
@@ -80,7 +80,7 @@ type RedisClusterStatus struct {
 	// the total expected pod number when
 	// the cluster is ready and stable
 	// +optional
-	TotalExpectedPods int32 `json:"totalExpectedPods,omitempty"`
+	TotalExpectedPods int `json:"totalExpectedPods,omitempty"`
 }
 
 // +kubebuilder:object:root=true

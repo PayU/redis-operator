@@ -28,8 +28,7 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-// used in zap logger in order to configure
-// to logger settings
+// used in zap logger in order to configure settings
 func loggerOptions(*zap.Options) {}
 
 func main() {
