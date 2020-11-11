@@ -2,22 +2,24 @@
 
 package framework
 
+// TODO polling done for waiting resources should be use lists of resources
+// example:
+// https://github.com/kubernetes-sigs/controller-runtime/blob/master/pkg/envtest/crd.go#L185
+
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"time"
 
 	"github.com/pkg/errors"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
-
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
 )
 
 func (f *Framework) CreateResources(ctx *TestCtx, objs []runtime.Object, timeout time.Duration) error {
@@ -29,10 +31,7 @@ func (f *Framework) CreateResources(ctx *TestCtx, objs []runtime.Object, timeout
 	return nil
 }
 
-func waitForResource() {
-
-}
-
+// TODO should also add support for CreateResourceAndWaitUntilReady
 func (f *Framework) CreateResource(ctx *TestCtx, obj runtime.Object, timeout time.Duration) error {
 	var err error
 
@@ -49,16 +48,20 @@ func (f *Framework) CreateResource(ctx *TestCtx, obj runtime.Object, timeout tim
 			return err
 		}
 		ctx.AddFinalizerFn(func() error {
-			return f.DeleteResource(obj)
+			return f.DeleteResource(obj, timeout)
 		})
 	case err != nil:
 		return err
 	default:
-		fmt.Printf("Object already exists (%v). Updating.\n", err)
+		fmt.Printf("Object already exists (%s). Updating.\n", obj.GetObjectKind().GroupVersionKind().Kind)
 		// TODO the resource version should also be updated
 		if err = f.RuntimeClient.Update(context.TODO(), obj); err != nil {
 			return err
 		}
+	}
+
+	if timeout == 0 {
+		return nil
 	}
 
 	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
@@ -101,8 +104,32 @@ func (f *Framework) CreateYAMLResource(ctx *TestCtx, yamlResource string, timeou
 	return nil
 }
 
-func (f *Framework) DeleteResource(obj runtime.Object) error {
-	return f.RuntimeClient.Delete(context.TODO(), obj)
+func (f *Framework) DeleteResource(obj runtime.Object, timeout time.Duration) error {
+	if err := f.RuntimeClient.Delete(context.TODO(), obj); err != nil {
+		return err
+	}
+
+	if timeout == 0 {
+		return nil
+	}
+
+	key, err := client.ObjectKeyFromObject(obj)
+	if err != nil {
+		return errors.Wrap(err, "Could not check delete resource - object key error")
+	}
+
+	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
+		err = f.RuntimeClient.Get(context.TODO(), key, obj)
+		switch {
+		case apierrors.IsNotFound(err):
+			return true, nil
+		case err != nil:
+			return false, errors.Wrap(err, "Could not get object for deletion")
+		default:
+			return false, nil
+		}
+	})
+	return nil
 }
 
 func (f *Framework) DeleteYAMLResource(yamlResource string, timeout time.Duration) error {
@@ -144,22 +171,15 @@ func (f *Framework) InitializeDefaultResources(ctx *TestCtx, kustPath string, op
 	return nil
 }
 
-func (f *Framework) CreateRedisCluster(ctx *TestCtx, timeout time.Duration) (*dbv1.RedisCluster, error) {
-	filePath := "../../config/samples/local_cluster.yaml"
-	redisCluster := dbv1.RedisCluster{}
-	yamlRes, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return nil, errors.Wrap(err, "Could not read the Redis cluster YAML resource")
-	}
-	if err = yaml.Unmarshal(yamlRes, &redisCluster); err != nil {
-		return nil, errors.Wrap(err, "Could not unmarshal the Redis cluster YAML resource")
-	}
-	if err := f.CreateResource(ctx, &redisCluster, timeout); err != nil {
-		return nil, errors.Wrap(err, "Could not create the Redis cluster resource")
-	}
-	return &redisCluster, nil
+func (f *Framework) GetNodes() (*corev1.NodeList, error) {
+	return f.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 }
 
-func (f *Framework) DeleteRedisCluster(obj runtime.Object) error {
-	return f.DeleteResource(obj)
+func (f *Framework) GetPods(opts ...client.ListOption) (*corev1.PodList, error) {
+	podList := corev1.PodList{}
+	err := f.RuntimeClient.List(context.TODO(), &podList, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &podList, nil
 }

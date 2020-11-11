@@ -3,6 +3,8 @@
 package framework
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
@@ -31,6 +33,7 @@ type Framework struct {
 	KubeClient       kubernetes.Interface
 	ExtentionClient  apiextclient.Interface
 	RedisCLI         *rediscli.RedisCLI
+	KustomizeConfig  *KustomizeConfig
 }
 
 // A new framework instance is initialised with a cluster configuration that
@@ -73,6 +76,8 @@ func NewFramework(kubeconfig, opImage string) (*Framework, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get Kubernetes server version")
 	}
+
+	fmt.Printf("[E2E] Kubernetes server version: %s\n", serverVersion)
 
 	return &Framework{
 		RuntimeClient:    cli,

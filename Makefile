@@ -1,3 +1,4 @@
+# TODO need to make a 'clean' target for removing the cluster resources and local files
 # Image URL to use all building/pushing image targets
 IMG ?= docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker
 DEV_IMAGE ?= redis-operator:dev
@@ -43,9 +44,8 @@ test: generate fmt vet manifests
 	go test ./... -coverprofile cover.out
 
 # Run e2e tests
-e2e-test: IMG=redis-operator-docker:local
-e2e-test: docker-build docker-build-local-redis kind-load-redis kind-load-controller
-	cd test/e2e && go test -count=1 ./... -tags=e2e_redis_op
+e2e-test-setup: IMG=redis-operator-docker:local
+e2e-test-setup: docker-build docker-build-local-redis kind-load-redis kind-load-controller
 
 # Build manager binary
 manager: generate fmt vet
