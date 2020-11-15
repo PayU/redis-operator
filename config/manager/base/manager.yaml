@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: system
+---  
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: controller-manager
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "false"
+      labels:
+        control-plane: controller-manager
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+      - command:
+        - /manager
+        workingDir:
+          "/"
+        args:
+        - --enable-leader-election
+        image: controller:latest
+        imagePullPolicy: "IfNotPresent"
+        name: manager
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      terminationGracePeriodSeconds: 10

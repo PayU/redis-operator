@@ -29,7 +29,7 @@ bin
 !.vscode/extensions.json
 .history/
 *.orig
+kubeconfig.yaml
 
 telepresence.log
-manager
 Redis-Operator

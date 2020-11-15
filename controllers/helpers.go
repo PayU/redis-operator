@@ -165,7 +165,7 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, r
 	followersCount := int(redisOperator.Spec.LeaderFollowersCount)
 
 	for i := 0; i < followersCount; i++ {
-		followerPod, err := r.followerPod(redisOperator, leaderNumber, startingSequentialNumber+i)
+		followerPod, err := r.NewFollowerPod(redisOperator, i, leaderNumber)
 		if err != nil {
 			return 0, err
 		}
@@ -186,7 +186,7 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, r
 
 func (r *RedisClusterReconciler) createLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster, nodeCount int) error {
 	for i := 0; i < nodeCount; i++ {
-		leaderPod, err := r.leaderPod(redisOperator, i, i)
+		leaderPod, err := r.NewLeaderPod(redisOperator, i, i)
 		if err != nil {
 			return err
 		}
@@ -210,7 +210,7 @@ func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOper
 	desiredLeaders := int(redisOperator.Spec.LeaderReplicas)
 
 	// create config map
-	configMap, err := r.createSettingsConfigMap(redisOperator)
+	configMap, err := r.NewRedisSettingsConfigMap(redisOperator)
 	err = r.Create(ctx, &configMap)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
@@ -221,7 +221,7 @@ func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOper
 	}
 
 	// create service
-	service, err := r.serviceResource(redisOperator)
+	service, err := r.NewService(redisOperator)
 	err = r.Create(ctx, &service)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
@@ -232,7 +232,7 @@ func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOper
 	}
 
 	// create headless service
-	headlessService, err := r.headlessServiceResource(redisOperator)
+	headlessService, err := r.NewHeadlessService(redisOperator)
 	err = r.Create(ctx, &headlessService)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
@@ -303,6 +303,7 @@ func (r *RedisClusterReconciler) handleDeployingFollowers(ctx context.Context, r
 
 func (r *RedisClusterReconciler) handleInitializingLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
 	r.Log.Info("handling initializing leaders")
+
 	leaderPods, err := r.getRedisClusterPods(ctx, redisOperator, "leader")
 	if err != nil {
 		return err
@@ -359,6 +360,7 @@ func (r *RedisClusterReconciler) handleInitializingFollowers(ctx context.Context
 
 func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
 	r.Log.Info("handling clustering leaders")
+
 	leaderPods, err := r.getRedisClusterPods(ctx, redisOperator, "leader")
 	if err != nil {
 		return err
