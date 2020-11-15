@@ -42,7 +42,6 @@ type RedisClusterNode struct {
 	ID          string
 	Addr        string
 	Flags       string
-	IsFailing   bool
 	Leader      string
 	PingSend    string
 	PingRecv    string
@@ -131,7 +130,6 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 				ID:          nodeInfo[0],
 				Addr:        nodeInfo[1],
 				Flags:       nodeInfo[2],
-				IsFailing:   strings.Contains(nodeInfo[2], "fail"),
 				Leader:      nodeInfo[3],
 				PingSend:    nodeInfo[4],
 				PingRecv:    nodeInfo[5],
@@ -171,4 +169,10 @@ func NewLeaderReplicas(rawData string, log logr.Logger) *LeaderReplicas {
 		Replicas: replicas,
 		Count:    int32(len(replicas)),
 	}
+}
+
+// IsFailing method return true when the current redis node is in failing state
+// and needs to be forget by the cluster
+func (r *RedisClusterNode) IsFailing() bool {
+	return strings.Contains(r.Flags, "fail")
 }

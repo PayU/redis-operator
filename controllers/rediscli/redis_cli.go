@@ -159,7 +159,7 @@ func (r *RedisCLI) ForgetNode(nodeIP string, forgetNodeID string) error {
 	return nil
 }
 
-// GetLeaderReplicas ommand provides a list of replica nodes replicating from the specified leader node
+// GetLeaderReplicas command provides a list of replica nodes replicating from the specified leader node
 // https://redis.io/commands/cluster-replicas
 func (r *RedisCLI) GetLeaderReplicas(nodeIP string, leaderNodeID string) (*LeaderReplicas, error) {
 	r.Log.Info(fmt.Sprintf("sending 'CLUSTER REPLICAS' command for leader [%s] on node-ip [%s]", leaderNodeID, nodeIP))
