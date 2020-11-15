@@ -1,4 +1,4 @@
-namespace: logs
+namespace: infra
 namePrefix: redis-operator-
 bases:
 - ../crd
