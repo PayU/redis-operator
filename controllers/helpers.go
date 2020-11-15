@@ -809,7 +809,7 @@ func (r *RedisClusterReconciler) deployFollowerAfterFailure(ctx context.Context,
 	// Pop Front/Shift from slice
 	sliceCopy := *missingPodNumbers
 	podSequentialNumber, sliceCopy := sliceCopy[0], sliceCopy[1:]
-	followerPod, err := r.followerPod(redisCluster, leaderNumber, podSequentialNumber)
+	followerPod, err := r.NewFollowerPod(redisCluster, leaderNumber, podSequentialNumber)
 	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
 	if err != nil {
