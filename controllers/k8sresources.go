@@ -112,7 +112,6 @@ func createRedisPod(redisOperator *dbv1.RedisCluster, nodeRole string, leaderNum
 }
 
 func (r *RedisClusterReconciler) NewFollowerPod(redisOperator *dbv1.RedisCluster, leaderNumber int, podSequentialNumber int) (corev1.Pod, error) {
-
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-number", Operator: metav1.LabelSelectorOpIn, Values: []string{strconv.Itoa(leaderNumber)}}}
 	pod := createRedisPod(redisOperator, "follower", leaderNumber, podSequentialNumber, preferredLabelSelectorRequirement)
 

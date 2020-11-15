@@ -40,10 +40,12 @@ const (
 	k8sPodsDeletionChecTimeout   = 30 * time.Second
 	k8sPatchCheckInterval        = 500 * time.Millisecond
 	k8sPatchCheckTimeout         = 10 * time.Second
+	k8sPodCreateCheckInterval    = 2500 * time.Millisecond
+	k8sPodCreateCheckTimeout     = 30 * time.Second
 )
 
 var (
-	patchOpts = []client.PatchOption{client.FieldOwner("redis-operator-controller")}
+	patchOpts = []client.PatchOption{client.ForceOwnership, client.FieldOwner("redis-operator-controller")}
 )
 
 const (
@@ -175,7 +177,7 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, r
 	followersCount := int(redisOperator.Spec.LeaderFollowersCount)
 
 	for i := 0; i < followersCount; i++ {
-		followerPod, err := r.NewFollowerPod(redisOperator, i, leaderNumber)
+		followerPod, err := r.NewFollowerPod(redisOperator, leaderNumber, startingSequentialNumber+i)
 		if err != nil {
 			return 0, err
 		}
@@ -419,6 +421,10 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 	var missingPodNumbers []int
 	var err error
 
+	if err != nil {
+		return err
+	}
+
 	if k8sRedisPods, err = r.getRedisClusterPods(ctx, redisCluster, "any"); err != nil {
 		return err
 	}
@@ -456,8 +462,8 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 						return err
 					}
 
-					patch := []byte(`{"metadata":{"labels":{"redis-node-role": "leader"}}}`)
-					err = r.Patch(ctx, &curretPodDeployed, client.RawPatch(types.StrategicMergePatchType, patch))
+					valuesToPatch := `{ "metadata": { "labels": { "redis-node-role": "leader" } } }`
+					err = r.Patch(ctx, &curretPodDeployed, client.RawPatch(types.StrategicMergePatchType, []byte(valuesToPatch)))
 
 					if err != nil {
 						return err
@@ -600,10 +606,12 @@ func (r *RedisClusterReconciler) handleClusterReadyState(ctx context.Context, re
 	// waiting for [1.1 * (cluster-node-timeout + repl-ping-replica-period)] amount in case 1 or more nodes
 	// are unreachable so the cluster will considered them in failure state and master fail over will occuer
 	// in case the failing node(s) were leader nodes
-	if err = wait.Poll(1.1*(5000+5000)*time.Millisecond, 1*time.Second, func() (bool, error) {
-		r.Log.Info("waiting for 11000 milliseconds")
+	r.Log.Info("waiting for 11000 milliseconds")
+	err = wait.Poll(11*time.Second, 20*time.Second, func() (bool, error) {
 		return true, nil
-	}); err != nil {
+	})
+
+	if err != nil {
 		return err
 	}
 
@@ -751,7 +759,7 @@ func (r *RedisClusterReconciler) replaceK8sFailedNodes(ctx context.Context, redi
 	k8sRedisPods *corev1.PodList, failingNodes []rediscli.RedisClusterNode, redisGroups *RedisGroups, missingPodNumbers []int) error {
 
 	var err error
-	masterFailoverOccur := false
+	var masterFailoverOccur bool = false
 
 	for _, failingNode := range failingNodes {
 		if failingNode.Leader == "-" {
@@ -760,19 +768,20 @@ func (r *RedisClusterReconciler) replaceK8sFailedNodes(ctx context.Context, redi
 			// we will wait until all failover processes to finish and then we will deploy
 			// the relevant new followers for the new leaders
 			masterFailoverOccur = true
-			continue
 		}
-
-		// if here, the failing node is a follower
-		leaderNumber, err := getLeaderNumberByLeaderID(redisGroups, failingNode.Leader, r.Log)
-		if err != nil {
-			return err
-		}
-
-		missingPodNumbers, err = r.deployFollowerAfterFailure(ctx, redisCluster, leaderNumber, &missingPodNumbers)
 	}
 
 	if !masterFailoverOccur {
+		for _, failingFollowerNode := range failingNodes {
+
+			leaderNumber, err := getLeaderNumberByLeaderID(redisGroups, failingFollowerNode.Leader, r.Log)
+			if err != nil {
+				return err
+			}
+
+			missingPodNumbers, err = r.deployFollowerAfterFailure(ctx, redisCluster, leaderNumber, &missingPodNumbers)
+		}
+
 		redisCluster.Status.ClusterState = string(RecoverFollowersNodes)
 		return nil
 	}
