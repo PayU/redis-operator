@@ -76,6 +76,11 @@ type RedisClusterStatus struct {
 	// the current state of the cluster
 	// +optional
 	ClusterState string `json:"clusterState,omitempty"`
+
+	// the total expected pod number when
+	// the cluster is ready and stable
+	// +optional
+	TotalExpectedPods int32 `json:"totalExpectedPods,omitempty"`
 }
 
 // +kubebuilder:object:root=true

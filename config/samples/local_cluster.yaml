@@ -2,7 +2,7 @@ apiVersion: db.payu.com/v1
 kind: RedisCluster
 metadata:
   name: rdc-test
-  namespace: logs
+  namespace: infra
 spec:
   leaderReplicas: 3
   leaderFollowersCount: 2

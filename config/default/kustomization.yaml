@@ -1,6 +1,5 @@
-# The default configuration is for a local kind-based cluster
-# Adds namespace to all resources. TODO: the namespace must be configurable
-namespace: logs
+# Adds namespace to all resources.
+namespace: infra
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named

@@ -1,7 +1,11 @@
 package rediscli
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
+
+	"github.com/go-logr/logr"
 )
 
 // https://redis.io/commands/info
@@ -21,7 +25,18 @@ type RedisInfo struct {
 // https://redis.io/commands/cluster-info
 type RedisClusterInfo map[string]string
 
-// https://redis.io/commands/cluster-nodes
+// LeaderReplicas is a result of CLUSTER REPLICA <node_id> command: https://redis.io/commands/cluster-replicas
+type LeaderReplicas struct {
+	Replicas []LeaderReplica
+	Count    int32
+}
+
+type LeaderReplica struct {
+	ID   string
+	Addr string
+}
+
+// RedisClusterNodes command: https://redis.io/commands/cluster-nodes
 type RedisClusterNodes []RedisClusterNode
 
 type RedisClusterNode struct {
@@ -104,12 +119,14 @@ func NewRedisClusterInfo(rawData string) *RedisClusterInfo {
 	return &info
 }
 
+// NewRedisClusterNodes is a constructor for RedisClusterNodes
 func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 	nodes := RedisClusterNodes{}
 	nodeLines := strings.Split(rawData, "\n")
 	for _, nodeLine := range nodeLines {
 		nodeInfo := strings.Split(nodeLine, " ")
 		if len(nodeInfo) >= 8 {
+
 			nodes = append(nodes, RedisClusterNode{
 				ID:          nodeInfo[0],
 				Addr:        nodeInfo[1],
@@ -124,4 +141,45 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 		}
 	}
 	return &nodes
+}
+
+// NewLeaderReplicas is a constructor for CLUSTER REPLICAS node-id command raw data
+func NewLeaderReplicas(rawData string, log logr.Logger) *LeaderReplicas {
+	replicas := make([]LeaderReplica, 0)
+	replicasLines := strings.Split(rawData, "\n")
+
+	for _, replicaLine := range replicasLines {
+		replicaInfo := strings.Split(replicaLine, " ")
+
+		log.V(9).Info(fmt.Sprintf("leader replica info: %v", replicaInfo))
+
+		if len(replicaInfo) < 2 {
+			continue
+		}
+
+		replicaID := replicaInfo[0][1:]
+		replicaAddr := replicaInfo[2]
+
+		replicas = append(replicas, LeaderReplica{
+			ID:   replicaID,
+			Addr: replicaAddr,
+		})
+	}
+
+	return &LeaderReplicas{
+		Replicas: replicas,
+		Count:    int32(len(replicas)),
+	}
+}
+
+// IsFailing method return true when the current redis node is in failing state
+// and needs to be forgotten by the cluster
+func (r *RedisClusterNode) IsFailing() bool {
+	match, err := regexp.MatchString(".*fail!?\\z", r.Flags)
+
+	if err != nil {
+		return false
+	}
+
+	return match
 }

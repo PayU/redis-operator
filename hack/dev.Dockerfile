@@ -28,5 +28,5 @@ WORKDIR /app
 
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on
 
-ENTRYPOINT CompileDaemon --build="go build -a -o manager main.go" --command="./manager"
+ENTRYPOINT CompileDaemon --build="go build -o manager main.go" --command="./manager"
 

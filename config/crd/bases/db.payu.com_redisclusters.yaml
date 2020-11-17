@@ -280,6 +280,11 @@ spec:
             clusterState:
               description: the current state of the cluster
               type: string
+            totalExpectedPods:
+              description: the total expected pod number when the cluster is ready
+                and stable
+              format: int32
+              type: integer
           type: object
       type: object
   version: v1
