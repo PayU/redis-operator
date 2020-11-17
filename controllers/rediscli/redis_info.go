@@ -2,6 +2,7 @@ package rediscli
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -172,7 +173,13 @@ func NewLeaderReplicas(rawData string, log logr.Logger) *LeaderReplicas {
 }
 
 // IsFailing method return true when the current redis node is in failing state
-// and needs to be forget by the cluster
+// and needs to be forgotten by the cluster
 func (r *RedisClusterNode) IsFailing() bool {
-	return strings.Contains(r.Flags, "fail")
+	match, err := regexp.MatchString(".*fail!?\\z", r.Flags)
+
+	if err != nil {
+		return false
+	}
+
+	return match
 }

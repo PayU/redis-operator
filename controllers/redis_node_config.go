@@ -910,7 +910,7 @@ var redisConf = `
     # A value of 0 can be set but is useful only for debugging and dangerous
     # in production.
     #
-    # cluster-migration-barrier 1
+    cluster-migration-barrier 9999
 
     # By default Redis Cluster nodes stop accepting queries if they detect there
     # is at least an hash slot uncovered (no available node is serving it).

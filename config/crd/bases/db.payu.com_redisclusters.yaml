@@ -285,11 +285,6 @@ spec:
                 and stable
               format: int32
               type: integer
-            totalFailingLeaders:
-              description: the number of failing leaders that triggerd master failover
-                process
-              format: int32
-              type: integer
           type: object
       type: object
   version: v1

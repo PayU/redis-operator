@@ -50,6 +50,8 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	log := r.Log.WithValues("rediscluster", req.NamespacedName)
 	log.Info("Starting redis-cluster reconciling")
 
+	r.Status()
+
 	/*
 		### 1: Load the redis operator by name
 		We'll fetch the RO using our client. All client methods take a
@@ -99,11 +101,11 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	case Ready:
 		err = r.handleClusterReadyState(ctx, &redisCluster)
 		break
-	case RecoverFollowersNodes:
+	case RecoverFollowerNodes:
 		err = r.handleFollowerNodesRecoverState(ctx, &redisCluster)
 		break
 	case RecoverLeaderNodes:
-		err = r.handleLeaderNodesRecoverState(ctx, &redisCluster, req.NamespacedName.Namespace)
+		err = r.handleLeaderNodesRecoverState(ctx, &redisCluster)
 		break
 	}
 
@@ -122,6 +124,9 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 				return ctrl.Result{}, err
 			}
 		}
+
+		r.Client.Status()
+
 		r.State = clusterState
 	}
 

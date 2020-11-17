@@ -20,7 +20,7 @@ import (
 // reconcile state of the redis cluster
 type RedisClusterState string
 
-// RedisGroups is a map of leaders and their corresponding followrs
+// RedisGroups is a map of leaders and their corresponding followers
 // the map key is the leader number (0, 1, 2 and so on)
 // and the map value is the group data
 type RedisGroups map[string]RedisGroup
@@ -34,18 +34,20 @@ type RedisGroup struct {
 }
 
 const (
-	masterFailoverCheckInterval  = 3 * time.Second
-	masterFailoverCheckTimeout   = 30 * time.Second
-	k8sPodsDeletionCheckInterval = 2500 * time.Millisecond
-	k8sPodsDeletionChecTimeout   = 30 * time.Second
-	k8sPatchCheckInterval        = 500 * time.Millisecond
-	k8sPatchCheckTimeout         = 10 * time.Second
-	k8sPodCreateCheckInterval    = 2500 * time.Millisecond
-	k8sPodCreateCheckTimeout     = 30 * time.Second
+	clusterFailoverCheckInterval     = 3 * time.Second
+	clusterFailoverCheckTimeout      = 30 * time.Second
+	k8sPodsDeletionCheckInterval     = 2500 * time.Millisecond
+	k8sPodsDeletionCheckTimeout      = 30 * time.Second
+	k8sPatchCheckInterval            = 500 * time.Millisecond
+	k8sPatchCheckTimeout             = 10 * time.Second
+	k8sPodCreateCheckInterval        = 2500 * time.Millisecond
+	k8sPodCreateCheckTimeout         = 30 * time.Second
+	clusterFollowerJoinCheckInterval = 1 * time.Second
+	clusterFollowerJoinCheckTimeout  = 15 * time.Second
 )
 
 var (
-	patchOpts = []client.PatchOption{client.ForceOwnership, client.FieldOwner("redis-operator-controller")}
+	applyOpts = []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 )
 
 const (
@@ -76,9 +78,9 @@ const (
 	// Ready means cluster is up & running as expected
 	Ready RedisClusterState = "Ready"
 
-	// RecoverFollowersNodes means some followers pod/s failed/crashed and has been replaced
+	// RecoverFollowerNodes means some followers pod/s failed/crashed and has been replaced
 	// with a new k8s pods but still didn't join the cluster
-	RecoverFollowersNodes RedisClusterState = "RecoverFollowersNodes"
+	RecoverFollowerNodes RedisClusterState = "RecoverFollowerNodes"
 
 	// RecoverLeaderNodes means leader pods/s failed/crashed and master failover process
 	// has finished but no update and/or new pods deployment occurred
@@ -118,7 +120,7 @@ func (g *RedisGroup) String() string {
 }
 
 // NewRedisGroups is the constructor of RedisGroups struct
-func NewRedisGroups(redisPods *corev1.PodList, redisclusterNodes *rediscli.RedisClusterNodes) *RedisGroups {
+func NewRedisGroups(redisPods *corev1.PodList, redisClusterNodes *rediscli.RedisClusterNodes) *RedisGroups {
 	groups := make(RedisGroups)
 	for _, redisPod := range redisPods.Items {
 		leaderNumber := redisPod.ObjectMeta.Labels["leader-number"]
@@ -140,10 +142,10 @@ func NewRedisGroups(redisPods *corev1.PodList, redisclusterNodes *rediscli.Redis
 			group.FollowerPods = append(group.FollowerPods, redisPod)
 		}
 
-		if redisclusterNodes != nil {
-			for _, cliClusterNode := range *redisclusterNodes {
-				if !cliClusterNode.IsFailing() && cliClusterNode.Leader == "-" && strings.HasPrefix(cliClusterNode.Addr, redisPod.Status.PodIP) {
-					group.LeaderID = cliClusterNode.ID
+		if redisClusterNodes != nil {
+			for _, redisClusterNode := range *redisClusterNodes {
+				if !redisClusterNode.IsFailing() && redisClusterNode.Leader == "-" && strings.HasPrefix(redisClusterNode.Addr, redisPod.Status.PodIP) {
+					group.LeaderID = redisClusterNode.ID
 				}
 			}
 		}
@@ -171,7 +173,7 @@ func (r *RedisClusterReconciler) getRedisClusterPods(ctx context.Context, redisO
 	return pods, nil
 }
 
-// createFollowersForLeader create all followers pods for a specifc leader pod
+// createFollowersForLeader create all followers pods for a specific leader pod
 // the function return the number of created followers for the specific leader
 func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, redisOperator *dbv1.RedisCluster, leaderNumber int, startingSequentialNumber int) (int, error) {
 	followersCount := int(redisOperator.Spec.LeaderFollowersCount)
@@ -182,9 +184,12 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, r
 			return 0, err
 		}
 
-		r.Log.Info(fmt.Sprintf("deploying follower-%d-%d", leaderNumber, i))
-		if err = r.Patch(ctx, &followerPod, client.Apply, patchOpts...); err != nil {
-			return 0, err
+		if err = r.Create(ctx, &followerPod, applyOpts...); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				return 0, err
+			}
+
+			r.Log.Info(fmt.Sprintf("follower-%d-%d already exists (redis-pod-%d)", leaderNumber, i, startingSequentialNumber+i))
 		}
 	}
 
@@ -199,10 +204,15 @@ func (r *RedisClusterReconciler) createLeaders(ctx context.Context, redisOperato
 		}
 
 		r.Log.Info(fmt.Sprintf("deploying leader-%d", i))
-		if err = r.Patch(ctx, &leaderPod, client.Apply, patchOpts...); err != nil {
-			return err
+		if err = r.Create(ctx, &leaderPod, applyOpts...); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				return err
+			}
+
+			r.Log.Info(fmt.Sprintf("leader-%d already exists", i))
 		}
 	}
+
 	return nil
 }
 
@@ -413,7 +423,7 @@ func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, 
 	return nil
 }
 
-func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Context, redisCluster *dbv1.RedisCluster, namespace string) error {
+func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("handling leader nodes recover state")
 	var clusterInfo *rediscli.RedisClusterNodes
 	var k8sRedisPods *corev1.PodList
@@ -453,17 +463,17 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 				if k8sRedisPod.Labels["redis-node-role"] == "follower" {
 					r.Log.Info(fmt.Sprintf("update k8s pod [%s, %s] with value of 'leader' to the tag 'redis-node-role'", k8sRedisPod.Name, k8sRedisPod.Status.PodIP))
 
-					var curretPodDeployed corev1.Pod
+					var currentPodDeployed corev1.Pod
 
 					if err = r.Get(ctx, types.NamespacedName{
-						Namespace: namespace,
+						Namespace: k8sRedisPod.Namespace,
 						Name:      k8sRedisPod.Name,
-					}, &curretPodDeployed); err != nil {
+					}, &currentPodDeployed); err != nil {
 						return err
 					}
 
 					valuesToPatch := `{ "metadata": { "labels": { "redis-node-role": "leader" } } }`
-					err = r.Patch(ctx, &curretPodDeployed, client.RawPatch(types.StrategicMergePatchType, []byte(valuesToPatch)))
+					err = r.Patch(ctx, &currentPodDeployed, client.RawPatch(types.StrategicMergePatchType, []byte(valuesToPatch)))
 
 					if err != nil {
 						return err
@@ -475,13 +485,13 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 						var err error
 
 						if err = r.Get(ctx, types.NamespacedName{
-							Namespace: namespace,
+							Namespace: k8sRedisPod.Namespace,
 							Name:      k8sRedisPod.Name,
-						}, &curretPodDeployed); err != nil {
+						}, &currentPodDeployed); err != nil {
 							return false, err
 						}
 
-						if curretPodDeployed.Labels["redis-node-role"] != "leader" {
+						if currentPodDeployed.Labels["redis-node-role"] != "leader" {
 							return false, nil
 						}
 
@@ -532,7 +542,7 @@ func (r *RedisClusterReconciler) handleLeaderNodesRecoverState(ctx context.Conte
 		}
 	}
 
-	redisCluster.Status.ClusterState = string(RecoverFollowersNodes)
+	redisCluster.Status.ClusterState = string(RecoverFollowerNodes)
 
 	return nil
 }
@@ -563,7 +573,21 @@ func (r *RedisClusterReconciler) handleFollowerNodesRecoverState(ctx context.Con
 	}
 
 	for _, group := range redisGroups {
+		groupLeaderID, err := r.RedisCLI.GetMyClusterID(group.LeaderPod.Status.PodIP)
+		if err != nil {
+			return err
+		}
+
+		leaderReplicas, err := r.RedisCLI.GetLeaderReplicas(group.LeaderPod.Status.PodIP, groupLeaderID)
+		if err != nil {
+			return err
+		}
+
+		currentLeaderReplicaCount := leaderReplicas.Count
+		r.Log.Info(fmt.Sprintf("current leader [%s] replica count is %d", groupLeaderID, currentLeaderReplicaCount))
+
 		for _, followerPod := range group.FollowerPods {
+
 			// check if this follower pod ip exists in the redis-cli cluster nodes list. if not,
 			// that means we need to join this specific follower to the cluster
 			shouldJoin := true
@@ -574,11 +598,29 @@ func (r *RedisClusterReconciler) handleFollowerNodesRecoverState(ctx context.Con
 			}
 
 			if shouldJoin {
-				redisLeaderID, err := r.RedisCLI.GetMyClusterID(group.LeaderPod.Status.PodIP)
+				r.RedisCLI.AddFollower(followerPod.Status.PodIP, group.LeaderPod.Status.PodIP, groupLeaderID)
+
+				// wait for follower to join
+				err = wait.PollImmediate(clusterFollowerJoinCheckInterval, clusterFollowerJoinCheckTimeout, func() (bool, error) {
+					var err error
+					r.Log.Info("waiting for follower to join the cluster")
+
+					leaderReplicas, err = r.RedisCLI.GetLeaderReplicas(group.LeaderPod.Status.PodIP, groupLeaderID)
+					if err != nil {
+						return false, err
+					}
+
+					if leaderReplicas.Count == currentLeaderReplicaCount+1 {
+						currentLeaderReplicaCount++
+						return true, nil
+					}
+
+					return false, nil
+				})
+
 				if err != nil {
 					return err
 				}
-				r.RedisCLI.AddFollower(followerPod.Status.PodIP, group.LeaderPod.Status.PodIP, redisLeaderID)
 			}
 		}
 	}
@@ -604,7 +646,7 @@ func (r *RedisClusterReconciler) handleClusterReadyState(ctx context.Context, re
 	r.Log.Info("reconcile function was triggered while the last known cluster state was ready. checking cluster status..")
 
 	// waiting for [1.1 * (cluster-node-timeout + repl-ping-replica-period)] amount in case 1 or more nodes
-	// are unreachable so the cluster will considered them in failure state and master fail over will occuer
+	// are unreachable so the cluster will considered them in failure state and master fail over will occur
 	// in case the failing node(s) were leader nodes
 	r.Log.Info("waiting for 11000 milliseconds")
 	err = wait.Poll(11*time.Second, 20*time.Second, func() (bool, error) {
@@ -635,7 +677,7 @@ func (r *RedisClusterReconciler) handleClusterReadyState(ctx context.Context, re
 
 	// clusterNodesList, redisGroups and redisPods has all the current data
 	// of the redis cluster as well as the redis pods status. this should be used now
-	// do to all the checkes and fix any issues if found.
+	// do to all the verifications and fix any issues if found.
 	// first step is checking for failing nodes. if we found any we will
 	// clean them by using CLUSTER FORGET redis command and deploy new pods to replace them
 	anyActionApplied, err = r.forgetFailingNodes(ctx, redisCluster, k8sRedisPods, clusterInfo, redisGroups)
@@ -667,7 +709,7 @@ func (r *RedisClusterReconciler) forgetFailingNodes(ctx context.Context, redisCl
 	}
 
 	if len(failingNodes) == 0 {
-		r.Log.Info("no failing nodes has found in the cluster")
+		r.Log.Info("no failing nodes was found in the cluster")
 		return false, nil
 	}
 
@@ -687,9 +729,9 @@ func (r *RedisClusterReconciler) forgetFailingNodes(ctx context.Context, redisCl
 		}
 	}
 
-	// failing redis nodes can occuer from a crashed pod or from internal error.
+	// failing redis nodes can occur from a crashed pod or from internal error.
 	// in case of internal error the failing redis node pod is still exists (but may not be healthy).
-	// in this case we need to make sure to remove the failing pod so we can deploy a new one insted
+	// in this case we need to make sure to remove the failing pod so we can deploy a new one instead
 	podsToDelete := make([]corev1.Pod, 0)
 	for _, k8sPod := range k8sRedisPods.Items {
 		for _, failingNode := range failingNodes {
@@ -703,10 +745,14 @@ func (r *RedisClusterReconciler) forgetFailingNodes(ctx context.Context, redisCl
 		r.Log.Info(fmt.Sprintf("found %d pods to be deleted", len(podsToDelete)))
 		for _, podToDelete := range podsToDelete {
 			r.Log.Info(fmt.Sprintf("deleting pod [%s] in namespace [%s]", podToDelete.Name, podToDelete.Namespace))
-			r.Delete(ctx, &podToDelete)
+			if err = r.Delete(ctx, &podToDelete); err != nil {
+				if !strings.Contains(err.Error(), "not found") {
+					return true, err
+				}
+			}
 		}
 
-		err = wait.PollImmediate(k8sPodsDeletionCheckInterval, k8sPodsDeletionChecTimeout, func() (bool, error) {
+		err = wait.PollImmediate(k8sPodsDeletionCheckInterval, k8sPodsDeletionCheckTimeout, func() (bool, error) {
 			var err error
 			r.Log.Info(fmt.Sprintf("waiting for failing pods to be deleted. current number of k8s nodes is: %d", len(k8sRedisPods.Items)))
 
@@ -729,7 +775,7 @@ func (r *RedisClusterReconciler) forgetFailingNodes(ctx context.Context, redisCl
 		r.Log.Info(fmt.Sprintf("number of k8s nodes after deletion is %d", len(k8sRedisPods.Items)))
 
 		// after we deleted the failed redis k8s pods using k8sRedisPods list
-		// we need to featch the update k8s pods list again
+		// we need to fetch the update k8s pods list again
 		k8sRedisPods, err = r.getRedisClusterPods(ctx, redisCluster, "any")
 		if err != nil {
 			return true, err
@@ -782,14 +828,14 @@ func (r *RedisClusterReconciler) replaceK8sFailedNodes(ctx context.Context, redi
 			missingPodNumbers, err = r.deployFollowerAfterFailure(ctx, redisCluster, leaderNumber, &missingPodNumbers)
 		}
 
-		redisCluster.Status.ClusterState = string(RecoverFollowersNodes)
+		redisCluster.Status.ClusterState = string(RecoverFollowerNodes)
 		return nil
 	}
 
 	// 1 or more of leader nodes has failed
 	// verify all master failover processes has finished by
 	// checking we are having all the requested leaders amount
-	err = wait.PollImmediate(masterFailoverCheckInterval, masterFailoverCheckTimeout, func() (bool, error) {
+	err = wait.PollImmediate(clusterFailoverCheckInterval, clusterFailoverCheckTimeout, func() (bool, error) {
 		r.Log.Info("waiting for master failover process to finish..")
 		var clusterInfo *rediscli.RedisClusterNodes
 		var currentLeaderNumber int32
@@ -872,7 +918,7 @@ func getLeaderNumberByLeaderID(redisGroups *RedisGroups, leaderID string, log lo
 }
 
 // getMissingPodsNumber gets a list of k8s redis pods, the expected pod number and return the missing suffixes
-// for example the pod list is [redis-node-0 redis-node-1 redis-nod-2 redis-node 4] and the expected is 5
+// for example the pod list is [redis-node-0 redis-node-1 redis-node-2 redis-node 4] and the expected is 5
 // then it will return a slice with length of 1 with the value 3: [3]
 func getMissingPodsNumber(redisPods *corev1.PodList, totalExpectedPods int32, logger logr.Logger) ([]int, error) {
 	logger.Info(fmt.Sprintf("compute missing k8s pods sequential number. total known pod count: %d", len(redisPods.Items)))
