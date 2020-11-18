@@ -6,7 +6,7 @@
 *.so
 *.dylib
 bin
-manager
+/manager
 
 
 # Test binary, build with `go test -c`
@@ -31,7 +31,7 @@ manager
 !.vscode/extensions.json
 .history/
 *.orig
-kubeconfig.yaml
+*kubeconfig.yaml
 
 telepresence.log
 Redis-Operator
