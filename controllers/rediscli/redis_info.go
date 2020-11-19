@@ -57,12 +57,12 @@ func NewRedisInfo(rawInfo string) *RedisInfo {
 		return nil
 	}
 	lines := strings.Split(rawInfo, "\n")
-	currentLine := 0
 	info := RedisInfo{}
-	for currentLine < len(lines) {
-		if lines[currentLine] != "" {
-			if lines[currentLine][0] == '#' {
-				currentInfoLabel = lines[currentLine][2:]
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			if line[0] == '#' {
+				currentInfoLabel = strings.TrimSpace(line[2:])
 				switch currentInfoLabel {
 				case "Server":
 					info.Server = make(map[string]string)
@@ -96,11 +96,10 @@ func NewRedisInfo(rawInfo string) *RedisInfo {
 					currentInfo = &info.Keyspace
 				}
 			} else {
-				lineInfo := strings.Split(lines[currentLine], ":")
+				lineInfo := strings.Split(line, ":")
 				(*currentInfo)[lineInfo[0]] = lineInfo[1]
 			}
 		}
-		currentLine++
 	}
 	return &info
 }

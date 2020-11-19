@@ -206,3 +206,29 @@ func (r *RedisCLI) GetLeaderReplicas(nodeIP string, leaderNodeID string) (*Leade
 
 	return NewLeaderReplicas(stdout, r.Log), err
 }
+
+// https://redis.io/commands/cluster-failover
+func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error) {
+	r.Log.Info(fmt.Sprintf("executing cluster failover on [%s]", nodeIP))
+	args := []string{"-h", nodeIP, "cluster", "failover"}
+
+	if len(opt) != 0 {
+		if strings.ToLower(opt[0]) != "force" && strings.ToLower(opt[0]) != "takeover" {
+			r.Log.Info(fmt.Sprintf("Warning: CLUSTER FALOVER called with wrong option - %s", opt[0]))
+		} else {
+			args = append(args, opt[0])
+		}
+	}
+
+	stdout, err := r.executeCommand(args)
+	if err != nil {
+		r.Log.Error(err, "unable to get cluster nodes using redis-cli")
+		return "", err
+	}
+
+	stdout = strings.TrimSpace(stdout)
+	if stdout != "OK" {
+		r.Log.Info(fmt.Sprintf("Warning: CLUSTER FAILOVER returned %s", stdout))
+	}
+	return stdout, nil
+}

@@ -92,12 +92,12 @@ const (
 
 var currentRedisClusterState RedisClusterState
 
-func getCurrentClusterState(logger logr.Logger, redisOperator *dbv1.RedisCluster) RedisClusterState {
-	if len(redisOperator.Status.ClusterState) == 0 {
+func getCurrentClusterState(logger logr.Logger, redisCluster *dbv1.RedisCluster) RedisClusterState {
+	if len(redisCluster.Status.ClusterState) == 0 {
 		return NotExists
 	}
 
-	return RedisClusterState(redisOperator.Status.ClusterState)
+	return RedisClusterState(redisCluster.Status.ClusterState)
 }
 
 // Flatten returns Redis groups as an array
@@ -156,16 +156,16 @@ func NewRedisGroups(redisPods *corev1.PodList, redisClusterNodes *rediscli.Redis
 	return &groups
 }
 
-func (r *RedisClusterReconciler) getRedisClusterPods(ctx context.Context, redisOperator *dbv1.RedisCluster, podType string) (*corev1.PodList, error) {
+func (r *RedisClusterReconciler) getRedisClusterPods(ctx context.Context, redisCluster *dbv1.RedisCluster, podType string) (*corev1.PodList, error) {
 	pods := &corev1.PodList{}
 	matchingLabels := make(map[string]string)
-	matchingLabels["app"] = redisOperator.Spec.PodLabelSelector.App
+	matchingLabels["app"] = redisCluster.Spec.PodLabelSelector.App
 
 	if podType != "any" {
 		matchingLabels["redis-node-role"] = podType
 	}
 
-	err := r.List(ctx, pods, client.InNamespace(redisOperator.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
+	err := r.List(ctx, pods, client.InNamespace(redisCluster.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
 	if err != nil {
 		return nil, err
 	}
@@ -175,11 +175,11 @@ func (r *RedisClusterReconciler) getRedisClusterPods(ctx context.Context, redisO
 
 // createFollowersForLeader create all followers pods for a specific leader pod
 // the function return the number of created followers for the specific leader
-func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, redisOperator *dbv1.RedisCluster, leaderNumber int, startingSequentialNumber int) (int, error) {
-	followersCount := int(redisOperator.Spec.LeaderFollowersCount)
+func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, redisCluster *dbv1.RedisCluster, leaderNumber int, startingSequentialNumber int) (int, error) {
+	followersCount := int(redisCluster.Spec.LeaderFollowersCount)
 
 	for i := 0; i < followersCount; i++ {
-		followerPod, err := r.NewFollowerPod(redisOperator, leaderNumber, startingSequentialNumber+i)
+		followerPod, err := r.NewFollowerPod(redisCluster, leaderNumber, startingSequentialNumber+i)
 		if err != nil {
 			return 0, err
 		}
@@ -196,9 +196,9 @@ func (r *RedisClusterReconciler) createFollowersForLeader(ctx context.Context, r
 	return followersCount, nil
 }
 
-func (r *RedisClusterReconciler) createLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster, nodeCount int) error {
+func (r *RedisClusterReconciler) createLeaders(ctx context.Context, redisCluster *dbv1.RedisCluster, nodeCount int) error {
 	for i := 0; i < nodeCount; i++ {
-		leaderPod, err := r.NewLeaderPod(redisOperator, i, i)
+		leaderPod, err := r.NewLeaderPod(redisCluster, i, i)
 		if err != nil {
 			return err
 		}
@@ -216,12 +216,12 @@ func (r *RedisClusterReconciler) createLeaders(ctx context.Context, redisOperato
 	return nil
 }
 
-func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("creating new cluster")
-	desiredLeaders := int(redisOperator.Spec.LeaderReplicas)
+	desiredLeaders := int(redisCluster.Spec.LeaderReplicas)
 
 	// create config map
-	configMap, err := r.NewRedisSettingsConfigMap(redisOperator)
+	configMap, err := r.NewRedisSettingsConfigMap(redisCluster)
 	err = r.Create(ctx, &configMap)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
@@ -232,7 +232,7 @@ func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOper
 	}
 
 	// create service
-	service, err := r.NewService(redisOperator)
+	service, err := r.NewService(redisCluster)
 	err = r.Create(ctx, &service)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
@@ -243,7 +243,7 @@ func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOper
 	}
 
 	// create headless service
-	headlessService, err := r.NewHeadlessService(redisOperator)
+	headlessService, err := r.NewHeadlessService(redisCluster)
 	err = r.Create(ctx, &headlessService)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
@@ -254,19 +254,19 @@ func (r *RedisClusterReconciler) createNewCluster(ctx context.Context, redisOper
 	}
 
 	// deploy the leader redis nodes
-	err = r.createLeaders(ctx, redisOperator, desiredLeaders)
+	err = r.createLeaders(ctx, redisCluster, desiredLeaders)
 	if err != nil {
 		return err
 	}
 
-	redisOperator.Status.ClusterState = string(DeployingLeaders)
+	redisCluster.Status.ClusterState = string(DeployingLeaders)
 
 	return nil
 }
 
-func (r *RedisClusterReconciler) checkRedisNodes(ctx context.Context, redisOperator *dbv1.RedisCluster, nodeRole string) (bool, error) {
+func (r *RedisClusterReconciler) checkRedisNodes(ctx context.Context, redisCluster *dbv1.RedisCluster, nodeRole string) (bool, error) {
 	podsReady := true
-	pods, err := r.getRedisClusterPods(ctx, redisOperator, nodeRole)
+	pods, err := r.getRedisClusterPods(ctx, redisCluster, nodeRole)
 	if err != nil {
 		return false, err
 	}
@@ -282,40 +282,40 @@ func (r *RedisClusterReconciler) checkRedisNodes(ctx context.Context, redisOpera
 	return podsReady, nil
 }
 
-func (r *RedisClusterReconciler) handleDeployingLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) handleDeployingLeaders(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("handling deploying leaders")
 
-	leadersReady, err := r.checkRedisNodes(ctx, redisOperator, "leader")
+	leadersReady, err := r.checkRedisNodes(ctx, redisCluster, "leader")
 	if err != nil {
 		return err
 	}
 
 	if leadersReady {
-		redisOperator.Status.ClusterState = string(InitializingLeaders)
+		redisCluster.Status.ClusterState = string(InitializingLeaders)
 	}
 
 	return nil
 }
 
-func (r *RedisClusterReconciler) handleDeployingFollowers(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) handleDeployingFollowers(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("handling deploying followers")
 
-	followersReady, err := r.checkRedisNodes(ctx, redisOperator, "follower")
+	followersReady, err := r.checkRedisNodes(ctx, redisCluster, "follower")
 	if err != nil {
 		return err
 	}
 
 	if followersReady {
-		redisOperator.Status.ClusterState = string(InitializingFollowers)
+		redisCluster.Status.ClusterState = string(InitializingFollowers)
 	}
 
 	return nil
 }
 
-func (r *RedisClusterReconciler) handleInitializingLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) handleInitializingLeaders(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("handling initializing leaders")
 
-	leaderPods, err := r.getRedisClusterPods(ctx, redisOperator, "leader")
+	leaderPods, err := r.getRedisClusterPods(ctx, redisCluster, "leader")
 	if err != nil {
 		return err
 	}
@@ -329,15 +329,15 @@ func (r *RedisClusterReconciler) handleInitializingLeaders(ctx context.Context, 
 		return err
 	}
 
-	redisOperator.Status.ClusterState = string(ClusteringLeaders)
+	redisCluster.Status.ClusterState = string(ClusteringLeaders)
 
 	return nil
 }
 
-func (r *RedisClusterReconciler) handleInitializingFollowers(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) handleInitializingFollowers(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("handling initializing followers")
 
-	redisPods, err := r.getRedisClusterPods(ctx, redisOperator, "any")
+	redisPods, err := r.getRedisClusterPods(ctx, redisCluster, "any")
 	if err != nil {
 		return err
 	}
@@ -365,14 +365,14 @@ func (r *RedisClusterReconciler) handleInitializingFollowers(ctx context.Context
 		}
 	}
 
-	redisOperator.Status.ClusterState = string(ClusteringFollowers)
+	redisCluster.Status.ClusterState = string(ClusteringFollowers)
 	return nil
 }
 
-func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("handling clustering leaders")
 
-	leaderPods, err := r.getRedisClusterPods(ctx, redisOperator, "leader")
+	leaderPods, err := r.getRedisClusterPods(ctx, redisCluster, "leader")
 	if err != nil {
 		return err
 	}
@@ -385,7 +385,7 @@ func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, re
 			return err
 		}
 
-		createdFollowers, err := r.createFollowersForLeader(ctx, redisOperator, leaderNumber, startingfollowerSequentialNumber)
+		createdFollowers, err := r.createFollowersForLeader(ctx, redisCluster, leaderNumber, startingfollowerSequentialNumber)
 		if err != nil {
 			return err
 		}
@@ -393,14 +393,14 @@ func (r *RedisClusterReconciler) handleClusteringLeaders(ctx context.Context, re
 		startingfollowerSequentialNumber += createdFollowers
 	}
 
-	redisOperator.Status.ClusterState = string(DeployingFollowers)
+	redisCluster.Status.ClusterState = string(DeployingFollowers)
 
 	return nil
 }
 
-func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, redisOperator *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("handling clustering followers")
-	redisPods, err := r.getRedisClusterPods(ctx, redisOperator, "any")
+	redisPods, err := r.getRedisClusterPods(ctx, redisCluster, "any")
 	if err != nil {
 		return err
 	}
@@ -417,8 +417,8 @@ func (r *RedisClusterReconciler) handleClusteringFollowers(ctx context.Context, 
 	}
 
 	r.Log.Info("follower clustering complete")
-	redisOperator.Status.TotalExpectedPods = redisOperator.Spec.LeaderReplicas * (redisOperator.Spec.LeaderFollowersCount + 1)
-	redisOperator.Status.ClusterState = string(Ready)
+	redisCluster.Status.TotalExpectedPods = redisCluster.Spec.LeaderReplicas * (redisCluster.Spec.LeaderFollowersCount + 1)
+	redisCluster.Status.ClusterState = string(Ready)
 
 	return nil
 }
@@ -564,10 +564,6 @@ func (r *RedisClusterReconciler) handleFollowerNodesRecoverState(ctx context.Con
 
 	redisGroups := NewRedisGroups(redisPods, nil).Flatten()
 	clusterNodes, err := r.RedisCLI.GetClusterNodesInfo(redisGroups[0].LeaderPod.Status.PodIP)
-	if err != nil {
-		return err
-	}
-
 	if err != nil {
 		return err
 	}
