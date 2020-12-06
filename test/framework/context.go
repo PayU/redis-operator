@@ -33,7 +33,7 @@ func NewTestCtx(t *testing.T, name string) TestCtx {
 
 func (ctx *TestCtx) Cleanup() {
 	var eg errgroup.Group
-	fmt.Println("[E2E] Cleanup")
+	fmt.Println("\n[E2E] Cleanup")
 
 	for i := len(ctx.cleanUpFns) - 1; i >= 0; i-- {
 		eg.Go(ctx.cleanUpFns[i])

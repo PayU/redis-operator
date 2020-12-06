@@ -19,7 +19,7 @@ var (
 func TestMain(m *testing.M) {
 	kubeconfig := flag.String(
 		"kubeconf",
-		"../../hack/kubeconfig.yaml",
+		"../../hack/redis-test.kubeconfig.yaml",
 		"kube config path, e.g. $HOME/.kube/config",
 	)
 	opImage = flag.String(
@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 
 	if *kubeconfig == "" {
-		*kubeconfig = "../../hack/kubeconfig.yaml"
+		*kubeconfig = "../../hack/redis-test.kubeconfig.yaml"
 		log.Println("No kubeconfig file provided, using hack/kubeconfig.yaml")
 	}
 

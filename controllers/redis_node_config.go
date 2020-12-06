@@ -1014,7 +1014,7 @@ var redisConf = `
     # impact, that while very small, can be measured under big load. Latency
     # monitoring can easily be enabled at runtime using the command
     # "CONFIG SET latency-monitor-threshold <milliseconds>" if needed.
-    latency-monitor-threshold 0
+    latency-monitor-threshold 100
 
     ############################# EVENT NOTIFICATION ##############################
 
