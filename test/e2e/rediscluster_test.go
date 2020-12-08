@@ -17,7 +17,7 @@ import (
 )
 
 func printAZMap(azMap map[string]map[string][]*corev1.Pod) {
-	fmt.Println("*** Redis cluster AZ map")
+	fmt.Println("\n*** Redis cluster AZ map")
 	for az, groups := range azMap {
 		fmt.Printf("%s\n", az)
 		for leaderID, pods := range groups {
@@ -183,7 +183,7 @@ func testRedisClusterAvailabilityZoneDistribution(t *testing.T) {
 3. Set a non-existing Redis image and wait for the controller to detect the failed update
 4. Set an existing updated Redis image and wait for cluster update
 */
-func TestRollingUpdate(t *testing.T) {
+func testRollingUpdate(t *testing.T) {
 	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
 	ctx := framework.NewTestCtx(t, t.Name())
 	defer ctx.Cleanup()
@@ -192,9 +192,11 @@ func TestRollingUpdate(t *testing.T) {
 	Check(err, t.Fatalf, "Failed to create default cluster")
 
 	Check(tfw.PatchResource(redisCluster, defaultConfig.ContainerResourcePatch), t.Fatalf, "Failed to update resources in CR")
-	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster container resource update started...")
-	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+		"Failed to reach Ready state")
 	fmt.Printf("\n[E2E] Cluster update successful\n")
 
 	azMap := makeAZMap(&ctx, t)
@@ -203,7 +205,8 @@ func TestRollingUpdate(t *testing.T) {
 
 	fmt.Printf("\n[E2E] Testing response to missing image...")
 	Check(tfw.UpdateImage(redisCluster, "redis:noimage"), t.Fatalf, "Failed to update image in CR")
-	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster image update started...")
 	timeoutErr := tfw.WaitForState(redisCluster, "Ready", 30*time.Second)
 	if timeoutErr == nil {
@@ -212,12 +215,62 @@ func TestRollingUpdate(t *testing.T) {
 
 	fmt.Printf("\n[E2E] Cluster update failed. Restoring...")
 	Check(tfw.UpdateImage(redisCluster, defaultConfig.UpdateImage), t.Fatalf, "Failed to update image in CR")
-	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster image update continued...")
-	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf, "")
+	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+		"Failed to reach Ready state")
 	fmt.Printf("\n[E2E] Cluster update successful\n")
 
 	azMap = makeAZMap(&ctx, t)
+	printAZMap(azMap)
+	checkAZCorrectness(azMap, t)
+}
+
+/*
+1. Create default Redis cluster
+2. Drain all nodes of an availability zone
+3. Reenable the node scheduling and wait for Redis cluster to recover
+*/
+func TestAZFailure(t *testing.T) {
+	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
+	ctx := framework.NewTestCtx(t, t.Name())
+	defer ctx.Cleanup()
+
+	redisCluster, err := createDefaultCluster(&ctx, t)
+	Check(err, t.Fatalf, "Failed to create default cluster")
+
+	targetAZ := "eu-central-1a"
+
+	aznodes, err := tfw.GetAvailabilityZoneNodes(targetAZ)
+	Check(err, t.Fatalf, "Failed to get AZ nodes from "+targetAZ)
+
+	fmt.Printf("\n[E2E] Disabling availability zone: %s...\n\n", targetAZ)
+	for _, node := range aznodes.Items {
+		err = tfw.CordonNode(node.Name, true, defaultConfig.K8sResourceSetupTimeout)
+		if err != nil {
+			tfw.UncordonAll(defaultConfig.K8sResourceSetupTimeout)
+			t.Fatalf("Failed to cordon node: %v", err)
+		}
+		err = tfw.DrainNode(node.Name, defaultConfig.K8sResourceSetupTimeout)
+		if err != nil {
+			tfw.UncordonAll(defaultConfig.K8sResourceSetupTimeout)
+			t.Fatalf("Failed to drain node %s: %v", node.Name, err)
+		}
+	}
+
+	fmt.Printf("\n[E2E] Enabling availability zone: %s...", targetAZ)
+	err = tfw.UncordonAll(defaultConfig.K8sResourceSetupTimeout)
+	Check(err, t.Fatalf, "Failed to uncordon nodes")
+
+	Check(tfw.WaitForState(redisCluster, "Recovering", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+		"Failed to reach Ready state")
+	fmt.Printf("\n[E2E] Redis cluster recovering...")
+
+	Check(tfw.WaitForState(redisCluster, "Ready", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+		"Failed to reach Ready state")
+
+	azMap := makeAZMap(&ctx, t)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
 }
