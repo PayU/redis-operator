@@ -1,0 +1,12 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: infra
+spec:
+  podSelector:
+    matchLabels:
+      node-number: "3"
+  policyTypes:
+  - Ingress
+  - Egress

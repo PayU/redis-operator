@@ -232,7 +232,7 @@ func testRollingUpdate(t *testing.T) {
 2. Drain all nodes of an availability zone
 3. Reenable the node scheduling and wait for Redis cluster to recover
 */
-func TestAZFailure(t *testing.T) {
+func testAZFailure(t *testing.T) {
 	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
 	ctx := framework.NewTestCtx(t, t.Name())
 	defer ctx.Cleanup()
@@ -273,4 +273,16 @@ func TestAZFailure(t *testing.T) {
 	azMap := makeAZMap(&ctx, t)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
+}
+
+/*
+1. Create a default cluster
+2. During cluster setup drop the cluster connectivity on each of the RedisCluster states
+3. Check that the RedisCluster reaches ready state with correct AZ distribution
+*/
+func TestConnectivityDrop(t *testing.T) {
+	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
+	ctx := framework.NewTestCtx(t, t.Name())
+	defer ctx.Cleanup()
+	// TODO
 }

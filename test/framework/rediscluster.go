@@ -11,6 +11,9 @@ import (
 	dbv1 "github.com/PayU/Redis-Operator/api/v1"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -104,4 +107,23 @@ func (f *Framework) WaitForState(redisCluster *dbv1.RedisCluster, state string, 
 		}
 		return false, nil
 	})
+}
+
+// DropNodeConnection stops traffic for a specified Redis node
+// redisNodeNumber: node number label assigned at creation time
+// policyType: 			one of 'ingress', 'egress' or 'ingress,egress'
+// timeout:					time to wait for NetworkPolicy resource creation
+func (f *Framework) DropNodeConnection(ctx *TestCtx, redisNodeNumber string, policyType string, timeout time.Duration) (*networkingv1.NetworkPolicy, error) {
+	np := f.MakeNetworkPolicy(&metav1.LabelSelector{MatchLabels: map[string]string{"node-number": redisNodeNumber}}, nil, nil)
+	err := f.CreateResource(ctx, &np, timeout)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+// DropNamespaceConnection stops network traffic for all pods in a namespace
+// policyType: one of 'ingress', 'egress' or 'ingress,egress'
+func (f *Framework) DropNamespaceConnection(namespace string, policyType string) (*networkingv1.NetworkPolicy, error) {
+	return nil, nil
 }

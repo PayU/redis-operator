@@ -28,6 +28,9 @@ def get_node_configs():
 def get_config_header():
     return f'''kind: Cluster
 apiVersion: {ClusterParams.KIND_API_VERSION}
+networking:
+  disableDefaultCNI: true
+  podSubnet: 10.10.10.0/24
 nodes:
 - role: control-plane
   image: kindest/node:{ClusterParams.KUBERNETES_VERSION}

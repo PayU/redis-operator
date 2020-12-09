@@ -15,6 +15,8 @@ import (
 	"github.com/pkg/errors"
 
 	corev1 "k8s.io/api/core/v1"
+
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -240,7 +242,6 @@ func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Du
 		Force:  false,
 	}
 	if err = drain.RunCordonOrUncordon(&drainer, node, unschedule); err != nil {
-		fmt.Printf("Failed to cordon/uncordon: %v\n", err)
 		return err
 	}
 	if pollErr := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
@@ -253,7 +254,6 @@ func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Du
 		}
 		return false, nil
 	}); pollErr != nil {
-		fmt.Println("Out bad")
 		return pollErr
 	}
 	return nil
@@ -289,4 +289,41 @@ func (f *Framework) DrainNode(nodeName string, timeout time.Duration) error {
 		return err
 	}
 	return nil
+}
+
+func (f *Framework) MakeNetworkPolicy(targetPod *metav1.LabelSelector, in []*metav1.LabelSelector, out []*metav1.LabelSelector) networkingv1.NetworkPolicy {
+	var policyTypes []networkingv1.PolicyType
+	if in != nil {
+		policyTypes = append(policyTypes, networkingv1.PolicyTypeIngress)
+	}
+	if out != nil {
+		policyTypes = append(policyTypes, networkingv1.PolicyTypeEgress)
+	}
+
+	var ingressRules []networkingv1.NetworkPolicyIngressRule
+	for _, ingressSelector := range in {
+		ingressRules = append(ingressRules, networkingv1.NetworkPolicyIngressRule{
+			From: []networkingv1.NetworkPolicyPeer{
+				{PodSelector: ingressSelector},
+			},
+		})
+	}
+
+	var egressRules []networkingv1.NetworkPolicyEgressRule
+	for _, egressSelector := range in {
+		egressRules = append(egressRules, networkingv1.NetworkPolicyEgressRule{
+			To: []networkingv1.NetworkPolicyPeer{
+				{PodSelector: egressSelector},
+			},
+		})
+	}
+
+	return networkingv1.NetworkPolicy{
+		Spec: networkingv1.NetworkPolicySpec{
+			Ingress:     ingressRules,
+			Egress:      egressRules,
+			PodSelector: *targetPod,
+			PolicyTypes: policyTypes,
+		},
+	}
 }
