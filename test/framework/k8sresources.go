@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 
 	corev1 "k8s.io/api/core/v1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -240,7 +241,6 @@ func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Du
 		Force:  false,
 	}
 	if err = drain.RunCordonOrUncordon(&drainer, node, unschedule); err != nil {
-		fmt.Printf("Failed to cordon/uncordon: %v\n", err)
 		return err
 	}
 	if pollErr := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
@@ -253,7 +253,6 @@ func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Du
 		}
 		return false, nil
 	}); pollErr != nil {
-		fmt.Println("Out bad")
 		return pollErr
 	}
 	return nil
