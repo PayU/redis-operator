@@ -21,7 +21,7 @@ const (
 	// NotExists: the RedisCluster custom resource has just been created
 	NotExists RedisClusterState = "NotExists"
 
-	// InitializeLeaders: ConfigMap, Service resources are created; the leader
+	// InitializingCluster: ConfigMap, Service resources are created; the leader
 	// pods are created and clusterized
 	InitializingCluster RedisClusterState = "InitializingCluster"
 

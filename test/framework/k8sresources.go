@@ -9,6 +9,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/pkg/errors"
@@ -19,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/kubectl/pkg/drain"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -127,7 +129,7 @@ func (f *Framework) DeleteResource(obj runtime.Object, timeout time.Duration) er
 		return errors.Wrap(err, "Could not check delete resource - object key error")
 	}
 
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
+	if pollErr := wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
 		err = f.RuntimeClient.Get(context.TODO(), key, obj)
 		switch {
 		case apierrors.IsNotFound(err):
@@ -137,7 +139,9 @@ func (f *Framework) DeleteResource(obj runtime.Object, timeout time.Duration) er
 		default:
 			return false, nil
 		}
-	})
+	}); pollErr != nil {
+		return pollErr
+	}
 	return nil
 }
 
@@ -183,6 +187,29 @@ func (f *Framework) GetNodes() (*corev1.NodeList, error) {
 	return f.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 }
 
+// GetAvailabilityZoneNodes returns all nodes that are in a given AZ.
+func (f *Framework) GetAvailabilityZoneNodes(AZName string) (*corev1.NodeList, error) {
+	stable, err := f.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("topology.kubernetes.io/zone=%s", AZName),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(stable.Items) > 0 {
+		return stable, nil
+	}
+
+	beta, err := f.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("failure-domain.beta.kubernetes.io/zone=%s", AZName),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return beta, nil
+}
+
 func (f *Framework) GetPods(opts ...client.ListOption) (*corev1.PodList, error) {
 	podList := corev1.PodList{}
 	err := f.RuntimeClient.List(context.TODO(), &podList, opts...)
@@ -199,4 +226,67 @@ func (f *Framework) PatchResource(obj runtime.Object, patch []byte) error {
 	}
 	return nil
 
+}
+
+func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Duration) error {
+	// TODO the method should also accept lists of nodes and apply the in parallel
+	node, err := f.KubeClient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	drainer := drain.Helper{
+		Ctx:    context.TODO(),
+		Client: f.KubeClient,
+		Force:  false,
+	}
+	if err = drain.RunCordonOrUncordon(&drainer, node, unschedule); err != nil {
+		fmt.Printf("Failed to cordon/uncordon: %v\n", err)
+		return err
+	}
+	if pollErr := wait.PollImmediate(time.Second, timeout, func() (bool, error) {
+		node, err := f.KubeClient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		if node.Spec.Unschedulable == unschedule {
+			return true, nil
+		}
+		return false, nil
+	}); pollErr != nil {
+		fmt.Println("Out bad")
+		return pollErr
+	}
+	return nil
+}
+
+// Iterates on all nodes and runs the uncordon command. Intended as a cleanup
+// method.
+func (f *Framework) UncordonAll(nodeTimeout time.Duration) error {
+	nodes, err := f.GetNodes()
+	if err != nil {
+		return err
+	}
+	for _, node := range nodes.Items {
+		if err = f.CordonNode(node.Name, false, nodeTimeout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *Framework) DrainNode(nodeName string, timeout time.Duration) error {
+	drainer := drain.Helper{
+		Ctx:                 context.TODO(),
+		Client:              f.KubeClient,
+		Force:               false,
+		IgnoreAllDaemonSets: true,
+		Timeout:             timeout,
+		Out:                 os.Stdout,
+		ErrOut:              os.Stderr,
+	}
+
+	if err := drain.RunNodeDrain(&drainer, nodeName); err != nil {
+		return err
+	}
+	return nil
 }

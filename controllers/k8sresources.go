@@ -254,10 +254,9 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 			}
 			if pod.Status.PodIP == "" {
 				return false, nil
-			} else {
-				resultPods = append(resultPods, pod)
-				return true, nil
 			}
+			resultPods = append(resultPods, pod)
+			return true, nil
 		}); pollErr != nil {
 			return nil, pollErr
 		}
