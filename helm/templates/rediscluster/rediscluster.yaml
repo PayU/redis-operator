@@ -1,0 +1,21 @@
+{{- if and .Values.redisCluster.enabled }}
+apiVersion: db.payu.com/v1
+kind: RedisCluster
+metadata:
+  name: {{ .Values.redisCluster.name }}
+  namespace: {{ .Values.redisCluster.namespace }}
+spec:
+  leaderCount: {{ .Values.redisCluster.leaderCount }}
+  leaderFollowersCount: {{ .Values.redisCluster.leaderFollowersCount }}
+  image: {{ .Values.redisCluster.redis.image.repository }}:{{ .Values.redisCluster.redis.image.tag }}
+  imagePullSecrets: {{ .Values.redisCluster.imagePullSecrets }}
+  initContainer: {{ toYaml .Values.redisCluster.initContainer | nindent 4 }}
+  prometheusExporter: {{ toYaml .Values.redisCluster.prometheusExporter | nindent 4 }}
+  redisContainerResources: {{ toYaml .Values.redisCluster.redis.resources | nindent 4 }}
+  podLabelSelector: {{ toYaml .Values.redisCluster.podLabelSelector | nindent 4 }}
+  podAnnotations: {{ toYaml .Values.redisCluster.podAnnotations | nindent 4 }}
+  affinity:
+    hostTopologyKey: {{ .Values.redisCluster.hostTopologyKey }}
+    zoneTopologyKey: {{ .Values.redisCluster.zoneTopologyKey }}
+  redisContainerEnvVariables: {{ toYaml .Values.redisCluster.redis.envVar | nindent 4 }}
+{{- end }}

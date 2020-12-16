@@ -42,9 +42,9 @@ func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisClu
 	return sortedPods, nil
 }
 
-func (r *RedisClusterReconciler) getPodByIP(podIP string) (corev1.Pod, error) {
+func (r *RedisClusterReconciler) getPodByIP(namespace string, podIP string) (corev1.Pod, error) {
 	var podList corev1.PodList
-	err := r.List(context.Background(), &podList, client.MatchingFields{"status.podIP": podIP})
+	err := r.List(context.Background(), &podList, client.InNamespace(namespace), client.MatchingFields{"status.podIP": podIP})
 	if err != nil {
 		return corev1.Pod{}, err
 	}

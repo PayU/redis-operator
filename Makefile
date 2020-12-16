@@ -45,7 +45,7 @@ test: generate fmt vet manifests
 
 # Setup e2e tests
 e2e-test-setup: IMG=redis-operator-docker:local
-e2e-test-setup: docker-build docker-build-local-redis kind-load-redis kind-load-controller
+e2e-test-setup: docker-build docker-build-local-redis docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all
 	docker build ./hack -f ./hack/redis.Dockerfile -t redis:update
 	kind load docker-image redis:update --name $(CLUSTER_NAME)
 
@@ -83,7 +83,7 @@ config-build-production:
 	(cd config/production && kustomize edit set image controller=$(IMG)) && kustomize build config/production | kubectl apply -f -
 
 # Deploy controller in a local kind cluster
-deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-redis-init kind-load-metrics-exporter kind-load-controller deploy-default
+deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all deploy-default
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
@@ -122,6 +122,9 @@ docker-build-local-metrics-exporter:
 # Push the docker image
 docker-push:
 	docker push $(IMG)
+
+# Load all required images
+kind-load-all: kind-load-redis-init kind-load-metrics-exporter kind-load-controller kind-load-redis
 
 # Load the controller image on the nodes of a kind cluster
 kind-load-controller:
