@@ -44,3 +44,4 @@ spec:
             cpu: 100m
             memory: 256Mi
       terminationGracePeriodSeconds: 10
+      serviceAccountName: "redis-operator-manager-serviceaccount"
