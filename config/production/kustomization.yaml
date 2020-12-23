@@ -3,5 +3,5 @@ namePrefix: redis-operator-
 bases:
 - ../crd
 - ../rbac
-- ../manager/overlays/development
+- ../manager/overlays/production
 

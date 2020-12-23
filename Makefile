@@ -10,9 +10,9 @@ CONFIG_ENV := config-build-local
 
 # Used to specify what environment is targeted, it determines what kustomize config is built
 # by default it builds the config for the local kind cluster.
-# To build for development environment run with envconfig=dev.
-ifeq ($(envconfig), dev)
-	CONFIG_ENV = config-build-development
+# To build for development/production environment run with envconfig=production.
+ifeq ($(envconfig), production)
+	CONFIG_ENV = config-build-production
 endif
 
 ifdef NOTEST
@@ -79,8 +79,8 @@ config-build-local:
 	kustomize build config/default | kubectl apply -f -
 
 # Use kustomize to build the YAML configuration files for the development cluster
-config-build-development:
-	kustomize build config/development | kubectl apply -f -
+config-build-production:
+	kustomize build config/production | kubectl apply -f -
 
 # Deploy controller in a local kind cluster
 deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) kind-load-controller deploy-default

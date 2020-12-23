@@ -1,4 +1,0 @@
-bases:
-- ../../base
-patches:
-- image_policy.yaml

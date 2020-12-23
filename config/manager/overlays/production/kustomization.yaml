@@ -1,0 +1,9 @@
+bases:
+- ../../base
+patches:
+- image_policy.yaml
+images:
+- name: controller
+  newName: redis-operator-docker-shai
+  newTag: local-shai
+
