@@ -80,7 +80,7 @@ config-build-local:
 
 # Use kustomize to build the YAML configuration files for the development cluster
 config-build-production:
-	kustomize build config/production | kubectl apply -f -
+	cd config/production && kustomize edit set image controller=$(IMG) && kustomize build config/production | kubectl apply -f -
 
 # Deploy controller in a local kind cluster
 deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) kind-load-controller deploy-default
