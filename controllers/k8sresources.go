@@ -56,6 +56,7 @@ func (r *RedisClusterReconciler) getPodByIP(podIP string) (corev1.Pod, error) {
 
 func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber string, nodeNumber string, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
 	podLabels := make(map[string]string)
+	initContainers := make([]corev1.Container, 0)
 	redisContainerEnvVariables := []corev1.EnvVar{
 		{Name: "PORT", Value: "6379"},
 	}
@@ -104,6 +105,14 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 				},
 			},
 		},
+		{
+			Name: "host-sys",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/sys",
+				},
+			},
+		},
 	}
 
 	var affinity *corev1.Affinity = nil
@@ -137,6 +146,48 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 		}
 	}
 
+	if redisCluster.Spec.InitContainer.Image != "" {
+		initContainerRunAsNonRoot := false
+		var runAsUser int64 = 0
+		privileged := true
+
+		/*
+		* init container will make sure to avoid redis kernel warning: '# WARNING: The TCP backlog setting of 511 cannot be enforced because /proc/sys/net/core/somaxconn is set to the lower value of 128'
+		* 1) sysctl -w net.core.somaxconn=1024 -> set the maximum number of "backlogged sockets". the backlog parameter specifies the number of pending connections the connection queue will hold. Default is 128.
+		* 2) echo never > /host-sys/kernel/mm/transparent_hugepage/enabled -> disabling the kernel setting Transparent Huge Pages (THP) - recommended for redis (http://doc.nuodb.com/Latest/Content/Note-About-%20Using-Transparent-Huge-Pages.htm)
+		* 3) grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled -> Checking if transparent_hugepage settings applied
+		 */
+
+		command := "install_packages systemd procps && sysctl -w net.core.somaxconn=1024"
+
+		if redisCluster.Spec.InitContainer.EnabledHugepage {
+			command += " && echo never > /host-sys/kernel/mm/transparent_hugepage/enabled && grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
+		}
+
+		initContainers = []corev1.Container{
+			{
+				Name:  "redis-init-container",
+				Image: redisCluster.Spec.InitContainer.Image,
+				SecurityContext: &corev1.SecurityContext{
+					RunAsNonRoot: &initContainerRunAsNonRoot,
+					Privileged:   &privileged,
+					RunAsUser:    &runAsUser,
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "host-sys",
+						MountPath: "/host-sys",
+					},
+				},
+				Command: []string{
+					"/bin/sh",
+					"-c",
+					command,
+				},
+			},
+		}
+	}
+
 	pod := corev1.Pod{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -147,6 +198,7 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 		},
 		Spec: corev1.PodSpec{
 			ImagePullSecrets: imagePullSecrets,
+			InitContainers:   initContainers,
 			Containers:       containers,
 			Volumes:          volumes,
 			Affinity:         affinity,

@@ -57,6 +57,17 @@ spec:
               type: string
             imagePullSecrets:
               type: string
+            initContainer:
+              description: modify kernel setting regarding backlogged sockets and
+                transparent huge pages.
+              properties:
+                enabledHugepage:
+                  type: boolean
+                image:
+                  type: string
+              required:
+              - image
+              type: object
             leaderCount:
               description: The number of leader instances to run
               minimum: 3
