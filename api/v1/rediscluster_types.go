@@ -33,6 +33,14 @@ type TopologyKeys struct {
 	ZoneTopologyKey string `json:"zoneTopologyKey,omitempty"`
 }
 
+// InitContainerOpt defines kernel settings for redis node
+type InitContainerOpt struct {
+	Image string `json:"image"`
+
+	// +optional
+	EnabledHugepage bool `json:"enabledHugepage"`
+}
+
 // RedisClusterSpec defines the desired state of RedisCluster
 type RedisClusterSpec struct {
 
@@ -48,6 +56,10 @@ type RedisClusterSpec struct {
 	// +kubebuilder:validation:MinLength=2
 	// full path of the Redis docker image
 	Image string `json:"image"`
+
+	// +optional
+	// modify kernel setting regarding backlogged sockets and transparent huge pages.
+	InitContainer InitContainerOpt `json:"initContainer"`
 
 	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
 
