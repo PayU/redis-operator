@@ -65,6 +65,10 @@ spec:
                   type: boolean
                 image:
                   type: string
+                imagePullPolicy:
+                  description: PullPolicy describes a policy for if/when to pull a
+                    container image
+                  type: string
               required:
               - image
               type: object
@@ -88,6 +92,23 @@ spec:
                   type: string
               required:
               - app
+              type: object
+            prometheusExporter:
+              description: PrometheusExporterOpt is used for metric exporter container
+                configuration
+              properties:
+                image:
+                  type: string
+                imagePullPolicy:
+                  description: PullPolicy describes a policy for if/when to pull a
+                    container image
+                  type: string
+                port:
+                  format: int32
+                  type: integer
+              required:
+              - image
+              - port
               type: object
             redisContainerEnvVariables:
               items:

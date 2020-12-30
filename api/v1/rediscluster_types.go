@@ -39,6 +39,19 @@ type InitContainerOpt struct {
 
 	// +optional
 	EnabledHugepage bool `json:"enabledHugepage"`
+
+	// +optional
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+}
+
+// PrometheusExporterOpt is used for metric exporter container configuration
+type PrometheusExporterOpt struct {
+	Image string `json:"image"`
+
+	Port int32 `json:"port"`
+
+	// +optional
+	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 }
 
 // RedisClusterSpec defines the desired state of RedisCluster
@@ -66,6 +79,8 @@ type RedisClusterSpec struct {
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 
 	RedisContainerResources corev1.ResourceRequirements `json:"redisContainerResources,omitempty"`
+
+	PrometheusExporter PrometheusExporterOpt `json:"prometheusExporter,omitempty"`
 
 	PodLabelSelector PodLabelSelector `json:"podLabelSelector"`
 

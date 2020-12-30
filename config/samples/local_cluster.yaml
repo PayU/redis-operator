@@ -9,6 +9,9 @@ spec:
   image: "redis:testing"
   initContainer:
     image: "redis-init:testing"
+  prometheusExporter:
+    image: metrics-exporter:testing
+    port: 9121  
   imagePullSecrets: "regcred"
   redisContainerResources:
     limits:
