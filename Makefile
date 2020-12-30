@@ -83,7 +83,7 @@ config-build-production:
 	(cd config/production && kustomize edit set image controller=$(IMG)) && kustomize build config/production | kubectl apply -f -
 
 # Deploy controller in a local kind cluster
-deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) docker-build-local-redis-init kind-load-redis-init kind-load-controller deploy-default
+deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-redis-init kind-load-metrics-exporter kind-load-controller deploy-default
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
@@ -114,7 +114,10 @@ docker-build-local-redis:
 	docker build ./hack -f ./hack/redis.Dockerfile -t redis:testing
 
 docker-build-local-redis-init:
-	docker build ./hack -f ./hack/redis-init.Dockerfile -t redis-init:testing	
+	docker build ./hack -f ./hack/redis-init.Dockerfile -t redis-init:testing
+
+docker-build-local-metrics-exporter:
+	docker build ./hack -f ./hack/metrics-exporter.Dockerfile -t metrics-exporter:testing
 
 # Push the docker image
 docker-push:
@@ -131,6 +134,10 @@ kind-load-redis:
 # Load the local init container for redis image
 kind-load-redis-init:
 	kind load docker-image redis-init:testing --name $(CLUSTER_NAME)
+
+# Load the local metrics exporter container for redis 
+kind-load-metrics-exporter:
+	kind load docker-image metrics-exporter:testing --name $(CLUSTER_NAME)	
 
 # Used for skipping targets
 skip: ;

@@ -56,6 +56,7 @@ func (r *RedisClusterReconciler) getPodByIP(podIP string) (corev1.Pod, error) {
 
 func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber string, nodeNumber string, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
 	podLabels := make(map[string]string)
+	containers := make([]corev1.Container, 0)
 	initContainers := make([]corev1.Container, 0)
 	redisContainerEnvVariables := []corev1.EnvVar{
 		{Name: "PORT", Value: "6379"},
@@ -79,12 +80,13 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 		{Name: redisCluster.Spec.ImagePullSecrets},
 	}
 
-	containers := []corev1.Container{
+	containers = []corev1.Container{
 		{
-			Name:      "redis-container",
-			Image:     redisCluster.Spec.Image,
-			Resources: corev1.ResourceRequirements(redisCluster.Spec.RedisContainerResources),
-			Env:       redisContainerEnvVariables,
+			Name:            "redis-container",
+			Image:           redisCluster.Spec.Image,
+			ImagePullPolicy: redisCluster.Spec.ImagePullPolicy,
+			Resources:       corev1.ResourceRequirements(redisCluster.Spec.RedisContainerResources),
+			Env:             redisContainerEnvVariables,
 			Ports: []corev1.ContainerPort{
 				{ContainerPort: 6379, Name: "redis", Protocol: "TCP"},
 			},
@@ -92,6 +94,17 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 				{Name: "redis-node-configuration", MountPath: "/usr/local/etc/redis"},
 			},
 		},
+	}
+
+	if redisCluster.Spec.PrometheusExporter != (dbv1.PrometheusExporterOpt{}) {
+		containers = append(containers, corev1.Container{
+			Name:            "redis-metric-exporter",
+			Image:           redisCluster.Spec.PrometheusExporter.Image,
+			ImagePullPolicy: redisCluster.Spec.PrometheusExporter.ImagePullPolicy,
+			Ports: []corev1.ContainerPort{
+				{ContainerPort: redisCluster.Spec.PrometheusExporter.Port, Name: "client", Protocol: "TCP"},
+			},
+		})
 	}
 
 	volumes := []corev1.Volume{
@@ -166,8 +179,9 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 
 		initContainers = []corev1.Container{
 			{
-				Name:  "redis-init-container",
-				Image: redisCluster.Spec.InitContainer.Image,
+				Name:            "redis-init-container",
+				Image:           redisCluster.Spec.InitContainer.Image,
+				ImagePullPolicy: redisCluster.Spec.InitContainer.ImagePullPolicy,
 				SecurityContext: &corev1.SecurityContext{
 					RunAsNonRoot: &initContainerRunAsNonRoot,
 					Privileged:   &privileged,
