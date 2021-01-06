@@ -1,0 +1,80 @@
+redisOperator:
+  enabled: true
+  namespace: infra
+  annotations:
+    sidecar.istio.io/inject: "false"
+
+  manager:
+    name: manager
+    image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest
+    imagePullPolicy: Always
+
+redisCluster:
+  enabled: true
+  name: main-redis-cluster
+  namespace: infra
+  annotations:
+    sidecar.istio.io/inject: "false"
+
+  redisPodSpec:
+    initContainers:
+    - name: redis-init-container
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/sysctl-init-container/release:1.0.1
+      imagePullPolicy: Always
+      securityContext:
+        privileged: true
+        runAsNonRoot: false
+        runAsUser: 0
+      volumeMounts:
+      - name: host-sys
+        mountPath: "/host-sys"
+      command:
+        - "/bin/sh"
+      args:
+      - "-c"
+      - "install_packages systemd procps && sysctl -w net.core.somaxconn=1024"
+      - "&& echo never > /host-sys/kernel/mm/transparent_hugepage/enabled"
+      - "&& grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
+
+    containers:
+    - name: redis-container
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:1.4.0
+      imagePullPolicy: Always
+      resources:
+        limits:
+          cpu: 200m
+          memory: 750Mi
+        requests:
+          cpu: 100m
+          memory: 500Mi
+      env:
+      - name: PORT
+        value: "6379"
+      - name: CONF_PATH
+        value: "/usr/local/etc/redis/redis.conf"
+      ports:
+      - containerPort: 6379
+      volumeMounts:
+      - name: redis-node-configuration
+        mountPath: "/usr/local/etc/redis"
+
+    - name: redis-metric-exporter
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-exporter-docker/release:1.2.0
+      imagePullPolicy: Always
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+      ports:
+      - containerPort: 9121
+
+    volumes:
+    - name: redis-node-configuration
+      configMap:
+        name: redis-node-settings-config-map
+    - name: host-sys
+      hostPath:
+        path: "/sys"

@@ -1,0 +1,242 @@
+image: docker-registry.zooz.co:4567/cd/ci-runners/runners:docker-bash-git
+
+stages:
+- build
+- deploy-dev-crd
+- deploy-dev
+- deploy-qa-crd
+- deploy-qa
+- deploy-mars-pci-crd
+- deploy-mars-pci
+- deploy-mars-apps-crd
+- deploy-mars-apps
+
+services:
+- docker-registry.zooz.co:4567/public-docker-registry/zooz/docker:18.09.6-dind
+
+variables:
+  DOCKER_HOST: tcp://localhost:2375
+  DOCKER_TLS_CERTDIR: ""
+  OPERATOR_NAMESPACE: infra
+  REDIS_CLUSTER_NAMESPACE: infra
+  ENV: dev
+
+# used for deploying the operator to Kubernetes via Helm v3
+build-runner-image:
+  stage: build
+  tags:
+  - eks-dev-apps
+  script:
+  - echo $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
+  - source scripts/loadEnv.sh
+  - docker build . -f ./runner.Dockerfile -t docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest --network=host
+  - docker push docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  when: manual
+
+build-image:
+  stage: build
+  tags:
+  - eks-dev-apps
+  stage: build
+  script:
+  - echo $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
+  - source scripts/loadEnv.sh
+  - docker build -t docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest --build-arg NAMESPACE=$OPERATOR_NAMESPACE --network=host .
+  - docker push docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest
+  when: manual
+
+.deploy-crd: # creates the CRD
+  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  script:
+  - kubectl apply -f ./helm/crds/crd-rediscluster.yaml
+  when: manual
+
+.deploy-operator: # creates all resources except CRD and RedisCluster
+  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  script:
+  - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
+  - helm upgrade --install redis-operator ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisCluster.enabled=false --set redisCluster.namespace=$OPERATOR_NAMESPACE --skip-crds --debug
+  when: manual
+
+.deploy-rediscluster: # creates RedisCluster resource
+  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  script:
+  - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
+  - helm upgrade --install redis-operator-rediscluster ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisOperator.enabled=false --set redisCluster.namespace=$REDIS_CLUSTER_NAMESPACE --skip-crds --debug
+  when: manual
+
+.remove-crd: # removes the CRD
+  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  script:
+  - kubectl delete crd redisclusters.db.payu.com
+  when: manual
+
+.remove-operator: # removes all resources except CRD and RedisCluster
+  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  script:
+  - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
+  - helm delete redis-operator -n $OPERATOR_NAMESPACE
+  when: manual
+
+.remove-rediscluster: # removes RedisCluster resource
+  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  script:
+  - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
+  - helm delete redis-operator-rediscluster -n $REDIS_CLUSTER_NAMESPACE
+  when: manual
+
+deploy-dev-crd:
+  stage: deploy-dev-crd
+  extends: .deploy-crd
+  tags:
+  - eks-dev-kube-system
+
+remove-dev-crd:
+  stage: deploy-dev-crd
+  extends: .remove-crd
+  tags:
+  - eks-dev-kube-system
+
+deploy-dev-operator:
+  stage: deploy-dev
+  extends: .deploy-operator
+  tags:
+  - eks-dev-infra
+
+remove-dev-operator:
+  stage: deploy-dev
+  extends: .remove-operator
+  tags:
+  - eks-dev-infra
+
+deploy-dev-rediscluster:
+  stage: deploy-dev
+  extends: .deploy-rediscluster
+  tags:
+  - eks-dev-infra
+
+remove-dev-rediscluster:
+  stage: deploy-dev
+  extends: .remove-rediscluster
+  tags:
+  - eks-dev-infra
+
+deploy-qa-crd:
+  stage: deploy-qa-crd
+  extends: .deploy-crd
+  tags:
+  - eks-qa-kube-system
+
+remove-qa-crd:
+  stage: deploy-qa-crd
+  extends: .remove-crd
+  tags:
+  - eks-qa-kube-system
+
+deploy-qa-operator:
+  stage: deploy-qa
+  extends: .deploy-operator
+  tags:
+  - eks-qa-infra
+  variables:
+    ENV: qa
+
+remove-qa-operator:
+  stage: deploy-qa
+  extends: .remove-operator
+  tags:
+  - eks-qa-infra
+
+deploy-qa-rediscluster:
+  stage: deploy-qa
+  extends: .deploy-rediscluster
+  tags:
+  - eks-qa-infra
+  variables:
+    ENV: qa
+
+remove-qa-rediscluster:
+  stage: deploy-qa
+  extends: .remove-rediscluster
+  tags:
+  - eks-qa-infra
+
+deploy-mars-pci-crd:
+  stage: deploy-mars-pci-crd
+  extends: .deploy-crd
+  tags:
+  - eks-mars-pci-kube-system
+
+remove-mars-pci-crd:
+  stage: deploy-mars-pci-crd
+  extends: .remove-crd
+  tags:
+  - eks-mars-pci-kube-system
+
+deploy-mars-pci-operator:
+  stage: deploy-mars-pci
+  extends: .deploy-operator
+  tags:
+  - eks-mars-pci-infra
+  variables:
+    ENV: mars-pci
+
+remove-mars-pci-operator:
+  stage: deploy-mars-pci
+  extends: .remove-operator
+  tags:
+  - eks-mars-pci-infra
+
+deploy-mars-pci-rediscluster:
+  stage: deploy-mars-pci
+  extends: .deploy-rediscluster
+  tags:
+  - eks-mars-pci-infra
+  variables:
+    ENV: mars-pci
+
+remove-mars-pci-rediscluster:
+  stage: deploy-mars-pci
+  extends: .remove-rediscluster
+  tags:
+  - eks-mars-pci-infra
+
+deploy-mars-apps-crd:
+  stage: deploy-mars-apps-crd
+  extends: .deploy-crd
+  tags:
+  - eks-mars-apps-kube-system
+
+remove-mars-apps-crd:
+  stage: deploy-mars-apps-crd
+  extends: .remove-crd
+  tags:
+  - eks-mars-apps-kube-system
+
+deploy-mars-apps-operator:
+  stage: deploy-mars-apps
+  extends: .deploy-operator
+  tags:
+  - eks-mars-apps-infra
+  variables:
+    ENV: mars-apps
+
+remove-mars-apps-operator:
+  stage: deploy-mars-apps
+  extends: .remove-operator
+  tags:
+  - eks-mars-apps-infra
+
+deploy-mars-apps-rediscluster:
+  stage: deploy-mars-apps
+  extends: .deploy-rediscluster
+  tags:
+  - eks-mars-apps-infra
+  variables:
+    ENV: mars-apps
+
+remove-mars-apps-rediscluster:
+  stage: deploy-mars-apps
+  extends: .remove-rediscluster
+  tags:
+  - eks-mars-apps-infra
