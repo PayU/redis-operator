@@ -1,0 +1,32 @@
+{{- if .Values.redisOperator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: {{ template "redis-operator.fullname" . }}-manager
+  namespace: {{ .Values.redisOperator.namespace }}
+spec:
+  replicas: {{ .Values.redisOperator.managerReplicas }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations: {{ toYaml .Values.redisOperator.annotations | nindent 8 }}
+      labels: {{ toYaml .Values.redisOperator.labels | nindent 8 }}
+    spec:
+      containers:
+      - args:
+        - --enable-leader-election
+        command:
+        - /manager
+        image: {{ .Values.redisOperator.manager.image.repository }}:{{ .Values.redisOperator.manager.image.tag }}
+        imagePullPolicy: {{ .Values.redisOperator.manager.image.pullPolicy }}
+        name: manager
+        resources: {{ toYaml .Values.redisOperator.manager.resources | nindent 10 }}
+        workingDir: /
+      imagePullSecrets: {{ toYaml .Values.redisOperator.imagePullSecrets | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.redisOperator.terminationGracePeriodSeconds }}
+      serviceAccountName: {{ .Values.redisOperator.serviceAccount.name }}
+{{- end }}

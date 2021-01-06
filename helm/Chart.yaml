@@ -1,0 +1,4 @@
+apiVersion: v2
+name: redis-operator
+version: 0.1.0
+type: application

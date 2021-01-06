@@ -149,8 +149,8 @@ func (r *RedisClusterReconciler) getLeaderIP(followerIP string) (string, error) 
 }
 
 // Returns the node number and leader number from a pod
-func (r *RedisClusterReconciler) getRedisNodeNumbersFromIP(podIP string) (string, string, error) {
-	pod, err := r.getPodByIP(podIP)
+func (r *RedisClusterReconciler) getRedisNodeNumbersFromIP(podIP string, namespace string) (string, string, error) {
+	pod, err := r.getPodByIP(namespace, podIP)
 	if err != nil {
 		return "", "", err
 	}
@@ -311,7 +311,7 @@ func (r *RedisClusterReconciler) doFailover(leaderIP string, followerIP ...strin
 // Recreates a leader based on a replica that took its place in a failover process;
 // the old leader pod must be already deleted
 func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster, promotedFollowerIP string) error {
-	nodeNumber, oldLeaderNumber, err := r.getRedisNodeNumbersFromIP(promotedFollowerIP)
+	nodeNumber, oldLeaderNumber, err := r.getRedisNodeNumbersFromIP(redisCluster.Namespace, promotedFollowerIP)
 	if err != nil {
 		return err
 	}
@@ -366,7 +366,7 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 }
 
 // Removes one or more follower nodes from the cluster
-func (r *RedisClusterReconciler) removeFollowers(followerIPs ...string) error {
+func (r *RedisClusterReconciler) removeFollowers(redisCluster *dbv1.RedisCluster, followerIPs ...string) error {
 	var pods []corev1.Pod
 	for _, followerIP := range followerIPs {
 		followerID, err := r.RedisCLI.MyClusterID(followerIP)
@@ -377,7 +377,7 @@ func (r *RedisClusterReconciler) removeFollowers(followerIPs ...string) error {
 			}
 		}
 
-		followerPod, err := r.getPodByIP(followerIP)
+		followerPod, err := r.getPodByIP(redisCluster.Namespace, followerIP)
 		if err != nil {
 			return err
 		}
@@ -453,7 +453,7 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 				}
 			}
 			if len(failedFollowers) > 0 {
-				if err := r.removeFollowers(failedFollowers...); err != nil {
+				if err := r.removeFollowers(redisCluster, failedFollowers...); err != nil {
 					return err
 				}
 			}
@@ -472,12 +472,12 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 }
 
 func (r *RedisClusterReconciler) updateFollower(redisCluster *dbv1.RedisCluster, followerIP string) error {
-	pod, err := r.getPodByIP(followerIP)
+	pod, err := r.getPodByIP(redisCluster.Namespace, followerIP)
 	if err != nil {
 		return err
 	}
 
-	if err := r.removeFollowers(followerIP); err != nil {
+	if err := r.removeFollowers(redisCluster, followerIP); err != nil {
 		return err
 	}
 
@@ -495,7 +495,7 @@ func (r *RedisClusterReconciler) updateLeader(redisCluster *dbv1.RedisCluster, l
 		return err
 	}
 
-	if err := r.removeFollowers(leaderIP); err != nil {
+	if err := r.removeFollowers(redisCluster, leaderIP); err != nil {
 		return err
 	}
 

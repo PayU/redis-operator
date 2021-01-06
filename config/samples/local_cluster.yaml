@@ -2,7 +2,7 @@ apiVersion: db.payu.com/v1
 kind: RedisCluster
 metadata:
   name: rdc-test
-  namespace: infra
+  namespace: default
 spec:
   leaderCount: 3
   leaderFollowersCount: 2
@@ -11,7 +11,7 @@ spec:
     image: "redis-init:testing"
   prometheusExporter:
     image: metrics-exporter:testing
-    port: 9121  
+    port: 9121
   imagePullSecrets: "regcred"
   redisContainerResources:
     limits:
