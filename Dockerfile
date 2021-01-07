@@ -37,7 +37,16 @@ FROM gcr.io/distroless/base-debian10
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
+COPY --from=builder /bin/sh .
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 
-ENTRYPOINT [ "/manager" ]
+ARG NAMESPACE="default"
+ARG METRICS_ADDR=":8080"
+ARG ENABLE_LEADER_ELECTION="true"
+
+ENV NAMESPACE_ENV=${NAMESPACE}
+ENV METRICS_ADDR_ENV=${METRICS_ADDR}
+ENV ENABLE_LEADER_ELECTION_ENV=${ENABLE_LEADER_ELECTION}
+
+ENTRYPOINT ["/sh", "-c", "/manager -namespace=$NAMESPACE_ENV -metrics-addr=$METRICS_ADDR_ENV -enable-leader-election=$ENABLE_LEADER_ELECTION_ENV"]

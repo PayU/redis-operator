@@ -8,6 +8,10 @@ TEST := test
 ENVCONFIG := default
 CONFIG_ENV := config-build-local
 
+OPERATOR_NAMESPACE ?= "default"
+METRICS_ADDR ?= ":8080"
+ENABLE_LEADER_ELECTION ?= "true"
+
 # Used to specify what environment is targeted, it determines what kustomize config is built
 # by default it builds the config for the local kind cluster.
 # To build for development/production environment run with envconfig=production.
@@ -103,8 +107,9 @@ generate: controller-gen
 
 # Build the docker image
 docker-build: $(TEST)
-	docker build . -t $(IMG)
+	docker build . -t $(IMG) --build-arg NAMESPACE=$(OPERATOR_NAMESPACE) --build-arg METRICS_ADDR=$(METRICS_ADDR) --build-arg ENABLE_LEADER_ELECTION=$(ENABLE_LEADER_ELECTION)
 
+# TODO add the operator flags to the developmetn image too
 # Build the development Docker image
 docker-build-dev: $(TEST)
 	docker build ./hack -f ./hack/dev.Dockerfile -t $(DEV_IMAGE)
@@ -138,9 +143,9 @@ kind-load-redis:
 kind-load-redis-init:
 	kind load docker-image redis-init:testing --name $(CLUSTER_NAME)
 
-# Load the local metrics exporter container for redis 
+# Load the local metrics exporter container for redis
 kind-load-metrics-exporter:
-	kind load docker-image metrics-exporter:testing --name $(CLUSTER_NAME)	
+	kind load docker-image metrics-exporter:testing --name $(CLUSTER_NAME)
 
 # Used for skipping targets
 skip: ;
