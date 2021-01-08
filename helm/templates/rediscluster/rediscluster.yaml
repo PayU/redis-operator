@@ -5,17 +5,30 @@ metadata:
   name: {{ .Values.redisCluster.name }}
   namespace: {{ .Values.redisCluster.namespace }}
 spec:
+{{- if .Values.redisCluster.leaderCount }}
   leaderCount: {{ .Values.redisCluster.leaderCount }}
+{{- end }}
+{{- if .Values.redisCluster.leaderFollowersCount }}
   leaderFollowersCount: {{ .Values.redisCluster.leaderFollowersCount }}
-  image: {{ .Values.redisCluster.redis.image.repository }}:{{ .Values.redisCluster.redis.image.tag }}
-  imagePullSecrets: {{ .Values.redisCluster.imagePullSecrets }}
+{{- end }}
+  redis: {{ toYaml .Values.redisCluster.redis | nindent 4 }}
+{{- if .Values.redisCluster.initContainer }}
   initContainer: {{ toYaml .Values.redisCluster.initContainer | nindent 4 }}
-  prometheusExporter: {{ toYaml .Values.redisCluster.prometheusExporter | nindent 4 }}
-  redisContainerResources: {{ toYaml .Values.redisCluster.redis.resources | nindent 4 }}
+{{- end }}
   podLabelSelector: {{ toYaml .Values.redisCluster.podLabelSelector | nindent 4 }}
+{{- if .Values.redisCluster.prometheusExporter }}
+  prometheusExporter: {{ toYaml .Values.redisCluster.prometheusExporter | nindent 4 }}
+{{- end }}
+{{- if .Values.redisCluster.imagePullSecrets }}
+  imagePullSecrets: {{ .Values.redisCluster.imagePullSecrets }}
+{{- end }}
+{{- if .Values.redisCluster.podAnnotations }}
   podAnnotations: {{ toYaml .Values.redisCluster.podAnnotations | nindent 4 }}
+{{- end }}
   affinity:
     hostTopologyKey: {{ .Values.redisCluster.hostTopologyKey }}
     zoneTopologyKey: {{ .Values.redisCluster.zoneTopologyKey }}
-  redisContainerEnvVariables: {{ toYaml .Values.redisCluster.redis.envVar | nindent 4 }}
+{{- if .Values.redisCluster.enableHugePages }}
+  enableHugePages:  {{ .Values.redisCluster.enableHugePages }}
+{{- end }}
 {{- end }}

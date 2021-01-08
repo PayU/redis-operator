@@ -1,6 +1,6 @@
 # TODO need to make a 'clean' target for removing the cluster resources and local files
 # Image URL to use all building/pushing image targets
-IMG ?= docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker
+IMG := redis-operator-docker:local
 DEV_IMAGE ?= redis-operator:dev
 DEPLOY_TARGET ?= deploy-default
 
@@ -23,13 +23,6 @@ ifdef NOTEST
 	TEST := skip
 endif
 
-ifdef LOCAL
-	IMG := redis-operator-docker:local
-	REDIS_LOAD := kind-load-redis
-	REDIS_BUILD := docker-build-local-redis
-	DEPLOY_TARGET := deploy-local
-endif
-
 CLUSTER_NAME ?= redis-test
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
@@ -49,7 +42,7 @@ test: generate fmt vet manifests
 
 # Setup e2e tests
 e2e-test-setup: IMG=redis-operator-docker:local
-e2e-test-setup: docker-build docker-build-local-redis docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all
+e2e-test-setup: docker-build-operator docker-build-local-redis docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all
 	docker build ./hack -f ./hack/redis.Dockerfile -t redis:update
 	kind load docker-image redis:update --name $(CLUSTER_NAME)
 
@@ -71,9 +64,6 @@ uninstall: manifests
 
 deploy: $(DEPLOY_TARGET)
 
-# Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy-default: manifests config-build
-
 # Builds the resources from kustomize configuration based on the specified environment
 config-build: $(CONFIG_ENV)
 	cd config/manager/base && kustomize edit set image controller=$(IMG)
@@ -86,12 +76,12 @@ config-build-local:
 config-build-production:
 	(cd config/production && kustomize edit set image controller=$(IMG)) && kustomize build config/production | kubectl apply -f -
 
-# Deploy controller in a local kind cluster
-deploy-local: generate manifests docker-build $(REDIS_BUILD) $(REDIS_LOAD) docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all deploy-default
+# Deploy controller in the configured Kubernetes cluster in ~/.kube/config
+deploy-default: generate manifests config-build docker-build-operator docker-build-local-redis docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-clusterrole webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 # Run go fmt against code
 fmt:
@@ -105,8 +95,8 @@ vet:
 generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-# Build the docker image
-docker-build: $(TEST)
+# Build the operator docker image
+docker-build-operator: $(TEST)
 	docker build . -t $(IMG) --build-arg NAMESPACE=$(OPERATOR_NAMESPACE) --build-arg METRICS_ADDR=$(METRICS_ADDR) --build-arg ENABLE_LEADER_ELECTION=$(ENABLE_LEADER_ELECTION)
 
 # TODO add the operator flags to the developmetn image too
