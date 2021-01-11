@@ -41,6 +41,7 @@ func testCreateDeleteRedisCluster(t *testing.T) {
 	// create namespace, roles, rolebindings and CRD
 	err := tfw.InitializeDefaultResources(&ctx, defaultConfig.KustomizePath,
 		defaultConfig.OperatorImage,
+		defaultConfig.Namespace,
 		defaultConfig.RedisClusterSetupTimeout)
 	Check(err, t.Fatalf, "Failed to initialize resources")
 
@@ -63,7 +64,7 @@ func testCreateDeleteRedisCluster(t *testing.T) {
 
 func createDefaultCluster(ctx *framework.TestCtx, t *testing.T) (*dbv1.RedisCluster, error) {
 	err := tfw.InitializeDefaultResources(ctx, defaultConfig.KustomizePath,
-		defaultConfig.OperatorImage, defaultConfig.RedisClusterSetupTimeout)
+		defaultConfig.OperatorImage, defaultConfig.Namespace, defaultConfig.RedisClusterSetupTimeout)
 	Check(err, t.Fatalf, "Failed to initialize resources")
 
 	redisCluster, err := tfw.MakeRedisCluster(defaultConfig.RedisClusterYAMLPath)
@@ -79,17 +80,11 @@ func createDefaultCluster(ctx *framework.TestCtx, t *testing.T) (*dbv1.RedisClus
 	return redisCluster, err
 }
 
-func makeAZMap(ctx *framework.TestCtx, t *testing.T) map[string]map[string]([]*corev1.Pod) {
-	var zoneLabel string
-	// the availability zone label differs between K8s 1.17+ and older
+func makeAZMap(ctx *framework.TestCtx, t *testing.T, config TestConfig) map[string]map[string]([]*corev1.Pod) {
+	// the topology labels differ between K8s 1.17+ and older
 	// https://kubernetes.io/docs/reference/kubernetes-api/labels-annotations-taints/#failure-domainbetakubernetesiozone
-	if tfw.K8sServerVersion.String() < "v1.17" {
-		zoneLabel = "failure-domain.beta.kubernetes.io/zone"
-	} else {
-		zoneLabel = "topology.kubernetes.io/zone"
-	}
+	zoneLabel := "failure-domain.beta.kubernetes.io/zone"
 
-	ns := tfw.KustomizeConfig.Namespace
 	nodes, err := tfw.GetNodes()
 	Check(err, t.Fatalf, "Failed to get Kubernetes nodes")
 
@@ -98,7 +93,7 @@ func makeAZMap(ctx *framework.TestCtx, t *testing.T) map[string]map[string]([]*c
 
 	for _, node := range nodes.Items {
 		opts := []client.ListOption{
-			client.InNamespace(ns.Name),
+			client.InNamespace(config.Namespace),
 			client.MatchingFields{"spec.nodeName": node.Name},
 		}
 
@@ -172,7 +167,7 @@ func testRedisClusterAvailabilityZoneDistribution(t *testing.T) {
 	defer ctx.Cleanup()
 
 	createDefaultCluster(&ctx, t)
-	azMap := makeAZMap(&ctx, t)
+	azMap := makeAZMap(&ctx, t, defaultConfig)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
 }
@@ -191,7 +186,7 @@ func testRollingUpdate(t *testing.T) {
 	redisCluster, err := createDefaultCluster(&ctx, t)
 	Check(err, t.Fatalf, "Failed to create default cluster")
 
-	Check(tfw.PatchResource(redisCluster, defaultConfig.ContainerResourcePatch), t.Fatalf, "Failed to update resources in CR")
+	Check(tfw.ApplyYAMLfile(defaultConfig.RedisClusterUpdatedYAMLPath, defaultConfig.K8sResourceSetupTimeout, false), t.Fatalf, "Failed to update resources in CR")
 	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster container resource update started...")
@@ -199,12 +194,12 @@ func testRollingUpdate(t *testing.T) {
 		"Failed to reach Ready state")
 	fmt.Printf("\n[E2E] Cluster update successful\n")
 
-	azMap := makeAZMap(&ctx, t)
+	azMap := makeAZMap(&ctx, t, defaultConfig)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
 
 	fmt.Printf("\n[E2E] Testing response to missing image...")
-	Check(tfw.UpdateImage(redisCluster, "redis:noimage"), t.Fatalf, "Failed to update image in CR")
+	Check(tfw.UpdateRedisImage(redisCluster, "redis:noimage"), t.Fatalf, "Failed to update image in CR")
 	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster image update started...")
@@ -214,7 +209,7 @@ func testRollingUpdate(t *testing.T) {
 	}
 
 	fmt.Printf("\n[E2E] Cluster update failed. Restoring...")
-	Check(tfw.UpdateImage(redisCluster, defaultConfig.UpdateImage), t.Fatalf, "Failed to update image in CR")
+	Check(tfw.UpdateRedisImage(redisCluster, defaultConfig.UpdateImage), t.Fatalf, "Failed to update image in CR")
 	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster image update continued...")
@@ -222,7 +217,7 @@ func testRollingUpdate(t *testing.T) {
 		"Failed to reach Ready state")
 	fmt.Printf("\n[E2E] Cluster update successful\n")
 
-	azMap = makeAZMap(&ctx, t)
+	azMap = makeAZMap(&ctx, t, defaultConfig)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
 }
@@ -239,6 +234,10 @@ func TestAZFailure(t *testing.T) {
 
 	redisCluster, err := createDefaultCluster(&ctx, t)
 	Check(err, t.Fatalf, "Failed to create default cluster")
+
+	azMap := makeAZMap(&ctx, t, defaultConfig)
+	printAZMap(azMap)
+	checkAZCorrectness(azMap, t)
 
 	targetAZ := "eu-central-1a"
 
@@ -270,7 +269,7 @@ func TestAZFailure(t *testing.T) {
 	Check(tfw.WaitForState(redisCluster, "Ready", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Ready state")
 
-	azMap := makeAZMap(&ctx, t)
+	azMap = makeAZMap(&ctx, t, defaultConfig)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
 }

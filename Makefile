@@ -12,13 +12,6 @@ OPERATOR_NAMESPACE ?= "default"
 METRICS_ADDR ?= ":8080"
 ENABLE_LEADER_ELECTION ?= "true"
 
-# Used to specify what environment is targeted, it determines what kustomize config is built
-# by default it builds the config for the local kind cluster.
-# To build for development/production environment run with envconfig=production.
-ifeq ($(envconfig), production)
-	CONFIG_ENV = config-build-production
-endif
-
 ifdef NOTEST
 	TEST := skip
 endif
@@ -72,16 +65,12 @@ config-build: $(CONFIG_ENV)
 config-build-local:
 	kustomize build config/default | kubectl apply -f -
 
-# Use kustomize to build the YAML configuration files for the development cluster
-config-build-production:
-	(cd config/production && kustomize edit set image controller=$(IMG)) && kustomize build config/production | kubectl apply -f -
-
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy-default: generate manifests config-build docker-build-operator docker-build-local-redis docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-clusterrole webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager paths="./..." output:crd:artifacts:config=config/crd/bases
 
 # Run go fmt against code
 fmt:

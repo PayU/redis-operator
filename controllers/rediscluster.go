@@ -149,7 +149,7 @@ func (r *RedisClusterReconciler) getLeaderIP(followerIP string) (string, error) 
 }
 
 // Returns the node number and leader number from a pod
-func (r *RedisClusterReconciler) getRedisNodeNumbersFromIP(podIP string, namespace string) (string, string, error) {
+func (r *RedisClusterReconciler) getRedisNodeNumbersFromIP(namespace string, podIP string) (string, string, error) {
 	pod, err := r.getPodByIP(namespace, podIP)
 	if err != nil {
 		return "", "", err
@@ -181,10 +181,6 @@ func (r *RedisClusterReconciler) createNewRedisCluster(redisCluster *dbv1.RedisC
 		return err
 	}
 
-	if _, err := r.createRedisHeadlessService(redisCluster); err != nil {
-		return err
-	}
-
 	if err := r.initializeCluster(redisCluster); err != nil {
 		return err
 	}
@@ -207,10 +203,12 @@ func (r *RedisClusterReconciler) initializeFollowers(redisCluster *dbv1.RedisClu
 			nodeNumber++
 		}
 	}
+
 	err = r.addFollowers(redisCluster, nodeNumbers...)
 	if err != nil {
 		return err
 	}
+
 	r.Log.Info("[OK] Redis followers initialized successfully")
 	return nil
 }
@@ -233,6 +231,10 @@ func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisClust
 		r.RedisCLI.Flushall(leaderPod.Status.PodIP)
 		r.RedisCLI.ClusterReset(leaderPod.Status.PodIP)
 		nodeIPs = append(nodeIPs, leaderPod.Status.PodIP)
+	}
+
+	if _, err := r.waitForPodReady(newLeaderPods...); err != nil {
+		return err
 	}
 
 	if err = r.RedisCLI.ClusterCreate(nodeIPs); err != nil {
@@ -323,6 +325,11 @@ func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster,
 	}
 	newLeaderIP := newLeaderPods[0].Status.PodIP
 
+	newLeaderPods, err = r.waitForPodReady(newLeaderPods...)
+	if err != nil {
+		return err
+	}
+
 	if err = r.replicateLeader(newLeaderIP, promotedFollowerIP); err != nil {
 		return err
 	}
@@ -353,10 +360,12 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 		return err
 	}
 
-	for _, followerPod := range newFollowerPods {
-		if pollErr := r.waitForPodReady(&followerPod); pollErr != nil {
-			return pollErr
-		}
+	pods, err := r.waitForPodReady(newFollowerPods...)
+	if err != nil {
+		return err
+	}
+
+	for _, followerPod := range pods {
 		r.Log.Info(fmt.Sprintf("Replicating: %s %s", followerPod.Name, "redis-node-"+followerPod.Labels["leader-number"]))
 		if err = r.replicateLeader(followerPod.Status.PodIP, nodeIPs[followerPod.Labels["leader-number"]]); err != nil {
 			return err
@@ -521,7 +530,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 					return err
 				}
 			} else {
-				if pollErr := r.waitForPodReady(follower.Pod); pollErr != nil {
+				if _, pollErr := r.waitForPodReady(*follower.Pod); pollErr != nil {
 					return pollErr
 				}
 			}
@@ -535,7 +544,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 				return err
 			}
 		} else {
-			if pollErr := r.waitForPodReady(leader.Pod); pollErr != nil {
+			if _, pollErr := r.waitForPodReady(*leader.Pod); pollErr != nil {
 				return pollErr
 			}
 		}
@@ -633,18 +642,13 @@ func (r *RedisClusterReconciler) waitForFailover(podIP string) error {
 
 func (r *RedisClusterReconciler) isPodUpToDate(redisCluster *dbv1.RedisCluster, pod *corev1.Pod) (bool, error) {
 	for _, container := range pod.Spec.Containers {
-		if container.Name == "redis-container" {
-			if container.Image != redisCluster.Spec.Redis.Image {
-				return false, nil
-			}
-			if !reflect.DeepEqual(container.Resources, redisCluster.Spec.Redis.Resources) {
-				return false, nil
+		for _, crContainer := range redisCluster.Spec.RedisPodSpec.Containers {
+			if crContainer.Name == container.Name {
+				if !reflect.DeepEqual(container.Resources, crContainer.Resources) || crContainer.Image != container.Image {
+					return false, nil
+				}
 			}
 		}
-	}
-	if pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].PodAffinityTerm.TopologyKey != redisCluster.Spec.Affinity.ZoneTopologyKey ||
-		pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution[0].TopologyKey != redisCluster.Spec.Affinity.HostTopologyKey {
-		return false, nil
 	}
 	return true, nil
 }

@@ -11,24 +11,15 @@ spec:
 {{- if .Values.redisCluster.leaderFollowersCount }}
   leaderFollowersCount: {{ .Values.redisCluster.leaderFollowersCount }}
 {{- end }}
-  redis: {{ toYaml .Values.redisCluster.redis | nindent 4 }}
-{{- if .Values.redisCluster.initContainer }}
-  initContainer: {{ toYaml .Values.redisCluster.initContainer | nindent 4 }}
-{{- end }}
   podLabelSelector: {{ toYaml .Values.redisCluster.podLabelSelector | nindent 4 }}
-{{- if .Values.redisCluster.prometheusExporter }}
-  prometheusExporter: {{ toYaml .Values.redisCluster.prometheusExporter | nindent 4 }}
+{{- if .Values.redisCluster.enableDefaultAffinity }}
+  enableDefaultAffinity: {{ .Values.redisCluster.enableDefaultAffinity }}
 {{- end }}
-{{- if .Values.redisCluster.imagePullSecrets }}
-  imagePullSecrets: {{ .Values.redisCluster.imagePullSecrets }}
+{{- if .Values.redisCluster.annotations }}
+  annotations: {{ toYaml .Values.redisCluster.annotations | nindent 4 }}
 {{- end }}
-{{- if .Values.redisCluster.podAnnotations }}
-  podAnnotations: {{ toYaml .Values.redisCluster.podAnnotations | nindent 4 }}
+{{- if .Values.redisCluster.labels }}
+  annotations: {{ toYaml .Values.redisCluster.labels | nindent 4 }}
 {{- end }}
-  affinity:
-    hostTopologyKey: {{ .Values.redisCluster.hostTopologyKey }}
-    zoneTopologyKey: {{ .Values.redisCluster.zoneTopologyKey }}
-{{- if .Values.redisCluster.enableHugePages }}
-  enableHugePages:  {{ .Values.redisCluster.enableHugePages }}
-{{- end }}
+  redisPodSpec: {{ toYaml .Values.redisCluster.redisPodSpec | nindent 4 }}
 {{- end }}

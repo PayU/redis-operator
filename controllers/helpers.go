@@ -12,7 +12,7 @@ type RedisClusterState string
 
 const (
 	genericCheckInterval  = 2 * time.Second
-	genericCheckTimeout   = 30 * time.Second
+	genericCheckTimeout   = 50 * time.Second
 	clusterCreateInterval = 5 * time.Second
 	clusterCreateTimeout  = 30 * time.Second
 )

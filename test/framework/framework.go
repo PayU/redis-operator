@@ -33,7 +33,6 @@ type Framework struct {
 	KubeClient       kubernetes.Interface
 	ExtentionClient  apiextclient.Interface
 	RedisCLI         *rediscli.RedisCLI
-	KustomizeConfig  *KustomizeConfig
 }
 
 // A new framework instance is initialised with a cluster configuration that
