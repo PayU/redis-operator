@@ -17,11 +17,10 @@ spec:
       labels: {{ toYaml .Values.redisOperator.labels | nindent 8 }}
     spec:
       containers:
-      - image: {{ .Values.redisOperator.manager.image.repository }}:{{ .Values.redisOperator.manager.image.tag }}
-        imagePullPolicy: {{ .Values.redisOperator.manager.image.pullPolicy }}
-        name: manager
+      - image: {{ .Values.redisOperator.manager.image }}
+        imagePullPolicy: {{ .Values.redisOperator.manager.imagePullPolicy }}
+        name: {{ .Values.redisOperator.manager.name }}
         resources: {{ toYaml .Values.redisOperator.manager.resources | nindent 10 }}
-        workingDir: /
       imagePullSecrets: {{ toYaml .Values.redisOperator.imagePullSecrets | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.redisOperator.terminationGracePeriodSeconds }}
       serviceAccountName: {{ .Values.redisOperator.serviceAccount.name }}

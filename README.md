@@ -8,25 +8,11 @@ The basic features have been completed, and while no breaking API changes are cu
 
 [ Feature state wiki page ](https://github.com/PayU/Redis-Operator/wiki/Feature-state)
 
-## Quick start
+### Using the operator on a local cluster
 
-How to update the crd:
+The project uses a [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) cluster for development and test purposes.
 
-`make install`
-
-How to update the manager/controller code:
-
-`make manager`
-
-How to deploy the controller to a cluster (using the current context):
-
-`make deploy`
-
----
-
-### Using a local cluster
-
-For testing the Redis operator on a local `kind` cluster:
+**1. Setting up a cluster**
 
 ```bash
 cd hack
@@ -38,20 +24,52 @@ If the `.kube/config` file was not updated it can be populated using
 
 `kind --name redis-test get kubeconfig > ~/.kube/config`
 
-After having a running `kind` cluster we should install the operator crd.
+**2. Installing the operator**
+
+After having a running `kind` cluster we should install the operator crd. All make commands should run from the repository root.
 
 ```bash
- cd ..
- make install
+make install
 ```
 
 After having a running `kind` cluster the operator can be deployed using
 
-`make deploy LOCAL=true NOTEST=true`
+`make deploy NOTEST=true`
 
 A development operator YAML file can be found in `Redis-Operator/config/samples/local_cluster.yaml`, apply it to the cluster after the operator deployment is up with:
 
 `kubectl apply -f config/samples/local_cluster.yaml`
+
+**Tip**
+
+If you are missing an image in the cluster, an easy way to build and load all needed images is with the setup for E2E tests
+
+`make e2e-test-setup`
+
+### Deploy via Helm
+
+The Helm chart was developed with Helm v3, it might work with v2 but it was not tested as such.
+The chart can create the CRD, Redis operator and RedisCluster CR and it has feature flags for all of them plus the RBAC setup.
+Use example:
+
+```
+# create everything in the default namespace
+helm install redis-operator ./helm -n default
+
+# install only the Redis operator in the default namespace
+helm install redis-operator ./helm -n default --set global.rbac.create=false redisCluster.enabled=false --skip-crds
+
+# install only the RBAC configuration (Role+Binding, ClusterRole+Binding, ServiceAccount)
+helm install redis-operator-rbac ./helm -n default --set redisOperator=false redisCluster.enabled=false --skip-crds
+
+#install only the RedisCluster in the default namespace
+helm install redis-operator-rbac ./helm -n default --set redisOperator=false global.rbac.create=false --skip-crds
+```
+
+### Running the E2E tests
+
+If you plan to make a contribution to the project please make sure the change is tested with the E2E test suite.
+Check the README on how to use E2E tests: [https://github.com/PayU/redis-operator/blob/master/test/README.md](https://github.com/PayU/redis-operator/blob/master/test/README.md)
 
 ---
 

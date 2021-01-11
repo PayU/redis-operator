@@ -158,6 +158,7 @@ func (f *Framework) InitializeDefaultResources(ctx *TestCtx, kustPath string, op
 
 	resources := []runtime.Object{
 		&kustomizeConfig.Namespace,
+		&kustomizeConfig.ServiceAccount,
 		&kustomizeConfig.ClusterRole,
 		&kustomizeConfig.ClusterRoleBinding,
 		&kustomizeConfig.Role,
@@ -229,11 +230,12 @@ func (f *Framework) PatchResource(obj runtime.Object, patch []byte) error {
 }
 
 func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Duration) error {
-	// TODO the method should also accept lists of nodes and apply the in parallel
+	// TODO the method should also accept lists of nodes and apply them in parallel
 	node, err := f.KubeClient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
+
 	drainer := drain.Helper{
 		Ctx:    context.TODO(),
 		Client: f.KubeClient,
@@ -253,7 +255,6 @@ func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Du
 		}
 		return false, nil
 	}); pollErr != nil {
-		fmt.Println("Out bad")
 		return pollErr
 	}
 	return nil
@@ -279,6 +280,7 @@ func (f *Framework) DrainNode(nodeName string, timeout time.Duration) error {
 		Ctx:                 context.TODO(),
 		Client:              f.KubeClient,
 		Force:               false,
+		DeleteLocalData:     true,
 		IgnoreAllDaemonSets: true,
 		Timeout:             timeout,
 		Out:                 os.Stdout,

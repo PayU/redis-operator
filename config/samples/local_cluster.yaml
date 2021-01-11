@@ -6,20 +6,40 @@ metadata:
 spec:
   leaderCount: 3
   leaderFollowersCount: 2
-  image: "redis:testing"
+  enableHugePages: false
+
+  redis:
+    name: redis-container
+    image: redis:testing
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 500m
+        memory: 500Mi
+      requests:
+        cpu: 50m
+        memory: 50Mi
+    env:
+    - name: PORT
+      value: '6379'
+    - name: CONF_PATH
+      value: '/usr/local/etc/redis/redis.conf'
+    ports:
+    - containerPort: 6379
+
   initContainer:
-    image: "redis-init:testing"
+    name: redis-init-container
+    image: redis-init:testing
+    imagePullPolicy: IfNotPresent
+
   prometheusExporter:
+    name: redis-metric-exporter
     image: metrics-exporter:testing
-    port: 9121
+    imagePullPolicy: IfNotPresent
+    ports:
+    - containerPort: 9121
+
   imagePullSecrets: "regcred"
-  redisContainerResources:
-    limits:
-      cpu: 500m
-      memory: 500Mi
-    requests:
-      cpu: 50m
-      memory: 50Mi
   podLabelSelector:
     app: "redis"
   podAnnotations:
@@ -27,8 +47,3 @@ spec:
   affinity:
     hostTopologyKey: "kubernetes.io/hostname"
     zoneTopologyKey: "failure-domain.beta.kubernetes.io/zone"
-  redisContainerEnvVariables:
-    - name: PORT
-      value: '6379'
-    - name: CONF_PATH
-      value: '/usr/local/etc/redis/redis.conf'

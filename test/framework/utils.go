@@ -24,6 +24,7 @@ import (
 type KustomizeConfig struct {
 	Namespace          corev1.Namespace
 	CRD                extv1.CustomResourceDefinition
+	ServiceAccount     corev1.ServiceAccount
 	Role               rbacv1.Role
 	ClusterRole        rbacv1.ClusterRole
 	RoleBinding        rbacv1.RoleBinding
@@ -35,6 +36,7 @@ func NewKustomizeConfig() *KustomizeConfig {
 	return &KustomizeConfig{
 		Namespace:          corev1.Namespace{},
 		CRD:                extv1.CustomResourceDefinition{},
+		ServiceAccount:     corev1.ServiceAccount{},
 		Role:               rbacv1.Role{},
 		ClusterRole:        rbacv1.ClusterRole{},
 		RoleBinding:        rbacv1.RoleBinding{},
@@ -145,35 +147,41 @@ func (f *Framework) ParseKustomizeConfig(yamlConfig string) (*KustomizeConfig, m
 	}
 	yamlMap["crd"] = string(yamlRes[1])
 
-	if err := yaml.Unmarshal(yamlRes[2], &kustRes.Role); err != nil {
-		fmt.Println("Could not unmarshal role resource")
+	if err := yaml.Unmarshal(yamlRes[2], &kustRes.ServiceAccount); err != nil {
+		fmt.Println("Could not unmarshal serviceaccount resource")
 		return nil, nil, err
 	}
 	yamlMap["role"] = string(yamlRes[2])
 
-	if err := yaml.Unmarshal(yamlRes[3], &kustRes.ClusterRole); err != nil {
+	if err := yaml.Unmarshal(yamlRes[3], &kustRes.Role); err != nil {
+		fmt.Println("Could not unmarshal role resource")
+		return nil, nil, err
+	}
+	yamlMap["role"] = string(yamlRes[3])
+
+	if err := yaml.Unmarshal(yamlRes[4], &kustRes.ClusterRole); err != nil {
 		fmt.Println("Could not unmarshal clusterrole resource")
 		return nil, nil, err
 	}
-	yamlMap["clusterrole"] = string(yamlRes[3])
+	yamlMap["clusterrole"] = string(yamlRes[4])
 
-	if err := yaml.Unmarshal(yamlRes[4], &kustRes.RoleBinding); err != nil {
+	if err := yaml.Unmarshal(yamlRes[5], &kustRes.RoleBinding); err != nil {
 		fmt.Println("Could not unmarshal rolebinding resource")
 		return nil, nil, err
 	}
-	yamlMap["rolebinding"] = string(yamlRes[4])
+	yamlMap["rolebinding"] = string(yamlRes[5])
 
-	if err := yaml.Unmarshal(yamlRes[5], &kustRes.ClusterRoleBinding); err != nil {
+	if err := yaml.Unmarshal(yamlRes[6], &kustRes.ClusterRoleBinding); err != nil {
 		fmt.Println("Could not unmarshal clusterrolebinding resource")
 		return nil, nil, err
 	}
-	yamlMap["clusterrolebinding"] = string(yamlRes[5])
+	yamlMap["clusterrolebinding"] = string(yamlRes[6])
 
-	if err := yaml.Unmarshal(yamlRes[6], &kustRes.Deployment); err != nil {
+	if err := yaml.Unmarshal(yamlRes[7], &kustRes.Deployment); err != nil {
 		fmt.Println("Could not unmarshal deployment resource")
 		return nil, nil, err
 	}
-	yamlMap["deployment"] = string(yamlRes[6])
+	yamlMap["deployment"] = string(yamlRes[7])
 
 	f.KustomizeConfig = kustRes
 

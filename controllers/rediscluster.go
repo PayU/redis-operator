@@ -634,10 +634,10 @@ func (r *RedisClusterReconciler) waitForFailover(podIP string) error {
 func (r *RedisClusterReconciler) isPodUpToDate(redisCluster *dbv1.RedisCluster, pod *corev1.Pod) (bool, error) {
 	for _, container := range pod.Spec.Containers {
 		if container.Name == "redis-container" {
-			if container.Image != redisCluster.Spec.Image {
+			if container.Image != redisCluster.Spec.Redis.Image {
 				return false, nil
 			}
-			if !reflect.DeepEqual(container.Resources, redisCluster.Spec.RedisContainerResources) {
+			if !reflect.DeepEqual(container.Resources, redisCluster.Spec.Redis.Resources) {
 				return false, nil
 			}
 		}

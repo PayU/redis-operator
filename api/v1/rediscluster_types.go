@@ -33,27 +33,6 @@ type TopologyKeys struct {
 	ZoneTopologyKey string `json:"zoneTopologyKey,omitempty"`
 }
 
-// InitContainerOpt defines kernel settings for redis node
-type InitContainerOpt struct {
-	Image string `json:"image"`
-
-	// +optional
-	EnabledHugepage bool `json:"enabledHugepage"`
-
-	// +optional
-	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
-}
-
-// PrometheusExporterOpt is used for metric exporter container configuration
-type PrometheusExporterOpt struct {
-	Image string `json:"image"`
-
-	Port int32 `json:"port"`
-
-	// +optional
-	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
-}
-
 // RedisClusterSpec defines the desired state of RedisCluster
 type RedisClusterSpec struct {
 
@@ -66,29 +45,23 @@ type RedisClusterSpec struct {
 	// The number of followers that each leader will have
 	LeaderFollowersCount int `json:"leaderFollowersCount,omitempty"`
 
-	// +kubebuilder:validation:MinLength=2
-	// full path of the Redis docker image
-	Image string `json:"image"`
-
 	// +optional
 	// modify kernel setting regarding backlogged sockets and transparent huge pages.
-	InitContainer InitContainerOpt `json:"initContainer"`
+	InitContainer corev1.Container `json:"initContainer,omitempty"`
 
-	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
+	Redis corev1.Container `json:"redis"`
 
-	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
-
-	RedisContainerResources corev1.ResourceRequirements `json:"redisContainerResources,omitempty"`
-
-	PrometheusExporter PrometheusExporterOpt `json:"prometheusExporter,omitempty"`
+	PrometheusExporter corev1.Container `json:"prometheusExporter,omitempty"`
 
 	PodLabelSelector PodLabelSelector `json:"podLabelSelector"`
 
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 
-	Affinity TopologyKeys `json:"affinity,omitempty"`
+	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
 
-	RedisContainerEnvVariables []corev1.EnvVar `json:"redisContainerEnvVariables,omitempty"`
+	EnableHugePages bool `json:"enableHugePages,omitempty"`
+
+	Affinity TopologyKeys `json:"affinity,omitempty"`
 }
 
 // RedisClusterStatus defines the observed state of RedisCluster

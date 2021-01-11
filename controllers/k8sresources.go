@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -58,23 +59,11 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 	podLabels := make(map[string]string)
 	containers := make([]corev1.Container, 0)
 	initContainers := make([]corev1.Container, 0)
-	redisContainerEnvVariables := []corev1.EnvVar{
-		{Name: "PORT", Value: "6379"},
-	}
 
 	podLabels["app"] = redisCluster.Spec.PodLabelSelector.App
 	podLabels["redis-node-role"] = nodeRole
 	podLabels["leader-number"] = leaderNumber
 	podLabels["node-number"] = nodeNumber
-
-	for _, envStruct := range redisCluster.Spec.RedisContainerEnvVariables {
-		if envStruct.Name != "PORT" {
-			redisContainerEnvVariables = append(redisContainerEnvVariables, corev1.EnvVar{
-				Name:  envStruct.Name,
-				Value: envStruct.Value,
-			})
-		}
-	}
 
 	imagePullSecrets := []corev1.LocalObjectReference{
 		{Name: redisCluster.Spec.ImagePullSecrets},
@@ -82,29 +71,20 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 
 	containers = []corev1.Container{
 		{
-			Name:            "redis-container",
-			Image:           redisCluster.Spec.Image,
-			ImagePullPolicy: redisCluster.Spec.ImagePullPolicy,
-			Resources:       corev1.ResourceRequirements(redisCluster.Spec.RedisContainerResources),
-			Env:             redisContainerEnvVariables,
-			Ports: []corev1.ContainerPort{
-				{ContainerPort: 6379, Name: "redis", Protocol: "TCP"},
-			},
-			VolumeMounts: []corev1.VolumeMount{
+			Name:            redisCluster.Spec.Redis.Name,
+			Image:           redisCluster.Spec.Redis.Image,
+			ImagePullPolicy: redisCluster.Spec.Redis.ImagePullPolicy,
+			Resources:       redisCluster.Spec.Redis.Resources,
+			Ports:           redisCluster.Spec.Redis.Ports,
+			Env:             redisCluster.Spec.Redis.Env,
+			VolumeMounts: []corev1.VolumeMount{ // TODO move this hardcoded declaration outside of the code
 				{Name: "redis-node-configuration", MountPath: "/usr/local/etc/redis"},
 			},
 		},
 	}
 
-	if redisCluster.Spec.PrometheusExporter != (dbv1.PrometheusExporterOpt{}) {
-		containers = append(containers, corev1.Container{
-			Name:            "redis-metric-exporter",
-			Image:           redisCluster.Spec.PrometheusExporter.Image,
-			ImagePullPolicy: redisCluster.Spec.PrometheusExporter.ImagePullPolicy,
-			Ports: []corev1.ContainerPort{
-				{ContainerPort: redisCluster.Spec.PrometheusExporter.Port, Name: "client", Protocol: "TCP"},
-			},
-		})
+	if !reflect.DeepEqual(redisCluster.Spec.PrometheusExporter, corev1.Container{}) {
+		containers = append(containers, redisCluster.Spec.PrometheusExporter)
 	}
 
 	volumes := []corev1.Volume{
@@ -165,23 +145,27 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 		privileged := true
 
 		/*
-		* init container will make sure to avoid redis kernel warning: '# WARNING: The TCP backlog setting of 511 cannot be enforced because /proc/sys/net/core/somaxconn is set to the lower value of 128'
-		* 1) sysctl -w net.core.somaxconn=1024 -> set the maximum number of "backlogged sockets". the backlog parameter specifies the number of pending connections the connection queue will hold. Default is 128.
-		* 2) echo never > /host-sys/kernel/mm/transparent_hugepage/enabled -> disabling the kernel setting Transparent Huge Pages (THP) - recommended for redis (http://doc.nuodb.com/Latest/Content/Note-About-%20Using-Transparent-Huge-Pages.htm)
+		* init container will make sure to avoid redis kernel warning: '# WARNING: The TCP backlog setting of 511 cannot be enforced
+		* because /proc/sys/net/core/somaxconn is set to the lower value of 128'
+		* 1) sysctl -w net.core.somaxconn=1024 -> set the maximum number of "backlogged sockets". the backlog parameter
+		*    specifies the number of pending connections the connection queue will hold. Default is 128.
+		* 2) echo never > /host-sys/kernel/mm/transparent_hugepage/enabled -> disabling the kernel setting Transparent Huge Pages (THP)
+		*    recommended for redis (http://doc.nuodb.com/Latest/Content/Note-About-%20Using-Transparent-Huge-Pages.htm)
 		* 3) grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled -> Checking if transparent_hugepage settings applied
 		 */
 
 		command := "install_packages systemd procps && sysctl -w net.core.somaxconn=1024"
 
-		if redisCluster.Spec.InitContainer.EnabledHugepage {
+		if redisCluster.Spec.EnableHugePages {
 			command += " && echo never > /host-sys/kernel/mm/transparent_hugepage/enabled && grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
 		}
 
 		initContainers = []corev1.Container{
 			{
-				Name:            "redis-init-container",
+				Name:            redisCluster.Spec.InitContainer.Name,
 				Image:           redisCluster.Spec.InitContainer.Image,
 				ImagePullPolicy: redisCluster.Spec.InitContainer.ImagePullPolicy,
+				Resources:       redisCluster.Spec.InitContainer.Resources,
 				SecurityContext: &corev1.SecurityContext{
 					RunAsNonRoot: &initContainerRunAsNonRoot,
 					Privileged:   &privileged,
