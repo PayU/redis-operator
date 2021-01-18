@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -20,8 +19,7 @@ import (
 
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
-	matchingLabels := make(map[string]string)
-	matchingLabels["app"] = redisCluster.Spec.PodLabelSelector.App
+	matchingLabels := redisCluster.Spec.PodLabelSelector
 
 	if len(podType) > 0 && strings.TrimSpace(podType[0]) != "" {
 		pt := strings.TrimSpace(podType[0])
@@ -55,136 +53,74 @@ func (r *RedisClusterReconciler) getPodByIP(namespace string, podIP string) (cor
 	return podList.Items[0], nil
 }
 
-func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber string, nodeNumber string, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
-	podLabels := make(map[string]string)
-	containers := make([]corev1.Container, 0)
-	initContainers := make([]corev1.Container, 0)
+func getSelectorRequirementFromPodLabelSelector(redisCluster *dbv1.RedisCluster) []metav1.LabelSelectorRequirement {
+	lsr := []metav1.LabelSelectorRequirement{}
+	for k, v := range redisCluster.Spec.PodLabelSelector {
+		lsr = append(lsr, metav1.LabelSelectorRequirement{Key: k, Operator: metav1.LabelSelectorOpIn, Values: []string{v}})
+	}
+	return lsr
+}
 
-	podLabels["app"] = redisCluster.Spec.PodLabelSelector.App
+func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber string, nodeNumber string, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
+	var affinity corev1.Affinity
+	podLabels := make(map[string]string)
+
+	for k, v := range redisCluster.Spec.Labels {
+		podLabels[k] = v
+	}
+	for k, v := range redisCluster.Spec.PodLabelSelector {
+		podLabels[k] = v
+	}
+
 	podLabels["redis-node-role"] = nodeRole
 	podLabels["leader-number"] = leaderNumber
 	podLabels["node-number"] = nodeNumber
 
-	imagePullSecrets := []corev1.LocalObjectReference{
-		{Name: redisCluster.Spec.ImagePullSecrets},
-	}
-
-	containers = []corev1.Container{
-		{
-			Name:            redisCluster.Spec.Redis.Name,
-			Image:           redisCluster.Spec.Redis.Image,
-			ImagePullPolicy: redisCluster.Spec.Redis.ImagePullPolicy,
-			Resources:       redisCluster.Spec.Redis.Resources,
-			Ports:           redisCluster.Spec.Redis.Ports,
-			Env:             redisCluster.Spec.Redis.Env,
-			VolumeMounts: []corev1.VolumeMount{ // TODO move this hardcoded declaration outside of the code
-				{Name: "redis-node-configuration", MountPath: "/usr/local/etc/redis"},
-			},
-		},
-	}
-
-	if !reflect.DeepEqual(redisCluster.Spec.PrometheusExporter, corev1.Container{}) {
-		containers = append(containers, redisCluster.Spec.PrometheusExporter)
-	}
-
-	volumes := []corev1.Volume{
-		{
-			Name: "redis-node-configuration",
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: "redis-node-settings-config-map",
-					},
-				},
-			},
-		},
-		{
-			Name: "host-sys",
-			VolumeSource: corev1.VolumeSource{
-				HostPath: &corev1.HostPathVolumeSource{
-					Path: "/sys",
-				},
-			},
-		},
-	}
-
-	var affinity *corev1.Affinity = nil
-	if redisCluster.Spec.Affinity != (dbv1.TopologyKeys{}) {
-		affinity = &corev1.Affinity{PodAntiAffinity: &corev1.PodAntiAffinity{}}
-		if redisCluster.Spec.Affinity.HostTopologyKey != "" {
-			affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{
-				{
-					LabelSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							{Key: "app", Operator: metav1.LabelSelectorOpIn, Values: []string{redisCluster.Spec.PodLabelSelector.App}},
-						},
-					},
-					TopologyKey: redisCluster.Spec.Affinity.HostTopologyKey,
-				},
-			}
+	if redisCluster.Spec.EnableDefaultAffinity {
+		if redisCluster.Spec.RedisPodSpec.Affinity == nil {
+			affinity = corev1.Affinity{}
+		} else {
+			affinity = *redisCluster.Spec.RedisPodSpec.Affinity
 		}
 
-		if redisCluster.Spec.Affinity.ZoneTopologyKey != "" {
-			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
-				{
-					Weight: 100,
-					PodAffinityTerm: corev1.PodAffinityTerm{
-						LabelSelector: &metav1.LabelSelector{
-							MatchExpressions: preferredLabelSelectorRequirement,
-						},
-						TopologyKey: redisCluster.Spec.Affinity.ZoneTopologyKey,
-					},
+		if affinity.PodAntiAffinity == nil {
+			affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+		}
+
+		requiredPodAffinityTerm := corev1.PodAffinityTerm{
+			LabelSelector: &metav1.LabelSelector{
+				MatchExpressions: getSelectorRequirementFromPodLabelSelector(redisCluster),
+			},
+			TopologyKey: "failure-domain.beta.kubernetes.io/node",
+		}
+
+		if affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+			affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{requiredPodAffinityTerm}
+		} else {
+			affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = append(
+				affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution, requiredPodAffinityTerm)
+		}
+
+		prefferedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
+			Weight: 100,
+			PodAffinityTerm: corev1.PodAffinityTerm{
+				LabelSelector: &metav1.LabelSelector{
+					MatchExpressions: preferredLabelSelectorRequirement,
 				},
-			}
+				TopologyKey: "failure-domain.beta.kubernetes.io/zone",
+			},
+		}
+
+		if affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{prefferedPodAffinityTerm}
+		} else {
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
+				affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, prefferedPodAffinityTerm)
 		}
 	}
 
-	if redisCluster.Spec.InitContainer.Image != "" {
-		initContainerRunAsNonRoot := false
-		var runAsUser int64 = 0
-		privileged := true
-
-		/*
-		* init container will make sure to avoid redis kernel warning: '# WARNING: The TCP backlog setting of 511 cannot be enforced
-		* because /proc/sys/net/core/somaxconn is set to the lower value of 128'
-		* 1) sysctl -w net.core.somaxconn=1024 -> set the maximum number of "backlogged sockets". the backlog parameter
-		*    specifies the number of pending connections the connection queue will hold. Default is 128.
-		* 2) echo never > /host-sys/kernel/mm/transparent_hugepage/enabled -> disabling the kernel setting Transparent Huge Pages (THP)
-		*    recommended for redis (http://doc.nuodb.com/Latest/Content/Note-About-%20Using-Transparent-Huge-Pages.htm)
-		* 3) grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled -> Checking if transparent_hugepage settings applied
-		 */
-
-		command := "install_packages systemd procps && sysctl -w net.core.somaxconn=1024"
-
-		if redisCluster.Spec.EnableHugePages {
-			command += " && echo never > /host-sys/kernel/mm/transparent_hugepage/enabled && grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
-		}
-
-		initContainers = []corev1.Container{
-			{
-				Name:            redisCluster.Spec.InitContainer.Name,
-				Image:           redisCluster.Spec.InitContainer.Image,
-				ImagePullPolicy: redisCluster.Spec.InitContainer.ImagePullPolicy,
-				Resources:       redisCluster.Spec.InitContainer.Resources,
-				SecurityContext: &corev1.SecurityContext{
-					RunAsNonRoot: &initContainerRunAsNonRoot,
-					Privileged:   &privileged,
-					RunAsUser:    &runAsUser,
-				},
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						Name:      "host-sys",
-						MountPath: "/host-sys",
-					},
-				},
-				Command: []string{
-					"/bin/sh",
-					"-c",
-					command,
-				},
-			},
-		}
-	}
+	spec := redisCluster.Spec.RedisPodSpec.DeepCopy()
+	spec.Affinity = &affinity
 
 	pod := corev1.Pod{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
@@ -192,15 +128,9 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 			Name:        fmt.Sprintf("redis-node-%s", nodeNumber),
 			Namespace:   redisCluster.ObjectMeta.Namespace,
 			Labels:      podLabels,
-			Annotations: redisCluster.Spec.PodAnnotations,
+			Annotations: redisCluster.Spec.Annotations,
 		},
-		Spec: corev1.PodSpec{
-			ImagePullSecrets: imagePullSecrets,
-			InitContainers:   initContainers,
-			Containers:       containers,
-			Volumes:          volumes,
-			Affinity:         affinity,
-		},
+		Spec: *spec,
 	}
 
 	return pod
@@ -208,7 +138,7 @@ func makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderNumber
 
 func (r *RedisClusterReconciler) makeFollowerPod(redisCluster *dbv1.RedisCluster, nodeNumber string, leaderNumber string) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-number", Operator: metav1.LabelSelectorOpIn, Values: []string{leaderNumber}}}
-	pod := makeRedisPod(redisCluster, "follower", leaderNumber, nodeNumber, preferredLabelSelectorRequirement)
+	pod := r.makeRedisPod(redisCluster, "follower", leaderNumber, nodeNumber, preferredLabelSelectorRequirement)
 
 	if err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme); err != nil {
 		return pod, err
@@ -248,7 +178,7 @@ func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.Redi
 
 func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, nodeNumber string) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
-	pod := makeRedisPod(redisCluster, "leader", nodeNumber, nodeNumber, preferredLabelSelectorRequirement)
+	pod := r.makeRedisPod(redisCluster, "leader", nodeNumber, nodeNumber, preferredLabelSelectorRequirement)
 
 	if err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme); err != nil {
 		return pod, err
@@ -273,9 +203,10 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 	}
 
 	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
-	for _, pod := range leaderPods {
-		err := r.Create(context.Background(), &pod, applyOpts...)
-		if err != nil && !apierrors.IsAlreadyExists(err) {
+
+	for i := range leaderPods {
+		err := r.Create(context.Background(), &leaderPods[i], applyOpts...)
+		if err != nil && !apierrors.IsAlreadyExists(err) && !apierrors.IsConflict(err) {
 			return nil, err
 		}
 	}
@@ -289,57 +220,7 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 	return leaderPods, nil
 }
 
-// Method used to wait for one or more pods to have an IP address
-func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) ([]corev1.Pod, error) {
-	r.Log.Info(fmt.Sprintf("Waiting for pod network interfaces..."))
-	var resultPods []corev1.Pod
-	for _, pod := range pods {
-		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
-			if err = r.Get(context.Background(), key, &pod); err != nil {
-				if apierrors.IsNotFound(err) {
-					return false, nil
-				}
-				return false, err
-			}
-			if pod.Status.PodIP == "" {
-				return false, nil
-			}
-			resultPods = append(resultPods, pod)
-			return true, nil
-		}); pollErr != nil {
-			return nil, pollErr
-		}
-	}
-	return resultPods, nil
-}
-
-func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
-	for _, p := range pods {
-		key, err := client.ObjectKeyFromObject(&p)
-		if err != nil {
-			return err
-		}
-		if pollErr := wait.Poll(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
-			err := r.Get(context.Background(), key, &p)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return true, nil
-				}
-				return false, err
-			}
-			return false, nil
-		}); pollErr != nil {
-			return pollErr
-		}
-	}
-	return nil
-}
-
 func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (corev1.Service, error) {
-	serviceSelector := make(map[string]string)
-	serviceSelector["app"] = redisCluster.Spec.PodLabelSelector.App
-
 	service := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "redis-cluster-service",
@@ -353,7 +234,7 @@ func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (c
 					TargetPort: intstr.FromInt(6379),
 				},
 			},
-			Selector: serviceSelector,
+			Selector: redisCluster.Spec.PodLabelSelector,
 		},
 	}
 
@@ -373,48 +254,6 @@ func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisClus
 	if !apierrors.IsAlreadyExists(err) {
 		return nil, err
 	}
-	return &svc, nil
-}
-
-func (r *RedisClusterReconciler) makeHeadlessService(redisCluster *dbv1.RedisCluster) (corev1.Service, error) {
-	serviceSelector := make(map[string]string)
-	serviceSelector["app"] = redisCluster.Spec.PodLabelSelector.App
-
-	headlessService := corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "redis-cluster-headless-service",
-			Namespace: redisCluster.ObjectMeta.Namespace,
-		},
-		Spec: corev1.ServiceSpec{
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "redis-client-port",
-					Port:       6379,
-					TargetPort: intstr.FromInt(6379),
-				},
-			},
-			Selector:  serviceSelector,
-			ClusterIP: "None",
-		},
-	}
-
-	if err := ctrl.SetControllerReference(redisCluster, &headlessService, r.Scheme); err != nil {
-		return headlessService, err
-	}
-
-	return headlessService, nil
-}
-
-func (r *RedisClusterReconciler) createRedisHeadlessService(redisCluster *dbv1.RedisCluster) (*corev1.Service, error) {
-	svc, err := r.makeHeadlessService(redisCluster)
-	if err != nil {
-		return nil, err
-	}
-	err = r.Create(context.Background(), &svc)
-	if !apierrors.IsAlreadyExists(err) {
-		return nil, err
-	}
-
 	return &svc, nil
 }
 
@@ -449,25 +288,79 @@ func (r *RedisClusterReconciler) createRedisSettingConfigMap(redisCluster *dbv1.
 	return &cm, nil
 }
 
-func (r *RedisClusterReconciler) waitForPodReady(pod *corev1.Pod) error {
-	key, err := client.ObjectKeyFromObject(pod)
-	if err != nil {
-		return err
-	}
-	r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
-	return wait.PollImmediate(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
-		err := r.Get(context.Background(), key, pod)
+func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.Pod, error) {
+	var readyPods []corev1.Pod
+	for _, pod := range pods {
+		key, err := client.ObjectKeyFromObject(&pod)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
-		if pod.Status.Phase != corev1.PodRunning {
-			return false, nil
-		}
-		for _, condition := range pod.Status.Conditions {
-			if condition.Status != corev1.ConditionTrue {
+		r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
+		if pollErr := wait.PollImmediate(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
+			err := r.Get(context.Background(), key, &pod)
+			if err != nil {
+				return false, err
+			}
+			if pod.Status.Phase != corev1.PodRunning {
 				return false, nil
 			}
+			for _, condition := range pod.Status.Conditions {
+				if condition.Status != corev1.ConditionTrue {
+					return false, nil
+				}
+			}
+			readyPods = append(readyPods, pod)
+			return true, nil
+		}); pollErr != nil {
+			return nil, pollErr
 		}
-		return true, nil
-	})
+	}
+	return readyPods, nil
+}
+
+// Method used to wait for one or more pods to have an IP address
+func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) ([]corev1.Pod, error) {
+	r.Log.Info(fmt.Sprintf("Waiting for pod network interfaces..."))
+	var readyPods []corev1.Pod
+	for _, pod := range pods {
+		key, err := client.ObjectKeyFromObject(&pod)
+		if pollErr := wait.PollImmediate(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
+			if err = r.Get(context.Background(), key, &pod); err != nil {
+				if apierrors.IsNotFound(err) {
+					return false, nil
+				}
+				return false, err
+			}
+			if pod.Status.PodIP == "" {
+				return false, nil
+			}
+			readyPods = append(readyPods, pod)
+			return true, nil
+		}); pollErr != nil {
+			return nil, pollErr
+		}
+	}
+	return readyPods, nil
+}
+
+func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
+	for _, p := range pods {
+		key, err := client.ObjectKeyFromObject(&p)
+		if err != nil {
+			return err
+		}
+		if pollErr := wait.Poll(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
+			err := r.Get(context.Background(), key, &p)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return true, nil
+				}
+				return false, err
+			}
+			return false, nil
+		}); pollErr != nil {
+			return pollErr
+		}
+	}
+	return nil
 }

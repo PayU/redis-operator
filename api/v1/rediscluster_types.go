@@ -21,64 +21,50 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// PodLabelSelector will use to identify
-// which pod our controller needs to maintain
-type PodLabelSelector struct {
-	App string `json:"app"`
-}
-
-// TopologyKeys defines the topology keys used inside affinity rules
-type TopologyKeys struct {
-	HostTopologyKey string `json:"hostTopologyKey,omitempty"`
-	ZoneTopologyKey string `json:"zoneTopologyKey,omitempty"`
-}
-
-// RedisClusterSpec defines the desired state of RedisCluster
+// RedisClusterSpec defines the desired state of RedisCluster.
 type RedisClusterSpec struct {
 
 	// +kubebuilder:validation:Minimum=3
-	// The number of leader instances to run
+	// The number of leader instances to run.
 	LeaderCount int `json:"leaderCount,omitempty"`
 
 	// +optional
 	// +kubebuilder:validation:Minimum=0
-	// The number of followers that each leader will have
+	// The number of followers that each leader will have.
 	LeaderFollowersCount int `json:"leaderFollowersCount,omitempty"`
 
 	// +optional
-	// modify kernel setting regarding backlogged sockets and transparent huge pages.
-	InitContainer corev1.Container `json:"initContainer,omitempty"`
+	// Flag that toggles the default affinity rules added by the operator.
+	// Default is true.
+	EnableDefaultAffinity bool `json:"enableDefaultAffinity,omitempty"`
 
-	Redis corev1.Container `json:"redis"`
+	// +optional
+	// Annotations for the Redis pods.
+	Annotations map[string]string `json:"annotations,omitempty"`
 
-	PrometheusExporter corev1.Container `json:"prometheusExporter,omitempty"`
+	// Labels used by the operator to get the pods that it manages. Added by default
+	// to the list of labels of the Redis pod.
+	PodLabelSelector map[string]string `json:"podLabelSelector"`
 
-	PodLabelSelector PodLabelSelector `json:"podLabelSelector"`
+	// +optional
+	// Labels for the Redis pods.
+	Labels map[string]string `json:"labels,omitempty"`
 
-	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
-
-	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
-
-	EnableHugePages bool `json:"enableHugePages,omitempty"`
-
-	Affinity TopologyKeys `json:"affinity,omitempty"`
+	// PodSpec for Redis pods.
+	RedisPodSpec corev1.PodSpec `json:"redisPodSpec"`
 }
 
 // RedisClusterStatus defines the observed state of RedisCluster
 type RedisClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
 	// A list of pointers to currently running pods.
 	// +optional
 	Pods []corev1.ObjectReference `json:"active,omitempty"`
 
-	// the current state of the cluster
+	// The current state of the cluster.
 	// +optional
 	ClusterState string `json:"clusterState,omitempty"`
 
-	// the total expected pod number when
-	// the cluster is ready and stable
+	// The total expected pod number when the cluster is ready and stable.
 	// +optional
 	TotalExpectedPods int `json:"totalExpectedPods,omitempty"`
 }
@@ -87,7 +73,7 @@ type RedisClusterStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=rdc
 
-// RedisCluster is the Schema for the redisclusters API
+// RedisCluster is the Schema for the redisclusters API.
 type RedisCluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

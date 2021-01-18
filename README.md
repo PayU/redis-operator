@@ -50,7 +50,8 @@ If you are missing an image in the cluster, an easy way to build and load all ne
 
 The Helm chart was developed with Helm v3, it might work with v2 but it was not tested as such.
 The chart can create the CRD, Redis operator and RedisCluster CR and it has feature flags for all of them plus the RBAC setup.
-Use example:
+
+Examples:
 
 ```
 # create everything in the default namespace
@@ -86,7 +87,7 @@ To develop directly on a deployed operator without rebuilding and loading/deploy
 2. Swap the dev image with the operator deploy using Telepresence
 
 ```
-telepresence --mount /tmp/podtoken  --context kind-redis-test --namespace default --swap-deployment redis-operator-controller-manager --docker-run --rm -it -v $(pwd):/app -v=/tmp/podtoken/var/run/secrets:/var/run/secrets redis-operator:dev
+telepresence --mount /tmp/podtoken  --context kind-redis-test --namespace default --swap-deployment redis-operator-manager --docker-run --rm -it -v $(pwd):/app -v=/tmp/podtoken/var/run/secrets:/var/run/secrets redis-operator:dev
 ```
 
 **How it works**

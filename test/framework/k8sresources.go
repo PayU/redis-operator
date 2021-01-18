@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -25,93 +26,78 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (f *Framework) CreateResources(ctx *TestCtx, objs []runtime.Object, timeout time.Duration) error {
+func (f *Framework) CreateResources(ctx *TestCtx, timeout time.Duration, objs ...runtime.Object) error {
 	for _, obj := range objs {
-		if err := f.CreateResource(ctx, obj, timeout); err != nil {
+		key, err := client.ObjectKeyFromObject(obj)
+		if err != nil {
+			return errors.Wrap(err, "Could not create resource - object key error")
+		}
+
+		existingResource := obj.DeepCopyObject()
+		fmt.Printf("Check existing resource %v\n", key)
+		err = f.RuntimeClient.Get(context.TODO(), key, existingResource)
+		switch {
+		case apierrors.IsNotFound(err):
+			if err = f.RuntimeClient.Create(context.TODO(), obj, &client.CreateOptions{}); err != nil {
+				return err
+			}
+			ctx.AddFinalizerFn(func() error {
+				return f.DeleteResource(obj, timeout)
+			})
+		case err != nil:
 			return err
+		default: // objects that should not be recreated
+			if obj.GetObjectKind().GroupVersionKind().Kind == "Namespace" {
+				fmt.Printf("Object already exists (%s). Skipping.\n", obj.GetObjectKind().GroupVersionKind().Kind)
+				break
+			}
+			fmt.Printf("Object already exists (%s). Recreating.\n", obj.GetObjectKind().GroupVersionKind().Kind)
+			err = f.DeleteResource(obj, 20*time.Second)
+			if err != nil {
+				return err
+			}
+			if err = f.RuntimeClient.Update(context.TODO(), obj); err != nil {
+				return err
+			}
+		}
+
+		if timeout == 0 {
+			return nil
+		}
+
+		fmt.Printf("Waiting on resource %v...\n", key)
+		err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
+			if err = f.RuntimeClient.Get(context.TODO(), key, existingResource); err != nil {
+				return false, err
+			}
+			// TODO the object should be checked to be the same
+			// if !reflect.DeepEqual(obj, existingResource) {
+			// 	return false, err
+			// }
+			return true, nil
+		})
+
+		if err != nil {
+			return errors.Wrapf(err, "Creation of resource failed during wait for %v", key)
 		}
 	}
 	return nil
 }
 
-// TODO should also add support for CreateResourceAndWaitUntilReady
-func (f *Framework) CreateResource(ctx *TestCtx, obj runtime.Object, timeout time.Duration) error {
-	var err error
-
-	key, err := client.ObjectKeyFromObject(obj)
-	if err != nil {
-		return errors.Wrap(err, "Could not create resource - object key error")
-	}
-
-	existingResource := obj.DeepCopyObject()
-	err = f.RuntimeClient.Get(context.TODO(), key, existingResource)
-	switch {
-	case apierrors.IsNotFound(err):
-		if err = f.RuntimeClient.Create(context.TODO(), obj, &client.CreateOptions{}); err != nil {
+// CreateYAMLResources uses kubectl apply to create resources using a YAML string.
+func (f *Framework) CreateYAMLResources(ctx *TestCtx, timeout time.Duration, yamlResources ...string) error {
+	for _, res := range yamlResources {
+		resName := strings.Split(res, "\n")[1]
+		resName = strings.Split(resName, ": ")[1]
+		fmt.Printf("[E2E] Creating resource %v...\n", resName)
+		if _, _, err := f.kubectlApply(res, timeout, false); err != nil {
+			fmt.Printf("Failed to create resource %v\n", resName)
 			return err
 		}
 		ctx.AddFinalizerFn(func() error {
-			return f.DeleteResource(obj, timeout)
+			return f.DeleteYAMLResource(res, timeout)
 		})
-	case err != nil:
-		return err
-	default:
-		if obj.GetObjectKind().GroupVersionKind().Kind == "Namespace" {
-			fmt.Printf("Object already exists (%s). Skipping.\n", obj.GetObjectKind().GroupVersionKind().Kind)
-			break
-		}
-		fmt.Printf("Object already exists (%s). Recreating.\n", obj.GetObjectKind().GroupVersionKind().Kind)
-		err = f.DeleteResource(obj, 20*time.Second)
-		if err != nil {
-			return err
-		}
-		if err = f.RuntimeClient.Update(context.TODO(), obj); err != nil {
-			return err
-		}
 	}
-
-	if timeout == 0 {
-		return nil
-	}
-
-	err = wait.PollImmediate(2*time.Second, timeout, func() (bool, error) {
-		if err = f.RuntimeClient.Get(context.TODO(), key, existingResource); err != nil {
-			return false, err
-		}
-		// TODO the object should be checked to be the same
-		// if !reflect.DeepEqual(obj, existingResource) {
-		// 	return false, err
-		// }
-		return true, nil
-	})
-
-	if err != nil {
-		return errors.Wrapf(err, "Creation of resource failed during wait for %v", key)
-	}
-
-	return nil
-}
-
-// TODO: replace the method with a variadric version of CreateYAMLResource
-func (f *Framework) CreateYAMLResources(ctx *TestCtx, yamlResources []string, timeout time.Duration) error {
-	for _, res := range yamlResources {
-		if err := f.CreateYAMLResource(ctx, res, timeout); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// CreateYAMLResource is intended to be used for resources that cannot be made by the
-// Kubernetes libraries, usually because of version differences between the library
-// and the Kubernetes server.
-func (f *Framework) CreateYAMLResource(ctx *TestCtx, yamlResource string, timeout time.Duration) error {
-	if _, _, err := f.kubectlApply(yamlResource, timeout, false); err != nil {
-		return err
-	}
-	ctx.AddFinalizerFn(func() error {
-		return f.DeleteYAMLResource(yamlResource, timeout)
-	})
 	return nil
 }
 
@@ -150,36 +136,27 @@ func (f *Framework) DeleteYAMLResource(yamlResource string, timeout time.Duratio
 	return err
 }
 
-func (f *Framework) InitializeDefaultResources(ctx *TestCtx, kustPath string, opImage string, timeout time.Duration) error {
-	kustomizeConfig, yamlMap, err := f.BuildAndParseKustomizeConfig(kustPath, opImage)
+func (f *Framework) InitializeDefaultResources(ctx *TestCtx, kustPath string, opImage string, namespace string, timeout time.Duration) error {
+	_, kustomizeConfigYAML, err := f.BuildKustomizeConfig(kustPath, opImage, namespace)
 	if err != nil {
 		return errors.Wrap(err, "Could not get kustomize config")
 	}
 
-	resources := []runtime.Object{
-		&kustomizeConfig.Namespace,
-		&kustomizeConfig.ServiceAccount,
-		&kustomizeConfig.ClusterRole,
-		&kustomizeConfig.ClusterRoleBinding,
-		&kustomizeConfig.Role,
-		&kustomizeConfig.RoleBinding,
-		&kustomizeConfig.Deployment,
+	if crd, ok := kustomizeConfigYAML["CustomResourceDefinition"]; ok {
+		err = f.CreateYAMLResources(ctx, timeout, crd)
+		if err != nil {
+			return errors.Wrap(err, "Could not create all resources")
+		}
 	}
 
-	// the CRD is installed from YAML via kubectl because of library compatibility issues
-	// it will be changed to a runtime object after upgrading to Kubernetes 1.16
-	yamlResources := []string{
-		yamlMap["crd"],
-	}
-
-	err = f.CreateYAMLResources(ctx, yamlResources, timeout)
-	if err != nil {
-		return errors.Wrap(err, "Could not create all YAML resources")
-	}
-
-	err = f.CreateResources(ctx, resources, timeout)
-	if err != nil {
-		return errors.Wrap(err, "Could not create all resources")
+	for kind, res := range kustomizeConfigYAML {
+		if kind == "CustomResourceDefinition" {
+			continue
+		}
+		err = f.CreateYAMLResources(ctx, timeout, res)
+		if err != nil {
+			return errors.Wrap(err, "Could not create all resources")
+		}
 	}
 	return nil
 }
@@ -226,7 +203,6 @@ func (f *Framework) PatchResource(obj runtime.Object, patch []byte) error {
 		return err
 	}
 	return nil
-
 }
 
 func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Duration) error {
