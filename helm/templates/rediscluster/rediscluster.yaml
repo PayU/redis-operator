@@ -4,6 +4,12 @@ kind: RedisCluster
 metadata:
   name: {{ .Values.redisCluster.name }}
   namespace: {{ .Values.redisCluster.namespace }}
+{{- if .Values.redisCluster.annotations }}
+  annotations: {{ toYaml .Values.redisCluster.annotations | nindent 4 }}
+{{- end }}
+{{- if .Values.redisCluster.labels }}
+  labels: {{ toYaml .Values.redisCluster.labels | nindent 4 }}
+{{- end }}
 spec:
 {{- if .Values.redisCluster.leaderCount }}
   leaderCount: {{ .Values.redisCluster.leaderCount }}
@@ -14,12 +20,6 @@ spec:
   podLabelSelector: {{ toYaml .Values.redisCluster.podLabelSelector | nindent 4 }}
 {{- if .Values.redisCluster.enableDefaultAffinity }}
   enableDefaultAffinity: {{ .Values.redisCluster.enableDefaultAffinity }}
-{{- end }}
-{{- if .Values.redisCluster.annotations }}
-  annotations: {{ toYaml .Values.redisCluster.annotations | nindent 4 }}
-{{- end }}
-{{- if .Values.redisCluster.labels }}
-  annotations: {{ toYaml .Values.redisCluster.labels | nindent 4 }}
 {{- end }}
   redisPodSpec: {{ toYaml .Values.redisCluster.redisPodSpec | nindent 4 }}
 {{- end }}
