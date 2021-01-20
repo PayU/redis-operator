@@ -128,7 +128,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 			Name:        fmt.Sprintf("redis-node-%s", nodeNumber),
 			Namespace:   redisCluster.ObjectMeta.Namespace,
 			Labels:      podLabels,
-			Annotations: redisCluster.Spec.Annotations,
+			Annotations: redisCluster.Annotations,
 		},
 		Spec: *spec,
 	}
