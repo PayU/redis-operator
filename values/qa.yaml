@@ -16,6 +16,8 @@ redisCluster:
   leaderFollowersCount: 1
   annotations:
     sidecar.istio.io/inject: "false"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: '9121'
 
   redisPodSpec:
     initContainers:
