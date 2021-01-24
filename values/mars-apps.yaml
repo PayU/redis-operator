@@ -78,3 +78,12 @@ redisCluster:
     - name: host-sys
       hostPath:
         path: "/sys"
+
+    nodeSelector:
+        "node-manager" : "zooz"
+
+    tolerations:
+      - effect: NoSchedule
+        key: mars-ondemand
+        operator: Equal
+        value: "true"
