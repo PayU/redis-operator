@@ -15,6 +15,8 @@ redisCluster:
   namespace: infra
   annotations:
     sidecar.istio.io/inject: "false"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: '9121'
 
   redisPodSpec:
     initContainers:
@@ -32,9 +34,7 @@ redisCluster:
         - "/bin/sh"
       args:
       - "-c"
-      - "install_packages systemd procps && sysctl -w net.core.somaxconn=1024"
-      - "&& echo never > /host-sys/kernel/mm/transparent_hugepage/enabled"
-      - "&& grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
+      - "install_packages systemd procps && sysctl -w net.core.somaxconn=1024 && echo never > /host-sys/kernel/mm/transparent_hugepage/enabled && grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
 
     containers:
     - name: redis-container
