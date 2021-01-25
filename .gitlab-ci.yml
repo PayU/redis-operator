@@ -10,6 +10,11 @@ stages:
 - deploy-mars-pci
 - deploy-mars-apps-crd
 - deploy-mars-apps
+- deploy-prd-pci-crd
+- deploy-prd-pci
+- deploy-prd-apps-crd
+- deploy-prd-apps
+- release
 
 services:
 - docker-registry.zooz.co:4567/public-docker-registry/zooz/docker:18.09.6-dind
@@ -20,18 +25,22 @@ variables:
   OPERATOR_NAMESPACE: infra
   REDIS_CLUSTER_NAMESPACE: infra
   ENV: dev
+  API_READ_TOKEN: "" # has to be provided via UI
 
-# used for deploying the operator to Kubernetes via Helm v3
-build-runner-image:
+# unused, kept for reference
+.build-runner-image:
   stage: build
   tags:
   - eks-dev-apps
   script:
   - echo $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
   - source scripts/loadEnv.sh
+  - 'curl --header "PRIVATE-TOKEN: $API_READ_TOKEN" "https://git.zooz.co/api/v4/projects/363/repository/files/k8s%2Fkubectl-helm%2FDockerfile?ref=master" | jq ".content" -r | base64 -d > runner.Dockerfile'
   - docker build . -f ./runner.Dockerfile -t docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest --network=host
-  - docker push docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  - docker push docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/redis-operator-runner:latest
   when: manual
+  except:
+  - tags
 
 build-image:
   stage: build
@@ -41,45 +50,55 @@ build-image:
   script:
   - echo $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
   - source scripts/loadEnv.sh
-  - docker build -t docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest --build-arg NAMESPACE=$OPERATOR_NAMESPACE --network=host .
-  - docker push docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest
+  # - docker build -t docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest --build-arg NAMESPACE=$OPERATOR_NAMESPACE --network=host .
+  # - docker push docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest
+  - |
+    docker build \
+      --network host \
+      --build-arg NAMESPACE=$OPERATOR_NAMESPACE \
+      --pull \
+      --cache-from $DOCKER_IMAGE \
+      --tag $DOCKER_IMAGE .
+  - docker push $DOCKER_IMAGE
   when: manual
+  except:
+  - tags
 
 .deploy-crd: # creates the CRD
-  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
   - kubectl apply -f ./helm/crds/crd-rediscluster.yaml
   when: manual
 
 .deploy-operator: # creates all resources except CRD and RedisCluster
-  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
   - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
   - helm upgrade --install redis-operator ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisCluster.enabled=false --set redisCluster.namespace=$OPERATOR_NAMESPACE --skip-crds --debug
   when: manual
 
 .deploy-rediscluster: # creates RedisCluster resource
-  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
   - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
   - helm upgrade --install redis-operator-rediscluster ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisOperator.enabled=false --set redisCluster.namespace=$REDIS_CLUSTER_NAMESPACE --skip-crds --debug
   when: manual
 
 .remove-crd: # removes the CRD
-  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
   - kubectl delete crd redisclusters.db.payu.com
   when: manual
 
 .remove-operator: # removes all resources except CRD and RedisCluster
-  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
   - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
   - helm delete redis-operator -n $OPERATOR_NAMESPACE
   when: manual
 
 .remove-rediscluster: # removes RedisCluster resource
-  image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-docker/redis-operator-runner:latest
+  image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
   - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
   - helm delete redis-operator-rediscluster -n $REDIS_CLUSTER_NAMESPACE
@@ -90,54 +109,72 @@ deploy-dev-crd:
   extends: .deploy-crd
   tags:
   - eks-dev-kube-system
+  except:
+  - tags
 
 remove-dev-crd:
   stage: deploy-dev-crd
   extends: .remove-crd
   tags:
   - eks-dev-kube-system
+  except:
+  - tags
 
 deploy-dev-operator:
   stage: deploy-dev
   extends: .deploy-operator
   tags:
   - eks-dev-infra
+  except:
+  - tags
 
 remove-dev-operator:
   stage: deploy-dev
   extends: .remove-operator
   tags:
   - eks-dev-infra
+  except:
+  - tags
 
 deploy-dev-rediscluster:
   stage: deploy-dev
   extends: .deploy-rediscluster
   tags:
   - eks-dev-infra
+  except:
+  - tags
 
 remove-dev-rediscluster:
   stage: deploy-dev
   extends: .remove-rediscluster
   tags:
   - eks-dev-infra
+  except:
+  - tags
 
 deploy-qa-crd:
   stage: deploy-qa-crd
   extends: .deploy-crd
   tags:
   - eks-qa-kube-system
+  except:
+  - tags
 
 remove-qa-crd:
   stage: deploy-qa-crd
   extends: .remove-crd
   tags:
   - eks-qa-kube-system
+  except:
+  - tags
 
 deploy-qa-operator:
   stage: deploy-qa
   extends: .deploy-operator
   tags:
   - eks-qa-infra
+  except:
+  - tags
   variables:
     ENV: qa
 
@@ -146,12 +183,16 @@ remove-qa-operator:
   extends: .remove-operator
   tags:
   - eks-qa-infra
+  except:
+  - tags
 
 deploy-qa-rediscluster:
   stage: deploy-qa
   extends: .deploy-rediscluster
   tags:
   - eks-qa-infra
+  except:
+  - tags
   variables:
     ENV: qa
 
@@ -160,24 +201,32 @@ remove-qa-rediscluster:
   extends: .remove-rediscluster
   tags:
   - eks-qa-infra
+  except:
+  - tags
 
 deploy-mars-pci-crd:
   stage: deploy-mars-pci-crd
   extends: .deploy-crd
   tags:
   - eks-mars-pci-kube-system
+  except:
+  - tags
 
 remove-mars-pci-crd:
   stage: deploy-mars-pci-crd
   extends: .remove-crd
   tags:
   - eks-mars-pci-kube-system
+  except:
+  - tags
 
 deploy-mars-pci-operator:
   stage: deploy-mars-pci
   extends: .deploy-operator
   tags:
   - eks-mars-pci-infra
+  except:
+  - tags
   variables:
     ENV: mars-pci
 
@@ -186,12 +235,16 @@ remove-mars-pci-operator:
   extends: .remove-operator
   tags:
   - eks-mars-pci-infra
+  except:
+  - tags
 
 deploy-mars-pci-rediscluster:
   stage: deploy-mars-pci
   extends: .deploy-rediscluster
   tags:
   - eks-mars-pci-infra
+  except:
+  - tags
   variables:
     ENV: mars-pci
 
@@ -200,24 +253,32 @@ remove-mars-pci-rediscluster:
   extends: .remove-rediscluster
   tags:
   - eks-mars-pci-infra
+  except:
+  - tags
 
 deploy-mars-apps-crd:
   stage: deploy-mars-apps-crd
   extends: .deploy-crd
   tags:
   - eks-mars-apps-kube-system
+  except:
+  - tags
 
 remove-mars-apps-crd:
   stage: deploy-mars-apps-crd
   extends: .remove-crd
   tags:
   - eks-mars-apps-kube-system
+  except:
+  - tags
 
 deploy-mars-apps-operator:
   stage: deploy-mars-apps
   extends: .deploy-operator
   tags:
   - eks-mars-apps-infra
+  except:
+  - tags
   variables:
     ENV: mars-apps
 
@@ -226,12 +287,16 @@ remove-mars-apps-operator:
   extends: .remove-operator
   tags:
   - eks-mars-apps-infra
+  except:
+  - tags
 
 deploy-mars-apps-rediscluster:
   stage: deploy-mars-apps
   extends: .deploy-rediscluster
   tags:
   - eks-mars-apps-infra
+  except:
+  - tags
   variables:
     ENV: mars-apps
 
@@ -240,3 +305,116 @@ remove-mars-apps-rediscluster:
   extends: .remove-rediscluster
   tags:
   - eks-mars-apps-infra
+  except:
+  - tags
+
+deploy-prd-pci-crd:
+  stage: deploy-prd-pci-crd
+  extends: .deploy-crd
+  tags:
+  - eks-prd-pci-kube-system
+  only:
+  - tags
+
+deploy-prd-pci-operator:
+  stage: deploy-prd-pci
+  extends: .deploy-operator
+  tags:
+  - eks-prd-pci-infra
+  variables:
+    ENV: prd-pci
+  only:
+  - tags
+
+remove-prd-pci-operator:
+  stage: deploy-prd-pci
+  extends: .remove-operator
+  tags:
+  - eks-prd-pci-infra
+  only:
+  - tags
+
+deploy-prd-pci-rediscluster:
+  stage: deploy-prd-pci
+  extends: .deploy-rediscluster
+  tags:
+  - eks-prd-pci-infra
+  variables:
+    ENV: prd-pci
+  only:
+  - tags
+
+deploy-prd-apps-crd:
+  stage: deploy-prd-apps-crd
+  extends: .deploy-crd
+  tags:
+  - eks-prd-apps-kube-system
+  only:
+  - tags
+
+deploy-prd-apps-operator:
+  stage: deploy-prd-apps
+  extends: .deploy-operator
+  tags:
+  - eks-prd-apps-infra
+  variables:
+    ENV: prd-apps
+  only:
+  - tags
+
+remove-prd-apps-operator:
+  stage: deploy-prd-apps
+  extends: .remove-operator
+  tags:
+  - eks-prd-apps-infra
+  only:
+  - tags
+
+deploy-prd-apps-rediscluster:
+  stage: deploy-prd-apps
+  extends: .deploy-rediscluster
+  tags:
+  - eks-prd-apps-infra
+  variables:
+    ENV: prd-apps
+  only:
+  - tags
+
+release:
+  tags:
+    - eks-dev-apps
+  stage: release
+  dependencies: []
+  script:
+    - source scripts/loadEnv.sh
+    # Setup ssh inside the runner
+    - git config --global user.email $GITLAB_USER_EMAIL
+    - git config --global user.name $GITLAB_USER_LOGIN
+    - 'which ssh-agent || ( apk --update add openssh-client )'
+    - eval $(ssh-agent -s)
+    - ssh-add <(echo "$SSH_PRIVATE_KEY")
+    - mkdir -p ~/.ssh
+    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    # Clone the source code
+    - GIT_URL=$(echo $CI_PROJECT_URL | cut -d'/' -f3)
+    - echo $GIT_URL
+    - echo $CI_PROJECT_PATH
+    - git clone git@$GIT_URL:$CI_PROJECT_PATH.git
+    - cd $CI_PROJECT_NAME
+    - git reset --hard $CI_BUILD_REF
+    # Tag the current build image
+    - echo $CI_BUILD_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
+    - docker pull $DOCKER_IMAGE
+    - VERSION=$(cat ./version)
+    - TAGGED_DOCKER_IMAGE=$CI_REGISTRY_IMAGE/releases:$VERSION
+    - docker tag $DOCKER_IMAGE $TAGGED_DOCKER_IMAGE
+    # Push the tagged image to the regitry
+    - docker push $TAGGED_DOCKER_IMAGE
+    # Release the project tag
+    - git tag -a $VERSION -m "new project tag"
+    # Push the commit tag to gitlab
+    - git push --follow-tags origin cicd
+  only:
+    - cicd
+  when: manual
+

@@ -6,7 +6,7 @@ redisOperator:
 
   manager:
     name: manager
-    image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/release:latest
+    image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/branches:cicd
     imagePullPolicy: Always
 
 redisCluster:
