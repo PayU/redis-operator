@@ -48,9 +48,30 @@ func (r *RedisClusterReconciler) getPodByIP(namespace string, podIP string) (cor
 		return corev1.Pod{}, err
 	}
 	if len(podList.Items) == 0 {
-		return corev1.Pod{}, errors.Errorf("No pod found for IP [%s]", podIP)
+		return corev1.Pod{}, apierrors.NewNotFound(corev1.Resource("Pod"), "")
 	}
 	return podList.Items[0], nil
+}
+
+func (r *RedisClusterReconciler) deletePodsByIP(namespace string, ip ...string) ([]corev1.Pod, error) {
+	var deletedPods []corev1.Pod
+	for _, ip := range ip {
+		pod, err := r.getPodByIP(namespace, ip)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		if err := r.Delete(context.Background(), &pod); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		deletedPods = append(deletedPods, pod)
+	}
+	return deletedPods, nil
 }
 
 func getSelectorRequirementFromPodLabelSelector(redisCluster *dbv1.RedisCluster) []metav1.LabelSelectorRequirement {
@@ -216,7 +237,7 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 		return nil, err
 	}
 
-	r.Log.Info(fmt.Sprintf("New leader pods ready: %v ", nodeNumbers))
+	r.Log.Info(fmt.Sprintf("New leader pods created: %v ", nodeNumbers))
 	return leaderPods, nil
 }
 
@@ -343,12 +364,14 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	return readyPods, nil
 }
 
+// TODO should wait as long as delete grace period
 func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 	for _, p := range pods {
 		key, err := client.ObjectKeyFromObject(&p)
 		if err != nil {
 			return err
 		}
+		r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
 		if pollErr := wait.Poll(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &p)
 			if err != nil {
