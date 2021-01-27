@@ -26,7 +26,15 @@ RUN cd /tmp &&\
 # This allows CompileDaemon to track the files we are changing in real time
 WORKDIR /app
 
+ARG NAMESPACE_ARG="default"
+ARG METRICS_ADDR_ARG=":8080"
+ARG ENABLE_LEADER_ELECTION_ARG="true"
+
+ENV NAMESPACE_ENV=${NAMESPACE_ARG}
+ENV METRICS_ADDR_ENV=${METRICS_ADDR_ARG}
+ENV ENABLE_LEADER_ELECTION_ENV=${ENABLE_LEADER_ELECTION_ARG}
+
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on
 
-ENTRYPOINT CompileDaemon --build="go build -o manager main.go" --command="./manager"
+ENTRYPOINT CompileDaemon --build="go build -o manager main.go" --command="./manager -namespace=$NAMESPACE_ENV -metrics-addr=$METRICS_ADDR_ENV -enable-leader-election=$ENABLE_LEADER_ELECTION_ENV"
 

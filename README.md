@@ -87,7 +87,7 @@ To develop directly on a deployed operator without rebuilding and loading/deploy
 2. Swap the dev image with the operator deploy using Telepresence
 
 ```
-telepresence --mount /tmp/podtoken  --context kind-redis-test --namespace default --swap-deployment redis-operator-manager --docker-run --rm -it -v $(pwd):/app -v=/tmp/podtoken/var/run/secrets:/var/run/secrets redis-operator:dev
+telepresence --mount /tmp/podtoken  --context kind-redis-test --namespace default --swap-deployment redis-operator-manager --docker-run --env NAMESPACE_ENV=default --rm -it -v $(pwd):/app -v=/tmp/podtoken/var/run/secrets:/var/run/secrets redis-operator:dev
 ```
 
 **How it works**
