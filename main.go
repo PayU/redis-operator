@@ -32,12 +32,10 @@ func init() {
 func loggerOptions(*zap.Options) {}
 
 func main() {
-	var metricsAddr string
-	var namespace string
-	var enableLeaderElection bool
+	var metricsAddr, namespace, enableLeaderElection string
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&namespace, "namespace", "default", "The namespace the operator will manage.")
-	flag.BoolVar(&enableLeaderElection, "enable-leader-election", true,
+	flag.StringVar(&enableLeaderElection, "enable-leader-election", "true",
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.Parse()
@@ -49,7 +47,7 @@ func main() {
 		Namespace:          namespace,
 		MetricsBindAddress: metricsAddr,
 		Port:               9443,
-		LeaderElection:     enableLeaderElection,
+		LeaderElection:     enableLeaderElection == "true",
 		LeaderElectionID:   "1747e98e.payu.com",
 	})
 	if err != nil {
