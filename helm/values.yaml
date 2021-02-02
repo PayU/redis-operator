@@ -17,8 +17,10 @@ redisOperator:
   - name: regcred
   terminationGracePeriodSeconds: 10
 
-  manager:
-    name: manager
+  containers:
+  - name: manager
+    image: redis-operator-docker:local
+    imagePullPolicy: IfNotPresent
     resources:
       limits:
         cpu: 1000m
@@ -26,8 +28,14 @@ redisOperator:
       requests:
         cpu: 100m
         memory: 256Mi
-    image: redis-operator-docker:local
-    imagePullPolicy: IfNotPresent
+    ports:
+    - containerPort: 9808
+    command:
+    - "./manager"
+    args:
+    - "-namespace=default"
+    - "-metrics-addr=0.0.0.0:9808"
+    - "-enable-leader-election=true"
 
 redisCluster:
   enabled: true
@@ -55,7 +63,7 @@ redisCluster:
       - name: host-sys
         mountPath: "/host-sys"
       command:
-        - "/bin/sh"
+      - "/bin/sh"
       args:
       - "-c"
       - "install_packages systemd procps && sysctl -w net.core.somaxconn=1024"
