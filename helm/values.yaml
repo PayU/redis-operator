@@ -42,7 +42,7 @@ redisCluster:
   name: rdc-test
   namespace: default
   leaderCount: 3
-  leaderFollowersCount: 2
+  leaderFollowersCount: 1
   enableDefaultAffinity: true
   podLabelSelector:
     app: redis-cluster-pod
