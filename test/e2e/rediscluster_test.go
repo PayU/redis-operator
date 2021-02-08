@@ -178,7 +178,7 @@ func testRedisClusterAvailabilityZoneDistribution(t *testing.T) {
 3. Set a non-existing Redis image and wait for the controller to detect the failed update
 4. Set an existing updated Redis image and wait for cluster update
 */
-func testRollingUpdate(t *testing.T) {
+func TestRollingUpdate(t *testing.T) {
 	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
 	ctx := framework.NewTestCtx(t, t.Name())
 	defer ctx.Cleanup()
@@ -227,7 +227,7 @@ func testRollingUpdate(t *testing.T) {
 2. Drain all nodes of an availability zone
 3. Reenable the node scheduling and wait for Redis cluster to recover
 */
-func TestAZFailure(t *testing.T) {
+func testAZFailure(t *testing.T) {
 	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
 	ctx := framework.NewTestCtx(t, t.Name())
 	defer ctx.Cleanup()

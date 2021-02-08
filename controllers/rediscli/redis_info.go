@@ -99,6 +99,9 @@ func NewRedisClusterInfo(rawData string) *RedisClusterInfo {
 	lines := strings.Split(rawData, "\r\n")
 	for _, line := range lines {
 		lineInfo := strings.Split(line, ":")
+		if len(lineInfo) < 2 {
+			return nil
+		}
 		info[lineInfo[0]] = lineInfo[1]
 	}
 	return &info
@@ -159,4 +162,27 @@ func (r *RedisInfo) GetSyncStatus() string {
 
 func (r *RedisClusterInfo) IsClusterFail() bool {
 	return (*r)["cluster_state"] == "fail"
+}
+
+// Returns the IP and port for a given Redis ID or empty strings if ID not found
+func (r *RedisClusterNodes) GetIPForID(id string) (string, string) {
+	for _, info := range *r {
+		if info.ID == id {
+			ipPort := strings.Split(info.Addr, ":")
+			return ipPort[0], ipPort[1]
+		}
+	}
+	return "", ""
+}
+
+// Returns the Redis node ID for a specified IP or empty string if IP not found
+// Supports the IP and IP:port format
+func (r *RedisClusterNodes) GetIDForIP(ip string) string {
+	ipPort := strings.Split(ip, ":")
+	for _, info := range *r {
+		if strings.Split(info.Addr, ":")[0] == ipPort[0] {
+			return info.ID
+		}
+	}
+	return ""
 }

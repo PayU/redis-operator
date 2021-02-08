@@ -9,7 +9,7 @@ ENVCONFIG := default
 CONFIG_ENV := config-build-local
 
 OPERATOR_NAMESPACE ?= "default"
-METRICS_ADDR ?= ":8080"
+METRICS_ADDR ?= "0.0.0.0:9808"
 ENABLE_LEADER_ELECTION ?= "true"
 
 ifdef NOTEST

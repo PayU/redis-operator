@@ -16,7 +16,6 @@ The project uses a [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) clust
 
 ```bash
 cd hack
-python gen_kind_config.py # creates a new kind cluster config file
 sh ./install.sh # you might need to run this as sudo if a regular user can't use docker
 ```
 
