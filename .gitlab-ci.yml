@@ -73,8 +73,9 @@ build-image:
 .deploy-operator: # creates all resources except CRD and RedisCluster
   image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
+  - source scripts/loadEnv.sh
   - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
-  - helm upgrade --install redis-operator ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisCluster.enabled=false --set redisCluster.namespace=$OPERATOR_NAMESPACE --skip-crds --debug
+  - helm upgrade --install redis-operator ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisCluster.enabled=false --set redisCluster.namespace=$OPERATOR_NAMESPACE --set redisOperator.containers[0].image=$DOCKER_IMAGE --skip-crds --debug
   when: manual
 
 .deploy-rediscluster: # creates RedisCluster resource
@@ -418,3 +419,41 @@ release:
     - cicd
   when: manual
 
+.k8s-dashboard-template:
+  image: docker-registry.zooz.co:4567/payu-clan-sre/monitoring-projects/tools/hub-euler-executer/releases:1.0.17
+  before_script:
+    - echo "override before_script"
+  tags:
+    - eks-dev-apps
+  script:
+    - EULER_DEFINITION=$PWD/dashboards/redis-operator.json FOLDER=Redis build-dashboards
+  only:
+    - cicd
+  when: manual
+
+#----- Dashboards -----#
+publish-dashboards-dev:
+  extends: .k8s-dashboard-template
+  variables:
+    ENV: eks-dev
+  stage: deploy-dev
+
+publish-dashboards-prd-apps:
+  extends: .k8s-dashboard-template
+  variables:
+    ENV: eks-prd-apps
+  tags:
+    - eks-prd-apps-apps
+  stage: deploy-prd-apps
+  only:
+    - tags
+
+publish-dashboards-prd-pci:
+  extends: .k8s-dashboard-template
+  variables:
+    ENV: eks-prd-pci
+  tags:
+    - eks-prd-pci-apps
+  stage: deploy-prd-pci
+  only:
+    - tags

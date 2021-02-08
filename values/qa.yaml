@@ -4,10 +4,25 @@ redisOperator:
   annotations:
     sidecar.istio.io/inject: "false"
 
-  manager:
-    name: manager
+  containers:
+  - name: manager
     image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/branches:cicd
     imagePullPolicy: Always
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1024Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    ports:
+    - containerPort: 9808
+    command:
+    - "./manager"
+    args:
+    - "-namespace=infra"
+    - "-metrics-addr=0.0.0.0:9808"
+    - "-enable-leader-election=true"
 
 redisCluster:
   enabled: true
