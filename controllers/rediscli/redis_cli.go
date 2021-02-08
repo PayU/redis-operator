@@ -84,7 +84,7 @@ func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
 }
 
 // ClusterCreate uses the '--cluster create' option on redis-cli to create a cluster using a list of nodes
-func (r *RedisCLI) ClusterCreate(leaderIPs []string) error {
+func (r *RedisCLI) ClusterCreate(leaderIPs []string) (string, error) {
 	var leaderAddrs []string
 	for _, leaderIP := range leaderIPs {
 		result := strings.Split(leaderIP, ":")
@@ -98,32 +98,35 @@ func (r *RedisCLI) ClusterCreate(leaderIPs []string) error {
 	// this will run the command non-interactively
 	args = append(args, "--cluster-yes")
 
-	if stdout, stderr, err := r.executeCommand(args); err != nil {
-		return errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", leaderAddrs, stdout, stderr, err)
+	stdout, stderr, err := r.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" {
+		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", leaderAddrs, stdout, stderr, err)
 	}
-
-	return nil
+	return stdout, nil
 }
 
-func (r *RedisCLI) ClusterCheck(nodeIP string) error {
+
+func (r *RedisCLI) ClusterCheck(nodeIP string) (string, error) {
 	result := strings.Split(nodeIP, ":")
 	if len(result) == 1 {
 		result = append(result, r.defaultPort)
 	}
 	args := []string{"--cluster", "check", result[0] + ":" + result[1]}
 
-	if stdout, stderr, err := r.executeCommand(args); err != nil {
-		return errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
-	}
 
-	return nil
+	stdout, stderr, err := r.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" {
+		return stdout, errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return stdout, nil
 }
 
 // AddFollower uses the '--cluster add-node' option on redis-cli to add a node to the cluster
 // newNodeIP: IP of the follower that will join the cluster
 // nodeIP: 		IP of a node in the cluster
 // leaderID: 	Redis ID of the leader that the new follower will replicate
-func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string) error {
+
+func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string) (string, error) {
 	result := strings.Split(nodeIP, ":")
 	if len(result) == 1 {
 		result = append(result, r.defaultPort)
@@ -132,15 +135,16 @@ func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string)
 
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" {
-		return errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
 	}
-	return nil
+	return stdout, nil
 }
 
-// DelFollower used the '--cluster del-node' option of redis-cli to remove a node from the cluster
+// DelNode uses the '--cluster del-node' option of redis-cli to remove a node from the cluster
 // nodeIP: any node of the cluster
 // nodeID: node that needs to be removed
-func (r *RedisCLI) DelFollower(nodeIP string, nodeID string) error {
+
+func (r *RedisCLI) DelNode(nodeIP string, nodeID string) error {
 	result := strings.Split(nodeIP, ":")
 	if len(result) == 1 {
 		result = append(result, r.defaultPort)
@@ -148,9 +152,9 @@ func (r *RedisCLI) DelFollower(nodeIP string, nodeID string) error {
 	args := []string{"--cluster", "del-node", result[0] + ":" + result[1], nodeID}
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.Contains(stdout, "[ERR]") || stderr != "" {
-		return errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)
 	}
-	return nil
+	return stdout, nil
 }
 
 // https://redis.io/commands/cluster-info
@@ -178,8 +182,20 @@ func (r *RedisCLI) Info(nodeIP string) (*RedisInfo, error) {
 	if err != nil || strings.TrimSpace(stderr) != "" {
 		return nil, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-
 	return NewRedisInfo(stdout), nil
+}
+
+// https://redis.io/commands/ping
+func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
+	args := []string{"-h", nodeIP, "ping"}
+	if len(message) != 0 {
+		args = append(args, message[0])
+	}
+	stdout, stderr, err := r.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" {
+		return stdout, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return strings.TrimSpace(stdout), nil
 }
 
 // https://redis.io/commands/cluster-nodes
@@ -193,7 +209,6 @@ func (r *RedisCLI) ClusterNodes(nodeIP string) (*RedisClusterNodes, error) {
 	if err != nil || strings.TrimSpace(stderr) != "" {
 		return nil, errors.Errorf("Failed to execute CLUSTER NODES(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-
 	return NewRedisClusterNodes(stdout), nil
 }
 
@@ -224,7 +239,6 @@ func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string) (string, er
 	if err != nil || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FORGET (%s, %s): %s | %s | %v", nodeIP, forgetNodeID, stdout, stderr, err)
 	}
-
 	return stdout, nil
 }
 
@@ -240,7 +254,6 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string) (*RedisCl
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.Contains(stdout, "ERR") {
 		return nil, errors.Errorf("Failed to execute CLUSTER REPLICAS (%s, %s): %s | %s | %v", nodeIP, leaderNodeID, stdout, stderr, err)
 	}
-
 	return NewRedisClusterNodes(stdout), err
 }
 
@@ -263,7 +276,6 @@ func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error)
 	if err != nil || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FAILOVER (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
-
 	return stdout, nil
 }
 
