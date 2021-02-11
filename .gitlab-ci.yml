@@ -26,6 +26,7 @@ variables:
   REDIS_CLUSTER_NAMESPACE: infra
   ENV: dev
   API_READ_TOKEN: "" # has to be provided via UI
+  DASHBOARD_FOLDER_NAME: "Redis-Operator"
 
 # unused, kept for reference
 .build-runner-image:
@@ -420,40 +421,28 @@ release:
   when: manual
 
 .k8s-dashboard-template:
-  image: docker-registry.zooz.co:4567/payu-clan-sre/monitoring-projects/tools/hub-euler-executer/releases:1.0.17
+  image: docker-registry.zooz.co:4567/payu-clan-sre/monitoring-projects/tools/hub-euler-executer/releases:1.0.19
   before_script:
     - echo "override before_script"
-  tags:
-    - eks-dev-apps
   script:
-    - EULER_DEFINITION=$PWD/dashboards/redis-operator.json FOLDER=Redis build-dashboards
-  only:
-    - cicd
+    - EULER_DEFINITION=$PWD/dashboards/redis-operator.json FOLDER=$DASHBOARD_FOLDER_NAME DISABLE_DEFAULT_ADDITIONAL_FILTERS=true build-dashboards
+    - EULER_DEFINITION=$PWD/dashboards/redis-cluster.json FOLDER=$DASHBOARD_FOLDER_NAME DISABLE_DEFAULT_ADDITIONAL_FILTERS=true build-dashboards
   when: manual
 
-#----- Dashboards -----#
 publish-dashboards-dev:
+  stage: deploy-dev
   extends: .k8s-dashboard-template
   variables:
-    ENV: eks-dev
-  stage: deploy-dev
+    ENV: eks-maps-apps
+  tags:
+    - eks-mars-apps-apps
 
 publish-dashboards-prd-apps:
+  stage: deploy-prd-apps
   extends: .k8s-dashboard-template
   variables:
     ENV: eks-prd-apps
   tags:
     - eks-prd-apps-apps
-  stage: deploy-prd-apps
-  only:
-    - tags
-
-publish-dashboards-prd-pci:
-  extends: .k8s-dashboard-template
-  variables:
-    ENV: eks-prd-pci
-  tags:
-    - eks-prd-pci-apps
-  stage: deploy-prd-pci
   only:
     - tags

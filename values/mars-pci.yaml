@@ -1,8 +1,12 @@
 redisOperator:
   enabled: true
   namespace: infra
+  labels:
+    app: "redis-operator-manager"
   annotations:
     sidecar.istio.io/inject: "false"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9808"
 
   containers:
   - name: manager
