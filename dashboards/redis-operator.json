@@ -12,11 +12,11 @@
       }
     ]
   },
-  "description": "Redis operator runtime metrics",
   "editable": true,
-  "gnetId": 10826,
+  "gnetId": null,
   "graphTooltip": 1,
-  "iteration": 1612954986856,
+  "id": 5322,
+  "iteration": 1613050568392,
   "links": [],
   "panels": [
     {
@@ -66,7 +66,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "histogram_quantile(0.95,sum(rate(rest_client_request_latency_seconds_bucket{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}[5m])) by (pod_name,verb,le))",
+          "expr": "histogram_quantile(0.95,sum(rate(rest_client_request_latency_seconds_bucket{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}[5m])) by (pod_name,verb,le))",
           "interval": "",
           "legendFormat": "{{verb}} {{pod_name}}",
           "refId": "A"
@@ -160,7 +160,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(rate(rest_client_requests_total{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}[1m])) by (code,method,pod_name)",
+          "expr": "sum(rate(rest_client_requests_total{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}[1m])) by (code,method,pod_name)",
           "interval": "",
           "legendFormat": "{{method}}:{{code}}",
           "refId": "A"
@@ -254,7 +254,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(controller_runtime_reconcile_time_seconds_bucket{env=\"$env\",namespace=\"$namespace\",pod_name=~\"$pod\"}[10m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(controller_runtime_reconcile_time_seconds_bucket{env=\"$env\", namespace=\"$namespace\", pod_name=~\"$pod\"}[10m])) by (le))",
           "interval": "",
           "legendFormat": "Duration",
           "refId": "B"
@@ -349,7 +349,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "go_memstats_heap_alloc_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_heap_alloc_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -357,7 +357,7 @@
           "refId": "B"
         },
         {
-          "expr": "go_memstats_heap_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_heap_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -365,7 +365,7 @@
           "refId": "A"
         },
         {
-          "expr": "go_memstats_heap_idle_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_heap_idle_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -373,7 +373,7 @@
           "refId": "C"
         },
         {
-          "expr": "go_memstats_heap_inuse_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_heap_inuse_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -381,7 +381,7 @@
           "refId": "D"
         },
         {
-          "expr": "go_memstats_heap_released_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_heap_released_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -478,7 +478,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "go_memstats_mspan_inuse_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_mspan_inuse_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -486,7 +486,7 @@
           "refId": "A"
         },
         {
-          "expr": "go_memstats_mspan_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_mspan_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -494,7 +494,7 @@
           "refId": "B"
         },
         {
-          "expr": "go_memstats_mcache_inuse_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_mcache_inuse_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -502,7 +502,7 @@
           "refId": "C"
         },
         {
-          "expr": "go_memstats_mcache_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_mcache_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -510,7 +510,7 @@
           "refId": "D"
         },
         {
-          "expr": "go_memstats_buck_hash_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_buck_hash_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -518,7 +518,7 @@
           "refId": "E"
         },
         {
-          "expr": "go_memstats_gc_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_gc_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -526,7 +526,7 @@
           "refId": "F"
         },
         {
-          "expr": "go_memstats_other_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"} - go_memstats_other_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_other_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"} - go_memstats_other_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "hide": true,
           "interval": "",
@@ -535,7 +535,7 @@
           "refId": "G"
         },
         {
-          "expr": "go_memstats_next_gc_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_next_gc_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -632,7 +632,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "go_memstats_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -729,7 +729,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "go_memstats_stack_inuse_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_stack_inuse_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -737,7 +737,7 @@
           "refId": "A"
         },
         {
-          "expr": "go_memstats_stack_sys_bytes{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_memstats_stack_sys_bytes{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -835,7 +835,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(go_memstats_mallocs_total{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}[1m])",
+          "expr": "rate(go_memstats_mallocs_total{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}[1m])",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -1032,7 +1032,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "go_goroutines{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_goroutines{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -1130,7 +1130,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(go_memstats_lookups_total{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}[1m])",
+          "expr": "rate(go_memstats_lookups_total{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}[1m])",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -1228,7 +1228,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "go_gc_duration_seconds{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}",
+          "expr": "go_gc_duration_seconds{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -1325,7 +1325,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "rate(go_memstats_alloc_bytes_total{app=\"redis-operator-manager\",namespace=\"$namespace\", pod_name=~\"$pod\"}[1m])",
+          "expr": "rate(go_memstats_alloc_bytes_total{env=\"$env\", namespace=\"$namespace\", app=\"redis-operator-manager\", pod_name=~\"$pod\"}[1m])",
           "format": "time_series",
           "interval": "",
           "intervalFactor": 1,
@@ -1375,7 +1375,6 @@
       }
     }
   ],
-  "refresh": false,
   "schemaVersion": 25,
   "style": "dark",
   "tags": [
@@ -1385,11 +1384,13 @@
   "templating": {
     "list": [
       {
+        "allFormat": "glob",
         "current": {
           "selected": false,
           "text": "default",
           "value": "default"
         },
+        "datasource": null,
         "hide": 2,
         "includeAll": false,
         "label": "Datasource",
@@ -1403,6 +1404,50 @@
         "type": "datasource"
       },
       {
+        "allFormat": "glob",
+        "allValue": null,
+        "current": {
+          "selected": true,
+          "text": "eks-qa",
+          "value": "eks-qa"
+        },
+        "datasource": "$datasource",
+        "definition": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "env",
+        "options": [
+          {
+            "selected": false,
+            "text": "eks-mars-apps",
+            "value": "eks-mars-apps"
+          },
+          {
+            "selected": false,
+            "text": "eks-mars-pci",
+            "value": "eks-mars-pci"
+          },
+          {
+            "selected": true,
+            "text": "eks-qa",
+            "value": "eks-qa"
+          }
+        ],
+        "query": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
+        "refresh": 0,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allFormat": "glob",
         "allValue": null,
         "current": {
           "selected": false,
@@ -1429,10 +1474,10 @@
         "useTags": false
       },
       {
+        "allFormat": "glob",
         "allValue": null,
         "current": {
           "selected": true,
-          "tags": [],
           "text": "All",
           "value": [
             "$__all"
@@ -1456,44 +1501,12 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
-      },
-      {
-        "allValue": null,
-        "current": {
-          "selected": true,
-          "text": "eks-qa",
-          "value": "eks-qa"
-        },
-        "datasource": "$datasource",
-        "definition": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
-        "hide": 0,
-        "includeAll": false,
-        "label": "Environment",
-        "multi": false,
-        "name": "env",
-        "options": [
-          {
-            "selected": true,
-            "text": "eks-qa",
-            "value": "eks-qa"
-          }
-        ],
-        "query": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
-        "refresh": 0,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
-        "tagValuesQuery": "",
-        "tags": [],
-        "tagsQuery": "",
-        "type": "query",
-        "useTags": false
       }
     ]
   },
   "time": {
-    "from": "2021-02-10T10:58:01.812Z",
-    "to": "2021-02-10T11:04:39.802Z"
+    "from": "now-6h",
+    "to": "now"
   },
   "timepicker": {
     "refresh_intervals": [
@@ -1506,20 +1519,10 @@
       "1h",
       "2h",
       "1d"
-    ],
-    "time_options": [
-      "5m",
-      "15m",
-      "1h",
-      "6h",
-      "12h",
-      "24h",
-      "2d",
-      "7d",
-      "30d"
     ]
   },
-  "timezone": "",
+  "timezone": "browser",
   "title": "Redis operator overview",
-  "uid": "7lcUW4jjo"
+  "uid": "7lcUW4jjo",
+  "version": 1
 }
