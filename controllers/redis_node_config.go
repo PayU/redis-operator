@@ -891,7 +891,7 @@ var redisConf = `
     # Zero is the only value able to guarantee that when all the partitions heal
     # the cluster will always be able to continue.
     #
-    # cluster-replica-validity-factor 10
+    cluster-replica-validity-factor 0
 
     # Cluster replicas are able to migrate to orphaned masters, that are masters
     # that are left without working replicas. This improves the cluster ability
