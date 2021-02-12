@@ -340,7 +340,7 @@ func (r *RedisClusterReconciler) doFailover(leaderIP string, followerIP ...strin
 	}
 
 	r.Log.Info("Starting FAILOVER on node " + promotedFollowerIP)
-	_, err = r.RedisCLI.ClusterFailover(promotedFollowerIP)
+	_, err = r.RedisCLI.ClusterFailover(promotedFollowerIP, "force")
 	if err != nil {
 		return "", err
 	}
