@@ -218,7 +218,7 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string) (*RedisCl
 
 // https://redis.io/commands/cluster-failover
 func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error) {
-	args := []string{"-h", nodeIP, "cluster", "failover"}
+	args := []string{"-h", nodeIP, "cluster", "failover", "force"}
 
 	if len(opt) != 0 {
 		if strings.ToLower(opt[0]) != "force" && strings.ToLower(opt[0]) != "takeover" {

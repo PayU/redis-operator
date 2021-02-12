@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-client-app
+  namespace: default
+  labels:
+    app: redis-client-app
+spec:
+  selector:
+    matchLabels:
+      app: redis-client-app
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis-client-app
+    spec:
+      imagePullSecrets:
+        - name: regcred
+      containers:
+      - command:
+        image: redis-client-app:testing
+        imagePullPolicy: "IfNotPresent"
+        name: redis-client-app
+        env:
+        - name: NUMBER_OF_KEYS
+          value: "5000000"
+        - name: REDIS_HOST
+          value: "redis-cluster-service"
+        - name: REDIS_PORT
+          value: "6379"     
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      terminationGracePeriodSeconds: 10
