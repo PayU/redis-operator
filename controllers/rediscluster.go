@@ -324,7 +324,7 @@ func (r *RedisClusterReconciler) doFailover(leaderIP string, followerIP ...strin
 		return "", err
 	}
 
-	r.Log.Info(fmt.Sprintf("Failover on leader: %s(%s)", leaderIP, leaderID))
+	r.Log.Info(fmt.Sprintf("Starting manual failover process [Wait-For-Sync, Cluster-Failover, Verify] on leader: %s(%s)", leaderIP, leaderID))
 
 	if len(followerIP) != 0 {
 		promotedFollowerIP = followerIP[0]
@@ -339,12 +339,12 @@ func (r *RedisClusterReconciler) doFailover(leaderIP string, followerIP ...strin
 		promotedFollowerIP = strings.Split((*replicas)[0].Addr, ":")[0]
 	}
 
-	r.Log.Info("Starting FAILOVER on node " + promotedFollowerIP)
-	_, err = r.RedisCLI.ClusterFailover(promotedFollowerIP)
-	if err != nil {
+	if err = r.waitForRedisSync(promotedFollowerIP); err != nil {
 		return "", err
 	}
-	if err = r.waitForRedisSync(promotedFollowerIP); err != nil {
+	r.Log.Info("Running 'cluster failover' command on node " + promotedFollowerIP)
+	_, err = r.RedisCLI.ClusterFailover(promotedFollowerIP)
+	if err != nil {
 		return "", err
 	}
 	if err = r.waitForManualFailover(promotedFollowerIP); err != nil {
@@ -771,8 +771,11 @@ func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 		}
 		syncStatus := redisInfo.GetSyncStatus()
 		if syncStatus != "" {
+			r.Log.Info(fmt.Sprintf("node %s SYNC status: %s", nodeIP, syncStatus))
 			return false, nil
 		}
+
+		r.Log.Info(fmt.Sprintf("node %s is fully synced", nodeIP))
 		return true, nil
 	})
 }

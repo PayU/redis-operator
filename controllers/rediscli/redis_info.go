@@ -2,6 +2,7 @@ package rediscli
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -146,17 +147,35 @@ func (r *RedisClusterNode) IsFailing() bool {
 	return match
 }
 
-// Returns the estimated completion percentage or the empty string if SYNC is
-// not in progress
+// GetSyncStatus Returns the estimated completion percentage or
+// the empty string if SYNC is not in progress
 func (r *RedisInfo) GetSyncStatus() string {
 	if r.Replication["role"] == "slave" {
 		if r.Replication["master_sync_in_progress"] != "0" {
 			p, found := r.Replication["master_sync_perc"]
 			if found {
-				return p
+				if found && len(p) > 0 {
+					return p
+				}
+
+				return "master_sync_in_progress"
 			}
 		}
+
+		aofLastRewrite, err := strconv.Atoi(r.Persistence["aof_last_rewrite_time_sec"])
+		if err != nil {
+			return "during sync, but unkown state"
+		}
+
+		if aofLastRewrite < 1 {
+			return "waiting for AOF rewrite child process to finish"
+		}
+
+		// master_sync_in_progress == 0 and Background AOF rewrite finished successfully
+		return ""
 	}
+
+	// means we are leader node
 	return ""
 }
 
