@@ -312,7 +312,12 @@ func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP str
 	}
 
 	r.Log.Info(fmt.Sprintf("Replication successful"))
-	return r.waitForRedisReplication(leaderIP, leaderID, followerID)
+
+	if err = r.waitForRedisReplication(leaderIP, leaderID, followerID); err != nil {
+		return err
+	}
+
+	return r.waitForRedisSync(followerIP)
 }
 
 // Changes the role of a leader with one of its followers
