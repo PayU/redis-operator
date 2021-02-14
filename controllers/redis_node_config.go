@@ -566,7 +566,7 @@ var redisConf = `
     # limit for maxmemory so that there is some free RAM on the system for replica
     # output buffers (but this is not needed if the policy is 'noeviction').
     #
-    # maxmemory <bytes>
+    maxmemory 1024mb
 
     # MAXMEMORY POLICY: how Redis will select what to remove when maxmemory
     # is reached. You can select among five behaviors:
@@ -597,7 +597,7 @@ var redisConf = `
     #
     # The default is:
     #
-    # maxmemory-policy noeviction
+    maxmemory-policy allkeys-lru
 
     # LRU, LFU and minimal TTL algorithms are not precise algorithms but approximated
     # algorithms (in order to save memory), so you can tune it for speed or
@@ -751,7 +751,7 @@ var redisConf = `
     # If you have latency problems turn this to "yes". Otherwise leave it as
     # "no" that is the safest pick from the point of view of durability.
 
-    no-appendfsync-on-rewrite no
+    no-appendfsync-on-rewrite yes
 
     # Automatic rewrite of the append only file.
     # Redis is able to automatically rewrite the log file implicitly calling
@@ -1193,7 +1193,7 @@ var redisConf = `
     #
     # Both the hard or the soft limit can be disabled by setting them to zero.
     client-output-buffer-limit normal 0 0 0
-    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit replica 1024mb 512mb 60
     client-output-buffer-limit pubsub 32mb 8mb 60
 
     # Client query buffers accumulate new commands. They are limited to a fixed

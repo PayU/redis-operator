@@ -18,10 +18,10 @@ spec:
       resources:
         limits:
           cpu: 500m
-          memory: 500Mi
+          memory: 4069Mi
         requests:
           cpu: 50m
-          memory: 50Mi
+          memory: 512Mi
       env:
       - name: PORT
         value: "6379"
