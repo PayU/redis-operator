@@ -2,7 +2,6 @@ package rediscli
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -147,40 +146,35 @@ func (r *RedisClusterNode) IsFailing() bool {
 	return match
 }
 
-// GetSyncStatus Returns the estimated completion percentage or
-// the empty string if SYNC is not in progress
+// Returns the estimated completion percentage or the empty string if SYNC is
+// not in progress
 func (r *RedisInfo) GetSyncStatus() string {
 	if r.Replication["role"] == "slave" {
 		if r.Replication["master_sync_in_progress"] != "0" {
 			p, found := r.Replication["master_sync_perc"]
 			if found {
-				if found && len(p) > 0 {
-					return p
-				}
-
-				return "master_sync_in_progress"
+				return p
 			}
 		}
-
-		aofLastRewrite, err := strconv.Atoi(r.Persistence["aof_last_rewrite_time_sec"])
-		if err != nil {
-			return "during sync, but unkown state"
-		}
-
-		if aofLastRewrite < 1 {
-			return "waiting for AOF rewrite child process to finish"
-		}
-
-		// master_sync_in_progress == 0 and Background AOF rewrite finished successfully
-		return ""
 	}
-
-	// means we are leader node
 	return ""
 }
 
 func (r *RedisClusterInfo) IsClusterFail() bool {
 	return (*r)["cluster_state"] == "fail"
+}
+
+// GetLoadStatus indicating if the load of a dump file is on-going
+// If a load operation is on-going, it returns the ETA to finish.
+func (r *RedisInfo) GetLoadStatus() string {
+	if r.Persistence["loading"] != "0" {
+		eta, found := r.Persistence["loading_eta_seconds"]
+		if found {
+			return eta
+		}
+	}
+
+	return ""
 }
 
 // Returns the IP and port for a given Redis ID or empty strings if ID not found

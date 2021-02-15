@@ -11,6 +11,7 @@ import (
 type RedisClusterState string
 
 const (
+	loadTimeInterval      = 500 * time.Millisecond
 	genericCheckInterval  = 2 * time.Second
 	genericCheckTimeout   = 50 * time.Second
 	clusterCreateInterval = 5 * time.Second

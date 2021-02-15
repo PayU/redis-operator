@@ -218,9 +218,9 @@ var redisConf = `
     #
     #   save ""
 
-    save 900 1
-    save 300 10
-    save 60 10000
+    # save 900 1
+    # save 300 10
+    # save 60 10000
 
     # By default Redis will stop accepting writes if RDB snapshots are enabled
     # (at least one save point) and the latest background save failed.
@@ -699,7 +699,7 @@ var redisConf = `
     #
     # Please check http://redis.io/topics/persistence for more information.
 
-    appendonly yes
+    appendonly no
 
     # The name of the append only file (default: "appendonly.aof")
 
