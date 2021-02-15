@@ -312,7 +312,16 @@ func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP str
 	}
 
 	r.Log.Info(fmt.Sprintf("Replication successful"))
-	return r.waitForRedisReplication(leaderIP, leaderID, followerID)
+
+	if err = r.waitForRedisReplication(leaderIP, leaderID, followerID); err != nil {
+		return err
+	}
+
+	if err = r.waitForRedisSync(followerIP); err != nil {
+		return err
+	}
+
+	return r.waitForRedisLoad(followerIP)
 }
 
 // Changes the role of a leader with one of its followers
@@ -324,7 +333,7 @@ func (r *RedisClusterReconciler) doFailover(leaderIP string, followerIP ...strin
 		return "", err
 	}
 
-	r.Log.Info(fmt.Sprintf("Failover on leader: %s(%s)", leaderIP, leaderID))
+	r.Log.Info(fmt.Sprintf("Starting manual failover process [Cluster-Failover, Verify-New-Leader] on leader: %s(%s)", leaderIP, leaderID))
 
 	if len(followerIP) != 0 {
 		promotedFollowerIP = followerIP[0]
@@ -339,12 +348,9 @@ func (r *RedisClusterReconciler) doFailover(leaderIP string, followerIP ...strin
 		promotedFollowerIP = strings.Split((*replicas)[0].Addr, ":")[0]
 	}
 
-	r.Log.Info("Starting FAILOVER on node " + promotedFollowerIP)
+	r.Log.Info("Running 'cluster failover' command on node " + promotedFollowerIP)
 	_, err = r.RedisCLI.ClusterFailover(promotedFollowerIP)
 	if err != nil {
-		return "", err
-	}
-	if err = r.waitForRedisSync(promotedFollowerIP); err != nil {
 		return "", err
 	}
 	if err = r.waitForManualFailover(promotedFollowerIP); err != nil {
@@ -771,8 +777,53 @@ func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 		}
 		syncStatus := redisInfo.GetSyncStatus()
 		if syncStatus != "" {
+			r.Log.Info(fmt.Sprintf("node %s SYNC status: %s", nodeIP, syncStatus))
 			return false, nil
 		}
+
+		r.Log.Info(fmt.Sprintf("node %s is fully synced", nodeIP))
+		return true, nil
+	})
+}
+
+func (r *RedisClusterReconciler) waitForRedisLoad(nodeIP string) error {
+	// we verify that loading process has started
+	r.Log.Info(fmt.Sprintf("Waiting for node %s to start LOADING", nodeIP))
+	if err := wait.PollImmediate(loadTimeInterval, genericCheckTimeout, func() (bool, error) {
+		redisInfo, err := r.RedisCLI.Info(nodeIP)
+		if err != nil {
+			return false, err
+		}
+
+		loadStatusETA := redisInfo.GetLoadStatus()
+		if loadStatusETA == "" {
+			r.Log.Info(fmt.Sprintf("node %s still not started the loading process", nodeIP))
+			return false, nil
+		}
+
+		r.Log.Info(fmt.Sprintf("node %s started to load", nodeIP))
+		return true, nil
+	}); err != nil {
+		if err.Error() != wait.ErrWaitTimeout.Error() {
+			return err
+		}
+		r.Log.Info(fmt.Sprintf("[WARN] timeout waiting for LOADING process to start on node %s", nodeIP))
+	}
+
+	// waiting for loading process to finish
+	return wait.PollImmediate(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
+		redisInfo, err := r.RedisCLI.Info(nodeIP)
+		if err != nil {
+			return false, err
+		}
+
+		loadStatusETA := redisInfo.GetLoadStatus()
+		if loadStatusETA != "" {
+			r.Log.Info(fmt.Sprintf("node %s LOAD ETA: %s", nodeIP, loadStatusETA))
+			return false, nil
+		}
+
+		r.Log.Info(fmt.Sprintf("node %s is fully loaded", nodeIP))
 		return true, nil
 	})
 }
