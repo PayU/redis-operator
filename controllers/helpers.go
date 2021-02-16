@@ -11,6 +11,7 @@ import (
 type RedisClusterState string
 
 const (
+	loadTimeInterval      = 500 * time.Millisecond
 	genericCheckInterval  = 2 * time.Second
 	genericCheckTimeout   = 50 * time.Second
 	clusterCreateInterval = 5 * time.Second
@@ -77,6 +78,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	uptodate, err := r.isClusterUpToDate(redisCluster)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is updated")
+		redisCluster.Status.ClusterState = string(Recovering)
 		return err
 	}
 	if !uptodate {
