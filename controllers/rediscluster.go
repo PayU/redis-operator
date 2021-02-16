@@ -797,7 +797,6 @@ func (r *RedisClusterReconciler) waitForRedisLoad(nodeIP string) error {
 
 		loadStatusETA := redisInfo.GetLoadStatus()
 		if loadStatusETA == "" {
-			r.Log.Info(fmt.Sprintf("node %s still not started the loading process", nodeIP))
 			return false, nil
 		}
 
