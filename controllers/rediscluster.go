@@ -296,6 +296,11 @@ func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP str
 		return err
 	}
 
+	leaderInfo, err := r.RedisCLI.Info(leaderIP)
+	if err != nil {
+		return err
+	}
+
 	followerID, err := r.RedisCLI.MyClusterID(followerIP)
 	if err != nil {
 		return err
@@ -321,7 +326,11 @@ func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP str
 		return err
 	}
 
-	return r.waitForRedisLoad(followerIP)
+	if len(leaderInfo.Keyspace) != 0 {
+		return r.waitForRedisLoad(followerIP)
+	}
+
+	return nil
 }
 
 // Triggeres a forced failover on the specified node
