@@ -969,19 +969,3 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 	}
 	return true, nil
 }
-
-// TODO we need a more generic way to handle Redis errors or CLI output messages
-func (r *RedisClusterReconciler) isConnectionLost(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "server closed the connection") ||
-		strings.Contains(strings.ToLower(err.Error()), "connection refused")
-}
-
-func (r *RedisClusterReconciler) isUnknownNode(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "unknown node")
-}
