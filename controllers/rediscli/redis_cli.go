@@ -23,7 +23,7 @@ func NewRedisCLI(log logr.Logger) *RedisCLI {
 }
 
 const (
-	defaultRedisCliTimeout = 10 * time.Second
+	defaultRedisCliTimeout = 20 * time.Second
 )
 
 /*

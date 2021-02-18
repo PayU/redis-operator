@@ -11,6 +11,8 @@ type TestConfig struct {
 	RedisClusterUpdatedYAMLPath string
 	UpdateImage                 string
 	Namespace                   string
+	KeyCount                    int
+	KeySize                     int
 	K8sResourceSetupTimeout     time.Duration // used for general resources such as roles and deployments
 	RedisClusterSetupTimeout    time.Duration // used for the Redis cluster creations
 }
@@ -23,7 +25,9 @@ var (
 		RedisClusterUpdatedYAMLPath: "../../config/samples/updated_cluster.yaml",
 		UpdateImage:                 "redis:update",
 		Namespace:                   "default",
-		K8sResourceSetupTimeout:     20 * time.Second,
-		RedisClusterSetupTimeout:    180 * time.Second,
+		KeyCount:                    20,
+		KeySize:                     100000000, // almost 2GB of data per node, make sure the system has enough memory
+		K8sResourceSetupTimeout:     60 * time.Second,
+		RedisClusterSetupTimeout:    300 * time.Second,
 	}
 )

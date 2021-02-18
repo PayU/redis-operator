@@ -1,6 +1,7 @@
 ## E2E Testing
 
 End-to-end automated testing for the Redis cluster.
+For pre-requisites check the main README file. In addition, the tests will expect the `redis-cli` binary to be in PATH`.
 
 ---
 
@@ -28,6 +29,12 @@ go test -tags=e2e_redis_op -count=1
 ```
 
 *It is important to add the `-count=1` flag otherwise the test resutls will be cached between multiple runs with unexpected results*
+
+If tests take longer than 10 minutes it could timeout by default. A larger timeout can be provided with the `-timeout` flag
+
+```
+go test -tags=e2e_redis_op -count=1 -timeout=20m
+```
 
 ---
 
