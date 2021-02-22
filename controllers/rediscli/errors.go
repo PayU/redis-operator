@@ -32,9 +32,10 @@ var SHARED_ERR_STRINGS = map[string]string{
 }
 
 var ERR_STRINGS = map[string]string{
-	"idnotdef":      "No such node ID",
-	"nodenotmaster": "The specified node is not a master", // https://github.com/redis/redis/blob/29ac9aea5de2f395960834b262b3d94f9efedbd8/src/cluster.c#L4858
-	"unknown":       "Unknown node",                       // https://github.com/redis/redis/blob/29ac9aea5de2f395960834b262b3d94f9efedbd8/src/cluster.c#L4601
+	"idnotdef":        "No such node ID",
+	"nodenotmaster":   "The specified node is not a master", // https://github.com/redis/redis/blob/29ac9aea5de2f395960834b262b3d94f9efedbd8/src/cluster.c#L4858
+	"unknown":         "Unknown node",                       // https://github.com/redis/redis/blob/29ac9aea5de2f395960834b262b3d94f9efedbd8/src/cluster.c#L4601
+	"failoverreplica": "ERR You should send CLUSTER FAILOVER to a replica",
 }
 
 func errorStringPrefix(err error, keywords string) bool {
@@ -56,7 +57,11 @@ func IsNodeIsNotMaster(err error) bool {
 }
 
 func IsLoading(err error) bool {
-	return errorStringMatch(err, "LOADING Redis is loading the dataset in memory")
+	return errorStringMatch(err, SHARED_ERR_STRINGS["loading"])
+}
+
+func IsFailoverNotOnReplica(err error) bool {
+	return errorStringMatch(err, ERR_STRINGS["failoverreplica"])
 }
 
 // Checks if an error is prefixed by the generic ERR string
