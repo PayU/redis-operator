@@ -22,22 +22,6 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-func (f *Framework) runKubectlApply(yamlData string) {
-	var sout, serr bytes.Buffer
-	cmd := exec.Command("kubectl apply", yamlData)
-	cmd.Stdout = &sout
-	cmd.Stderr = &serr
-	err := cmd.Run()
-	if err != nil {
-		fmt.Printf("[kubectl] kubectl apply failed: %v\n", err)
-	}
-	// TODO
-	// need to wait for kubectl resource to be created to avoid flaky tests
-	// must be replaced with kubectl wait
-	// https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#wait
-	time.Sleep(3 * time.Second)
-}
-
 func (f *Framework) runKustomizeCommand(command []string, path string) (string, string, error) {
 	var sout, serr bytes.Buffer
 
@@ -142,6 +126,49 @@ func (f *Framework) isKubectlWarning(serr string) bool {
 		return true
 	}
 	return false
+}
+
+func (f *Framework) kubectlPortForward(local string, remote string, pods ...corev1.Pod) error {
+	var sout, serr bytes.Buffer
+	for _, pod := range pods {
+		fmt.Printf("Executing kubectl port forward: %s %s %s\n", pod.Namespace, "pod/"+pod.Name, local+":"+remote)
+		cmd := exec.Command("kubectl", "port-forward", "-n", pod.Namespace, "pod/"+pod.Name, local+":"+remote)
+		cmd.Stdout = &sout
+		cmd.Stderr = &serr
+		err := cmd.Start()
+		if err != nil {
+			fmt.Printf("[kubectl] kubectl port-forward failed: %v\n", err)
+			return err
+		}
+		time.Sleep(time.Second * 2)
+	}
+	return nil
+}
+
+// Runs a command directly on a container via kubectl
+// command: command to be run on the container given as list of string
+func (f *Framework) kubectlContainerShell(pod corev1.Pod, container string, command ...string) (string, string, error) {
+	// TODO should merge with executeKubectlCommand
+	// redis-cli example: kubectl exec -n default -i -t redis-node-0 --container redis-container -- redis-cli info memory
+	var sout, serr bytes.Buffer
+
+	args := append([]string{"exec", "-n", pod.Namespace, "-i", pod.Name, "--container", container, "--"}, command...)
+	cmd := exec.Command("kubectl", args...)
+
+	cmd.Stdout = &sout
+	cmd.Stderr = &serr
+
+	err := cmd.Run()
+
+	if err != nil {
+		return sout.String(), serr.String(), errors.Wrap(err, fmt.Sprintf("kubectl command returned an error for command %v\ninput:\n", args))
+		// return sout.String(), serr.String(), errors.Wrap(err, fmt.Sprintf("kubectl command returned an error for command %v\ninput:\n%v", args, yamlRes))
+	} else if strings.TrimSpace(serr.String()) != "" && !f.isKubectlWarning(serr.String()) {
+		fmt.Printf("Kubectl output: %s\n", serr.String())
+		return sout.String(), serr.String(), errors.Errorf("kubectl command returned an error: %s", serr.String())
+	}
+	return sout.String(), serr.String(), err
+
 }
 
 func (f *Framework) executeKubectlCommand(yamlRes string, args []string, timeout time.Duration, dryRun bool) (string, string, error) {

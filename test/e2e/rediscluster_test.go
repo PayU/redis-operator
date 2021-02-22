@@ -172,11 +172,21 @@ func testRedisClusterAvailabilityZoneDistribution(t *testing.T) {
 	checkAZCorrectness(azMap, t)
 }
 
+func testBasic(t *testing.T) {
+	ctx := framework.NewTestCtx(t, t.Name())
+	defer ctx.Cleanup()
+
+	_, err := createDefaultCluster(&ctx, t)
+	Check(err, t.Fatalf, "Failed to create default cluster")
+	err = tfw.PopulateDatabase(defaultConfig.KeyCount, t.Name(), defaultConfig.KeySize)
+	Check(err, t.Fatalf, "Failed to populate Redis database")
+	fmt.Println("Waiting....")
+	time.Sleep(160 * time.Second)
+}
+
 /* Rolling update test
 1. Create a default Redis cluster
 2. Change the Redis container resource requirements and wait for cluster update
-3. Set a non-existing Redis image and wait for the controller to detect the failed update
-4. Set an existing updated Redis image and wait for cluster update
 */
 func TestRollingUpdate(t *testing.T) {
 	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
@@ -185,18 +195,36 @@ func TestRollingUpdate(t *testing.T) {
 
 	redisCluster, err := createDefaultCluster(&ctx, t)
 	Check(err, t.Fatalf, "Failed to create default cluster")
+	err = tfw.PopulateDatabase(defaultConfig.KeyCount, t.Name(), defaultConfig.KeySize)
+	Check(err, t.Fatalf, "Failed to populate Redis database")
 
 	Check(tfw.ApplyYAMLfile(defaultConfig.RedisClusterUpdatedYAMLPath, defaultConfig.K8sResourceSetupTimeout, false), t.Fatalf, "Failed to update resources in CR")
 	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster container resource update started...")
-	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+	Check(tfw.WaitForState(redisCluster, "Ready", 4*defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Ready state")
 	fmt.Printf("\n[E2E] Cluster update successful\n")
 
 	azMap := makeAZMap(&ctx, t, defaultConfig)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
+}
+
+/* Rolling update test
+1. Create a default Redis cluster
+2. Set a non-existing Redis image and wait for the controller to detect the failed update
+3. Set an existing updated Redis image and wait for cluster update
+*/
+func testRollingUpdateWithWrongImage(t *testing.T) {
+	fmt.Printf("---\n[E2E] Running test: %s\n", t.Name())
+	ctx := framework.NewTestCtx(t, t.Name())
+	defer ctx.Cleanup()
+
+	redisCluster, err := createDefaultCluster(&ctx, t)
+	Check(err, t.Fatalf, "Failed to create default cluster")
+	err = tfw.PopulateDatabase(defaultConfig.KeyCount, t.Name(), defaultConfig.KeySize)
+	Check(err, t.Fatalf, "Failed to populate Redis database")
 
 	fmt.Printf("\n[E2E] Testing response to missing image...")
 	Check(tfw.UpdateRedisImage(redisCluster, "redis:noimage"), t.Fatalf, "Failed to update image in CR")
@@ -213,11 +241,11 @@ func TestRollingUpdate(t *testing.T) {
 	Check(tfw.WaitForState(redisCluster, "Updating", defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Updating state")
 	fmt.Printf("\n[E2E] Cluster image update continued...")
-	Check(tfw.WaitForState(redisCluster, "Ready", 2*defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
+	Check(tfw.WaitForState(redisCluster, "Ready", 4*defaultConfig.RedisClusterSetupTimeout), t.Fatalf,
 		"Failed to reach Ready state")
 	fmt.Printf("\n[E2E] Cluster update successful\n")
 
-	azMap = makeAZMap(&ctx, t, defaultConfig)
+	azMap := makeAZMap(&ctx, t, defaultConfig)
 	printAZMap(azMap)
 	checkAZCorrectness(azMap, t)
 }
@@ -234,6 +262,8 @@ func testAZFailure(t *testing.T) {
 
 	redisCluster, err := createDefaultCluster(&ctx, t)
 	Check(err, t.Fatalf, "Failed to create default cluster")
+	err = tfw.PopulateDatabase(defaultConfig.KeyCount, t.Name(), defaultConfig.KeySize)
+	Check(err, t.Fatalf, "Failed to populate Redis database")
 
 	azMap := makeAZMap(&ctx, t, defaultConfig)
 	printAZMap(azMap)
