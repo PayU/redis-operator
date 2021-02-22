@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"strconv"
+	"sync"
 	"time"
 
 	dbv1 "github.com/PayU/Redis-Operator/api/v1"
@@ -111,4 +113,41 @@ func (f *Framework) UpdateRedisImage(redisCluster *dbv1.RedisCluster, image stri
 		}
 	}
 	return f.RuntimeClient.Update(context.Background(), &currentRdc)
+}
+
+func (f *Framework) PopulateDatabase(keyCount int, keyName string, keySize int) error {
+	var wg sync.WaitGroup
+
+	leaderPods, err := f.GetRedisPods("any")
+	if err != nil {
+		return err
+	}
+
+	errs := make(chan error, len(leaderPods.Items))
+
+	for i, leaderPod := range leaderPods.Items {
+		if leaderPod.Status.PodIP != "" {
+			wg.Add(1)
+			go func(keyCount string, keyName string, keySize string, pod corev1.Pod, wg *sync.WaitGroup) {
+				defer wg.Done()
+				stdout, stderr, err := f.kubectlContainerShell(pod, "redis-container", "redis-cli", "debug", "populate", keyCount, keyName, keySize)
+				if err != nil {
+					fmt.Printf("Failed to run container shell: %s | %s\n", stdout, stderr)
+					errs <- err
+				}
+			}(strconv.Itoa(keyCount), keyName, strconv.Itoa(keySize), leaderPods.Items[i], &wg)
+		} else {
+			fmt.Printf("Node %s had no IP\n", leaderPod.Labels["node-number"])
+		}
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

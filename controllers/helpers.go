@@ -78,6 +78,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	uptodate, err := r.isClusterUpToDate(redisCluster)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is updated")
+		redisCluster.Status.ClusterState = string(Recovering)
 		return err
 	}
 	if !uptodate {

@@ -23,7 +23,7 @@ func NewRedisCLI(log logr.Logger) *RedisCLI {
 }
 
 const (
-	defaultRedisCliTimeout = 10 * time.Second
+	defaultRedisCliTimeout = 20 * time.Second
 )
 
 /*
@@ -93,7 +93,7 @@ func (r *RedisCLI) ClusterCreate(leaderIPs []string) (string, error) {
 	args = append(args, "--cluster-yes")
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", leaderAddrs, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -103,7 +103,7 @@ func (r *RedisCLI) ClusterCheck(nodeIP string) (string, error) {
 	args := []string{"--cluster", "check", nodeIP + ":6379"}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -117,7 +117,7 @@ func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string)
 	args := []string{"--cluster", "add-node", newNodeIP + ":6379", nodeIP + ":6379", "--cluster-slave", "--cluster-master-id", leaderID}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -129,7 +129,7 @@ func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string)
 func (r *RedisCLI) DelNode(nodeIP string, nodeID string) (string, error) {
 	args := []string{"--cluster", "del-node", nodeIP + ":6379", nodeID}
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.Contains(stdout, "[ERR]") || stderr != "" {
+	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -140,7 +140,7 @@ func (r *RedisCLI) ClusterInfo(nodeIP string) (*RedisClusterInfo, error) {
 	args := []string{"-h", nodeIP, "cluster", "info"}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute CLUSTER INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
 	return NewRedisClusterInfo(stdout), nil
@@ -151,7 +151,7 @@ func (r *RedisCLI) Info(nodeIP string) (*RedisInfo, error) {
 	args := []string{"-h", nodeIP, "info"}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
 	return NewRedisInfo(stdout), nil
@@ -164,7 +164,7 @@ func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
 		args = append(args, message[0])
 	}
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
 	return strings.TrimSpace(stdout), nil
@@ -175,7 +175,7 @@ func (r *RedisCLI) ClusterNodes(nodeIP string) (*RedisClusterNodes, error) {
 	args := []string{"-h", nodeIP, "cluster", "nodes"}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute CLUSTER NODES(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
 	return NewRedisClusterNodes(stdout), nil
@@ -185,8 +185,8 @@ func (r *RedisCLI) ClusterNodes(nodeIP string) (*RedisClusterNodes, error) {
 func (r *RedisCLI) MyClusterID(nodeIP string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "myid"}
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
-		return "", errors.Errorf("Failed to execute MYID(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute MYID(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
 	return strings.TrimSpace(stdout), nil
 }
@@ -198,7 +198,7 @@ func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string) (string, er
 	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stdout) != "OK" {
+	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FORGET (%s, %s): %s | %s | %v", nodeIP, forgetNodeID, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -210,7 +210,7 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string) (*RedisCl
 	args := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" || strings.Contains(stdout, "ERR") {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute CLUSTER REPLICAS (%s, %s): %s | %s | %v", nodeIP, leaderNodeID, stdout, stderr, err)
 	}
 	return NewRedisClusterNodes(stdout), err
@@ -229,7 +229,7 @@ func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error)
 	}
 
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stdout) != "OK" {
+	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FAILOVER (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -242,7 +242,7 @@ func (r *RedisCLI) ClusterMeet(nodeIP string, newNodeIP string, newNodePort stri
 		args = append(args, newNodeBusPort[0])
 	}
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stdout) != "OK" {
+	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER MEET (%s, %s, %s, %v): %s | %s | %v", nodeIP, newNodeIP, newNodePort, newNodeBusPort, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -259,7 +259,7 @@ func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 		}
 	}
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stdout) != "OK" {
+	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER RESET (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -276,7 +276,7 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 		}
 	}
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stderr) != "" {
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute FLUSHALL (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
 	return stdout, nil
@@ -286,7 +286,7 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "replicate", leaderID}
 	stdout, stderr, err := r.executeCommand(args)
-	if err != nil || strings.TrimSpace(stdout) != "OK" {
+	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER REPLICATE (%s, %s): %s | %s | %v", nodeIP, leaderID, stdout, stderr, err)
 	}
 	return stdout, nil
