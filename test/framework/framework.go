@@ -69,7 +69,7 @@ func NewFramework(kubeconfig, opImage string) (*Framework, error) {
 		return nil, errors.Wrap(err, "creating new apiextensions client failed")
 	}
 
-	redisCLI := rediscli.NewRedisCLI(ctrl.Log.WithName("redis-op-testing"))
+	redisCLI := rediscli.NewRedisCLI(ctrl.Log.WithName("redis-op-testing"), "6379")
 
 	serverVersion, err := GetServerVersion(goCli.RESTClient())
 	if err != nil {

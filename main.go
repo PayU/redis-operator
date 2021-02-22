@@ -56,12 +56,12 @@ func main() {
 	}
 
 	log := ctrl.Log.WithName("controllers").WithName("RedisCluster")
-
+	defaultPort := "6379"
 	if err = (&controllers.RedisClusterReconciler{
 		Client:   mgr.GetClient(),
 		Log:      log,
 		Scheme:   mgr.GetScheme(),
-		RedisCLI: rediscli.NewRedisCLI(log),
+		RedisCLI: rediscli.NewRedisCLI(log, defaultPort),
 		State:    controllers.NotExists,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisCluster")
