@@ -220,7 +220,7 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string) (*RedisCl
 func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "failover"}
 
-	if len(opt) != 0 {
+	if len(opt) != 0 && opt[0] != "" {
 		if strings.ToLower(opt[0]) != "force" && strings.ToLower(opt[0]) != "takeover" {
 			r.Log.Info(fmt.Sprintf("Warning: CLUSTER FALOVER called with wrong option - %s", opt[0]))
 		} else {
