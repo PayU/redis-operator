@@ -529,9 +529,8 @@ func (r *RedisClusterReconciler) forgetNode(nodeIPs []string, removedID string) 
 	return nil
 }
 
-func (r *RedisClusterReconciler) cleanupNodeList(podIPs []string) error {
+func (r *RedisClusterReconciler) cleanupNodeList(podIPs []string) {
 	var wg sync.WaitGroup
-	errs := make(chan error, len(podIPs))
 
 	r.Log.Info(fmt.Sprintf("Cleanning up: %v", podIPs))
 
@@ -541,30 +540,18 @@ func (r *RedisClusterReconciler) cleanupNodeList(podIPs []string) error {
 			defer wg.Done()
 			clusterNodes, err := r.RedisCLI.ClusterNodes(ip)
 			if err != nil {
-				// TODO node is not reachable => nothing to clean; we could consider throwing an error instead
 				return
 			}
 			for _, clusterNode := range *clusterNodes {
 				if clusterNode.IsFailing() {
-					// TODO opportunity for higher concurrency - spawn a routine for each ClusterForget command
 					if _, err := r.RedisCLI.ClusterForget(ip, clusterNode.ID); err != nil {
-						errs <- err
-						return
+						r.Log.Info(fmt.Sprintf("[WARN] Could not forget %s on node %s", ip, clusterNode.ID))
 					}
 				}
 			}
 		}(podIP, &wg)
 	}
-
 	wg.Wait()
-	close(errs)
-
-	for err := range errs {
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // Handles the failover process for a leader. Waits for automatic failover, then
@@ -803,9 +790,9 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 		}
 	}
-	if err = r.cleanupNodeList(clusterView.HealthyNodeIPs()); err != nil {
-		return err
-	}
+
+	r.cleanupNodeList(clusterView.HealthyNodeIPs())
+
 	return nil
 }
 
