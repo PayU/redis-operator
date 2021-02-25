@@ -164,16 +164,15 @@ func (r *RedisClusterInfo) IsClusterFail() bool {
 	return (*r)["cluster_state"] == "fail"
 }
 
-// GetLoadStatus indicating if the load of a dump file is on-going
+// GetLoadETA indicating if the load of a dump file is on-going
 // If a load operation is on-going, it returns the ETA to finish.
-func (r *RedisInfo) GetLoadStatus() string {
+func (r *RedisInfo) GetLoadETA() string {
 	if r.Persistence["loading"] != "0" {
 		eta, found := r.Persistence["loading_eta_seconds"]
 		if found {
 			return eta
 		}
 	}
-
 	return ""
 }
 
