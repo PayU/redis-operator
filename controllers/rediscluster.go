@@ -663,42 +663,45 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 			if err := r.recreateLeader(redisCluster, promotedPodIP); err != nil {
 				return err
 			}
-		} else {
-			var missingFollowers []NodeNumbers
-			var failedFollowerIPs []string
-			var terminatingFollowerIPs []string
-			var terminatingFollowerPods []corev1.Pod
+		}
+	}
 
-			for _, follower := range leader.Followers {
-				if follower.Pod == nil {
-					missingFollowers = append(missingFollowers, NodeNumbers{follower.NodeNumber, follower.LeaderNumber})
-				} else if follower.Terminating {
-					terminatingFollowerPods = append(terminatingFollowerPods, *follower.Pod)
-					terminatingFollowerIPs = append(terminatingFollowerIPs, follower.Pod.Status.PodIP)
-					missingFollowers = append(missingFollowers, NodeNumbers{follower.NodeNumber, follower.LeaderNumber})
-				} else if follower.Failed {
-					failedFollowerIPs = append(failedFollowerIPs, follower.Pod.Status.PodIP)
-					missingFollowers = append(missingFollowers, NodeNumbers{follower.NodeNumber, follower.LeaderNumber})
-				}
+	for _, leader := range *clusterView {
+		var missingFollowers []NodeNumbers
+		var failedFollowerIPs []string
+		var terminatingFollowerIPs []string
+		var terminatingFollowerPods []corev1.Pod
+
+		for _, follower := range leader.Followers {
+			if follower.Pod == nil {
+				missingFollowers = append(missingFollowers, NodeNumbers{follower.NodeNumber, follower.LeaderNumber})
+			} else if follower.Terminating {
+				terminatingFollowerPods = append(terminatingFollowerPods, *follower.Pod)
+				terminatingFollowerIPs = append(terminatingFollowerIPs, follower.Pod.Status.PodIP)
+				missingFollowers = append(missingFollowers, NodeNumbers{follower.NodeNumber, follower.LeaderNumber})
+			} else if follower.Failed {
+				failedFollowerIPs = append(failedFollowerIPs, follower.Pod.Status.PodIP)
+				missingFollowers = append(missingFollowers, NodeNumbers{follower.NodeNumber, follower.LeaderNumber})
 			}
-			deletedPods, err := r.deletePodsByIP(redisCluster.Namespace, failedFollowerIPs...)
-			if err != nil {
+		}
+		deletedPods, err := r.deletePodsByIP(redisCluster.Namespace, failedFollowerIPs...)
+		if err != nil {
+			return err
+		}
+		if err = r.waitForPodDelete(append(terminatingFollowerPods, deletedPods...)...); err != nil {
+			return err
+		}
+
+		if len(missingFollowers) > 0 {
+			if err := r.forgetLostNodes(redisCluster); err != nil {
 				return err
 			}
-			if err = r.waitForPodDelete(append(terminatingFollowerPods, deletedPods...)...); err != nil {
+			if err := r.addFollowers(redisCluster, missingFollowers...); err != nil {
 				return err
-			}
-
-			if len(missingFollowers) > 0 {
-				if err := r.forgetLostNodes(redisCluster); err != nil {
-					return err
-				}
-				if err := r.addFollowers(redisCluster, missingFollowers...); err != nil {
-					return err
-				}
 			}
 		}
 	}
+
 	complete, err := r.isClusterComplete(redisCluster)
 	if err != nil || !complete {
 		return errors.Errorf("Cluster recovery not complete")
