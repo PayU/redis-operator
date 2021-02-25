@@ -77,7 +77,7 @@ redisCluster:
       resources:
         limits:
           cpu: 500m
-          memory: 500Mi
+          memory: 2500Mi
         requests:
           cpu: 50m
           memory: 50Mi
