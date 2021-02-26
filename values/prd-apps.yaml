@@ -32,6 +32,7 @@ redisCluster:
   enabled: true
   name: main-redis-cluster
   namespace: infra
+  leaderFollowersCount: 2
   annotations:
     sidecar.istio.io/inject: "false"
     prometheus.io/scrape: "true"
