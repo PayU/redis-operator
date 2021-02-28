@@ -627,6 +627,7 @@ func (r *RedisClusterReconciler) handleFailover(redisCluster *dbv1.RedisCluster,
 }
 
 func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster) error {
+	var runLeaderRecover bool = false
 	clusterView, err := r.NewRedisClusterView(redisCluster)
 	if err != nil {
 		return err
@@ -635,6 +636,8 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 	r.Log.Info(clusterView.String())
 	for i, leader := range *clusterView {
 		if leader.Failed {
+			runLeaderRecover = true
+
 			if leader.Terminating {
 				if err = r.waitForPodDelete(*leader.Pod); err != nil {
 					return errors.Errorf("Failed to wait for leader pod to be deleted %s: %v", leader.NodeNumber, err)
@@ -664,6 +667,17 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 				return err
 			}
 		}
+	}
+
+	if runLeaderRecover {
+		// we fetch again the cluster view in case the state has changed
+		// since the last check (before handling the failed leaders)
+		clusterView, err = r.NewRedisClusterView(redisCluster)
+		if err != nil {
+			return err
+		}
+
+		r.Log.Info(clusterView.String())
 	}
 
 	for _, leader := range *clusterView {
