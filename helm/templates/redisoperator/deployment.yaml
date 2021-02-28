@@ -19,7 +19,7 @@ spec:
   template:
     metadata:
       annotations: 
-      rollme: {{ randAlphaNum 5 | quote }}
+        rollme: {{ randAlphaNum 5 | quote }}
 {{- if .Values.redisOperator.annotations }}
       {{ .Values.redisOperator.annotations | toYaml | indent 8 }}
 {{- end }}
