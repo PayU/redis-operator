@@ -18,7 +18,11 @@ spec:
       control-plane: controller-manager
   template:
     metadata:
-      annotations: {{ toYaml .Values.redisOperator.annotations | nindent 8 }}
+      annotations: 
+      rollme: {{ randAlphaNum 5 | quote }}
+{{- if .Values.redisOperator.annotations }}
+      {{ .Values.redisOperator.annotations | toYaml | indent 8 }}
+{{- end }}
       labels: {{ toYaml .Values.redisOperator.labels | nindent 8 }}
     spec:
       imagePullSecrets: {{ toYaml .Values.redisOperator.imagePullSecrets | nindent 8 }}
