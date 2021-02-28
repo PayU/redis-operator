@@ -666,6 +666,12 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 		}
 	}
 
+	clusterView, err = r.NewRedisClusterView(redisCluster)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info(clusterView.String())
 	for _, leader := range *clusterView {
 		var missingFollowers []NodeNumbers
 		var failedFollowerIPs []string
