@@ -34,6 +34,7 @@ variables:
   tags:
   - eks-dev-apps
   script:
+  - "echo testing"
   - echo $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
   - source scripts/loadEnv.sh
   - 'curl --header "PRIVATE-TOKEN: $API_READ_TOKEN" "https://git.zooz.co/api/v4/projects/363/repository/files/k8s%2Fkubectl-helm%2FDockerfile?ref=master" | jq ".content" -r | base64 -d > runner.Dockerfile'
