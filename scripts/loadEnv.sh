@@ -2,19 +2,16 @@ set -e
 [[ $ENV ]] && echo Environment is $ENV
 
 function setCommonEnvVars() {
-    if [ -z ${CI_COMMIT_TAG+x} ] && [[ ! $CI_COMMIT_REF_NAME == master* ]]; then
+    export VERSION=$(git describe --tags --abbrev=0)
+    if [ -z ${CI_COMMIT_TAG+x} ] && [[ ! $CI_COMMIT_REF_NAME == cicd* ]]; then
         echo "Docker image will set on branches folder in registry"
         export REL_CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE/branches
-    elif [ -z ${CI_COMMIT_TAG+x} ]; then
-        echo "Docker image will set on master folder in registry"
-        export REL_CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE/master
+        export DOCKER_IMAGE=$REL_CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
     else
-        echo "Docker image will set on releases folder in registry"
-        export REL_CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE/releases
-    fi
-
-    export DOCKER_IMAGE=$REL_CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
-    export VERSION=$(cat $PWD/version)
+        echo "Docker image will set on cicd folder in registry (which is the release folder)"
+        export REL_CI_REGISTRY_IMAGE=$CI_REGISTRY_IMAGE/cicd
+        export DOCKER_IMAGE=$REL_CI_REGISTRY_IMAGE:$VERSION
+    fi    
 }
 
 function reportEnvVars() {
