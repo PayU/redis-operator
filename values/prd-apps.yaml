@@ -32,7 +32,7 @@ redisCluster:
   enabled: true
   name: main-redis-cluster
   namespace: infra
-  leaderFollowersCount: 2
+  leaderFollowersCount: 1
   annotations:
     sidecar.istio.io/inject: "false"
     prometheus.io/scrape: "true"
@@ -62,11 +62,11 @@ redisCluster:
       imagePullPolicy: Always
       resources:
         limits:
-          cpu: 200m
-          memory: 1.5Gb
+          cpu: 500m
+          memory: 3Gi
         requests:
-          cpu: 100m
-          memory: 1Gb
+          cpu: 250m
+          memory: 2Gi
       env:
       - name: PORT
         value: "6379"
