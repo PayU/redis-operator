@@ -382,42 +382,54 @@ deploy-prd-apps-rediscluster:
   only:
   - tags
 
-release:
+.release: &release
   tags:
-    - eks-dev-apps
+  - eks-dev-apps
   stage: release
-  dependencies: []
   script:
-    - source scripts/loadEnv.sh
-    # Setup ssh inside the runner
-    - git config --global user.email $GITLAB_USER_EMAIL
-    - git config --global user.name $GITLAB_USER_LOGIN
-    - 'which ssh-agent || ( apk --update add openssh-client )'
-    - eval $(ssh-agent -s)
-    - ssh-add <(echo "$SSH_PRIVATE_KEY")
-    - mkdir -p ~/.ssh
-    - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-    # Clone the source code
-    - GIT_URL=$(echo $CI_PROJECT_URL | cut -d'/' -f3)
-    - echo $GIT_URL
-    - echo $CI_PROJECT_PATH
-    - git clone git@$GIT_URL:$CI_PROJECT_PATH.git
-    - cd $CI_PROJECT_NAME
-    - git reset --hard $CI_BUILD_REF
-    # Tag the current build image
-    - echo $CI_BUILD_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
-    - docker pull $DOCKER_IMAGE
-    - TAGGED_DOCKER_IMAGE=$CI_REGISTRY_IMAGE/releases:$VERSION
-    - docker tag $DOCKER_IMAGE $TAGGED_DOCKER_IMAGE
-    # Push the tagged image to the regitry
-    - docker push $TAGGED_DOCKER_IMAGE
-    # Release the project tag
-    - git tag -a $VERSION -m "new project tag"
-    # Push the commit tag to gitlab
-    - git push --follow-tags origin cicd
-  only:
-    - cicd
+  - echo "Setup ssh inside the runner.."
+  - git config --global user.email $GITLAB_USER_EMAIL
+  - git config --global user.name $GITLAB_USER_LOGIN
+  - 'which ssh-agent || ( apk --update add openssh-client )'
+  - eval $(ssh-agent -s)
+  - ssh-add <(echo "$SSH_PRIVATE_KEY")
+  - mkdir -p ~/.ssh
+  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+  - echo "Clone the source code.."
+  - GIT_URL=$(echo $CI_PROJECT_URL | cut -d'/' -f3)
+  - git clone git@$GIT_URL:$CI_PROJECT_PATH.git
+  - cd $CI_PROJECT_NAME
+  - git reset --hard $CI_COMMIT_SHA
+  # Bump and commit the new version
+  - ./scripts/version-control.sh $TYPE
+  - VERSION=$(cat ./version)
+  # Release the project tag
+  - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$VERSION"
+  - git tag -a $VERSION-internal -m $GIT_TAG_MESSAGE
+  # Push the commit tag to gitlab
+  - git push --follow-tags origin master
+  - git add .
+  - git commit -m "Release****$GIT_TAG_MESSAGE[skip ci]"
+  - git push origin master
   when: manual
+  only:
+  - master
+
+release:patch:
+  extends: .release
+  variables:
+    TYPE: patch
+
+release:minor:
+  extends: .release
+  variables:
+    TYPE: minor
+
+release:major:
+  extends: .release
+  variables:
+    TYPE: major
+
 
 .k8s-dashboard-template:
   image: docker-registry.zooz.co:4567/payu-clan-sre/monitoring-projects/tools/hub-euler-executer/releases:1.0.19
