@@ -216,7 +216,7 @@ var redisConf = `
     #   points by adding a save directive with a single empty string argument
     #   like in the following example:
     #
-    #   save ""
+    save ""
 
     # save 900 1
     # save 300 10
