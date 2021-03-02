@@ -413,7 +413,7 @@ deploy-prd-apps-rediscluster:
   - git push origin master
   when: manual
   only:
-  - master
+  - cicd
 
 release:patch:
   extends: .release
