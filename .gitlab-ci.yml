@@ -407,7 +407,6 @@ release:
     # Tag the current build image
     - echo $CI_BUILD_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
     - docker pull $DOCKER_IMAGE
-    - VERSION=$(cat ./version)
     - TAGGED_DOCKER_IMAGE=$CI_REGISTRY_IMAGE/releases:$VERSION
     - docker tag $DOCKER_IMAGE $TAGGED_DOCKER_IMAGE
     # Push the tagged image to the regitry
