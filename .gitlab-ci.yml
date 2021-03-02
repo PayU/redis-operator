@@ -407,10 +407,10 @@ deploy-prd-apps-rediscluster:
   - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$VERSION"
   - git tag -a $VERSION-internal -m $GIT_TAG_MESSAGE
   # Push the commit tag to gitlab
-  - git push --follow-tags origin master
+  - git push --follow-tags origin cicd
   - git add .
   - git commit -m "Release****$GIT_TAG_MESSAGE[skip ci]"
-  - git push origin master
+  - git push origin cicd
   when: manual
   only:
   - cicd
