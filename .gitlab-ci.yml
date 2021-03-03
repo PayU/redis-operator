@@ -382,7 +382,7 @@ deploy-prd-apps-rediscluster:
   only:
   - tags
 
-.release: &release
+release:
   tags:
   - eks-dev-apps
   stage: release
@@ -400,8 +400,6 @@ deploy-prd-apps-rediscluster:
   - git clone git@$GIT_URL:$CI_PROJECT_PATH.git
   - cd $CI_PROJECT_NAME
   - git reset --hard $CI_COMMIT_SHA
-  # Bump and commit the new version
-  - ./scripts/version-control.sh $TYPE
   # Release the project tag
   - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$LATEST_TAG"
   - git tag --force -a $LATEST_TAG-internal -m $GIT_TAG_MESSAGE
@@ -413,22 +411,6 @@ deploy-prd-apps-rediscluster:
   when: manual
   only:
   - cicd
-
-release:patch:
-  extends: .release
-  variables:
-    TYPE: patch
-
-release:minor:
-  extends: .release
-  variables:
-    TYPE: minor
-
-release:major:
-  extends: .release
-  variables:
-    TYPE: major
-
 
 .k8s-dashboard-template:
   image: docker-registry.zooz.co:4567/payu-clan-sre/monitoring-projects/tools/hub-euler-executer/releases:1.0.19
