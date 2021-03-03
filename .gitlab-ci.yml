@@ -387,6 +387,7 @@ release:
   - eks-dev-apps
   stage: release
   script:
+  - source scripts/loadEnv.sh  
   - echo "Setup ssh inside the runner.."
   - git config --global user.email $GITLAB_USER_EMAIL
   - git config --global user.name $GITLAB_USER_LOGIN
