@@ -402,10 +402,9 @@ deploy-prd-apps-rediscluster:
   - git reset --hard $CI_COMMIT_SHA
   # Bump and commit the new version
   - ./scripts/version-control.sh $TYPE
-  - VERSION=$(cat ./version)
   # Release the project tag
-  - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$VERSION"
-  - git tag -a $VERSION-internal -m $GIT_TAG_MESSAGE
+  - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$LATEST_TAG"
+  - git tag --force -a $LATEST_TAG-internal -m $GIT_TAG_MESSAGE
   # Push the commit tag to gitlab
   - git push --follow-tags origin cicd
   - git add .
