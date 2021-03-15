@@ -16,7 +16,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": 5466,
-  "iteration": 1615790850321,
+  "iteration": 1615791835613,
   "links": [],
   "panels": [
     {
@@ -1413,9 +1413,9 @@
         "allFormat": "glob",
         "allValue": null,
         "current": {
-          "selected": true,
-          "text": "eks-mars-pci",
-          "value": "eks-mars-pci"
+          "selected": false,
+          "text": "eks-qa",
+          "value": "eks-qa"
         },
         "datasource": null,
         "definition": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
@@ -1478,12 +1478,11 @@
         "allValue": null,
         "current": {
           "selected": true,
-          "tags": [],
           "text": [
-            "redis-operator-manager-7786f8f5b6-crlfp"
+            "All"
           ],
           "value": [
-            "redis-operator-manager-7786f8f5b6-crlfp"
+            "$__all"
           ]
         },
         "datasource": null,
