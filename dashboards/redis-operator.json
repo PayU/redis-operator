@@ -14,9 +14,9 @@
   },
   "editable": true,
   "gnetId": null,
-  "graphTooltip": 1,
-  "id": 5322,
-  "iteration": 1613050568392,
+  "graphTooltip": 0,
+  "id": 5466,
+  "iteration": 1615790850321,
   "links": [],
   "panels": [
     {
@@ -27,7 +27,8 @@
       "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -54,9 +55,10 @@
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -118,10 +120,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -148,9 +151,10 @@
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -212,10 +216,11 @@
       "bars": true,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -242,9 +247,10 @@
       "linewidth": 1,
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -306,10 +312,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -337,9 +344,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -435,10 +443,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -466,9 +475,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -589,10 +599,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -620,9 +631,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -686,10 +698,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -717,9 +730,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -791,11 +805,12 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "description": "shows how many heap objects are allocated. This is a counter value so you can use rate() to objects allocated/s.",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -823,9 +838,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -889,11 +905,12 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "description": "Described as - 'The number of live objects is Mallocs - Frees' in: \nhttps://golang.org/pkg/runtime/",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -923,9 +940,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -989,10 +1007,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -1020,9 +1039,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1086,11 +1106,12 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "description": "go_memstats_lookups_total – counts how many pointer dereferences happened. This is a counter value so you can use rate() to lookups/s.",
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -1118,9 +1139,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1184,10 +1206,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -1216,9 +1239,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1282,10 +1306,11 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": "$datasource",
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
-          "custom": {}
+          "custom": {},
+          "links": []
         },
         "overrides": []
       },
@@ -1313,9 +1338,10 @@
       "links": [],
       "nullPointMode": "null",
       "options": {
-        "dataLinks": []
+        "alertThreshold": true
       },
       "percentage": false,
+      "pluginVersion": "7.4.3",
       "pointradius": 1,
       "points": true,
       "renderer": "flot",
@@ -1375,7 +1401,7 @@
       }
     }
   ],
-  "schemaVersion": 25,
+  "schemaVersion": 27,
   "style": "dark",
   "tags": [
     "golang",
@@ -1385,58 +1411,27 @@
     "list": [
       {
         "allFormat": "glob",
-        "current": {
-          "selected": false,
-          "text": "default",
-          "value": "default"
-        },
-        "datasource": null,
-        "hide": 2,
-        "includeAll": false,
-        "label": "Datasource",
-        "multi": false,
-        "name": "datasource",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "regex": "default",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "allFormat": "glob",
         "allValue": null,
         "current": {
           "selected": true,
-          "text": "eks-qa",
-          "value": "eks-qa"
+          "text": "eks-mars-pci",
+          "value": "eks-mars-pci"
         },
-        "datasource": "$datasource",
+        "datasource": null,
         "definition": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
+        "description": null,
+        "error": null,
         "hide": 0,
         "includeAll": false,
         "label": "Environment",
         "multi": false,
         "name": "env",
-        "options": [
-          {
-            "selected": false,
-            "text": "eks-mars-apps",
-            "value": "eks-mars-apps"
-          },
-          {
-            "selected": false,
-            "text": "eks-mars-pci",
-            "value": "eks-mars-pci"
-          },
-          {
-            "selected": true,
-            "text": "eks-qa",
-            "value": "eks-qa"
-          }
-        ],
-        "query": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
-        "refresh": 0,
+        "options": [],
+        "query": {
+          "query": "label_values(go_info{env=~\".*\",app=\"redis-operator-manager\"},env)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
@@ -1454,15 +1449,20 @@
           "text": "infra",
           "value": "infra"
         },
-        "datasource": "$datasource",
-        "definition": "label_values(go_info{app=\"redis-operator-manager\"},namespace)",
+        "datasource": null,
+        "definition": "label_values(go_info{app=\"redis-operator-manager\", env=\"$env\"},namespace)",
+        "description": null,
+        "error": null,
         "hide": 0,
         "includeAll": false,
         "label": "Namespace",
         "multi": false,
         "name": "namespace",
         "options": [],
-        "query": "label_values(go_info{app=\"redis-operator-manager\"},namespace)",
+        "query": {
+          "query": "label_values(go_info{app=\"redis-operator-manager\", env=\"$env\"},namespace)",
+          "refId": "StandardVariableQuery"
+        },
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -1478,20 +1478,28 @@
         "allValue": null,
         "current": {
           "selected": true,
-          "text": "All",
+          "tags": [],
+          "text": [
+            "redis-operator-manager-7786f8f5b6-crlfp"
+          ],
           "value": [
-            "$__all"
+            "redis-operator-manager-7786f8f5b6-crlfp"
           ]
         },
-        "datasource": "$datasource",
-        "definition": "label_values(go_info{pod_name=~\".*\",app=\"redis-operator-manager\"},pod_name)",
+        "datasource": null,
+        "definition": "label_values(go_info{app=\"redis-operator-manager\", env=\"$env\", namespace=\"$namespace\"},pod_name)",
+        "description": null,
+        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "Pod",
         "multi": true,
         "name": "pod",
         "options": [],
-        "query": "label_values(go_info{pod_name=~\".*\",app=\"redis-operator-manager\"},pod_name)",
+        "query": {
+          "query": "label_values(go_info{app=\"redis-operator-manager\", env=\"$env\", namespace=\"$namespace\"},pod_name)",
+          "refId": "StandardVariableQuery"
+        },
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -1508,21 +1516,9 @@
     "from": "now-6h",
     "to": "now"
   },
-  "timepicker": {
-    "refresh_intervals": [
-      "10s",
-      "30s",
-      "1m",
-      "5m",
-      "15m",
-      "30m",
-      "1h",
-      "2h",
-      "1d"
-    ]
-  },
+  "timepicker": {},
   "timezone": "browser",
   "title": "Redis operator overview",
   "uid": "7lcUW4jjo",
-  "version": 1
+  "version": 3
 }
