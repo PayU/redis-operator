@@ -109,7 +109,7 @@ func (r *RedisCLI) ClusterCheck(nodeIP string) (string, error) {
 	return stdout, nil
 }
 
-// AddFollower uses the '--cluster add-node' option on redis-cli to add a node to the cluster
+// AddFollower uses the '--cluster add-node --cluster-slave' option on redis-cli to add a node to the cluster
 // newNodeIP: IP of the follower that will join the cluster
 // nodeIP: 		IP of a node in the cluster
 // leaderID: 	Redis ID of the leader that the new follower will replicate
@@ -118,7 +118,20 @@ func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string)
 
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster add node --cluster-slave (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
+// AddNode uses the '--cluster add-node' option on redis-cli to add a node to the cluster
+// newNodeIP: IP of the follower that will join the cluster
+// nodeIP: 		IP of a node in the cluster
+func (r *RedisCLI) AddNode(newNodeIP string, nodeIP string) (string, error) {
+	args := []string{"--cluster", "add-node", newNodeIP + ":6379", nodeIP + ":6379"}
+
+	stdout, stderr, err := r.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, stdout, stderr, err)
 	}
 	return stdout, nil
 }
@@ -131,6 +144,21 @@ func (r *RedisCLI) DelNode(nodeIP string, nodeID string) (string, error) {
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
+// >>>>>>>>>>>>>>> Check how to make the doc comments show up correctly in vim pop-ups
+// Reshard uses the '--cluster reshard' option of redis-cli to assign a number of hashslots from one node to another
+// nodeIP:        any node of the cluster
+// sourceID:      id of the node from which slots should be removed; use 'all' to take slots from all leaders
+// destinationID: id of the node that should receive the slots
+// slotCount:    number of slots to move from source node to destination node
+func (r *RedisCLI) Reshard(nodeIP string, sourceID string, destinationID string, slotCount string) (string, error) {
+	args := []string{"--cluster", "reshard", nodeIP + ":6379", "--cluster-from", sourceID, "--cluster-to", destinationID, "--cluster-slots", slotCount, "--cluster-yes"}
+	stdout, stderr, err := r.executeCommand(args)
+	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute cluster reshard (%s, %s, %s, %s): %s | %s | %v", nodeIP, sourceID, destinationID, slotCount, stdout, stderr, err)
 	}
 	return stdout, nil
 }

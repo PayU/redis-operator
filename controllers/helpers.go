@@ -40,6 +40,9 @@ const (
 
 	// Updating: the cluster is in the middle of a rolling update
 	Updating RedisClusterState = "Updating"
+
+	// Scaling: the cluster is currently scaling - the number of leader nodes changes
+	Scaling RedisClusterState = "Scaling"
 )
 
 func getCurrentClusterState(redisCluster *dbv1.RedisCluster) RedisClusterState {
@@ -88,6 +91,18 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		redisCluster.Status.ClusterState = string(Updating)
 		return nil
 	}
+
+	scaling, err := r.isClusterScaling(redisCluster)
+	if err != nil {
+		r.Log.Info("Could not check if cluster is updated")
+		redisCluster.Status.ClusterState = string(Recovering)
+		return err
+	}
+	if scaling {
+		redisCluster.Status.ClusterState = string(Scaling)
+		return nil
+	}
+
 	r.Log.Info("Cluster is healthy")
 	return nil
 }
@@ -106,6 +121,19 @@ func (r *RedisClusterReconciler) handleUpdatingState(redisCluster *dbv1.RedisClu
 	r.Log.Info("Handling rolling update...")
 	if err := r.updateCluster(redisCluster); err != nil {
 		r.Log.Info("Rolling update failed")
+		redisCluster.Status.ClusterState = string(Recovering)
+		return err
+	}
+	redisCluster.Status.ClusterState = string(Ready)
+	return nil
+}
+
+func (r *RedisClusterReconciler) handleScalingState(redisCluster *dbv1.RedisCluster) error {
+	r.Log.Info("Handling scaling...")
+	if err := r.scaleCluster(redisCluster); err != nil {
+		r.Log.Info("Scaling failed")
+		// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> recovery from a failed scaling should be done by a scaling re-attempt?
+		// the operator must not be stuck indefinitely in the scaling state in case it fails
 		redisCluster.Status.ClusterState = string(Recovering)
 		return err
 	}

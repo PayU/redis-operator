@@ -81,6 +81,9 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	case Updating:
 		err = r.handleUpdatingState(&redisCluster)
 		break
+	case Scaling:
+		err = r.handleScalingState(&redisCluster)
+		break
 	}
 
 	if err != nil {
