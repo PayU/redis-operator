@@ -7,6 +7,20 @@ Kubernetes operator that creates and manages Redis HA clustered databases - [Red
 
 The project uses a [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) cluster for development and test purposes.
 
+**TL;DR** up & running in 5 min (Linux):
+
+```
+cd hack; sudo sh ./install.sh
+kind --name redis-test get kubeconfig > ~/.kube/config # carefull with this, will rewrite the kube config
+make e2e-test-setup
+cd .. ; helm install redis-operator ./helm -n default
+# wait for K8s, operator & Redis cluster to be up and running
+sudo make docker-build-dev NOTEST=true
+telepresence --mount /tmp/podtoken  --context kind-redis-test --namespace default --swap-deployment redis-operator-manager --docker-run --env NAMESPACE_ENV=default --rm -it -v $(pwd):/app -v=/tmp/podtoken/var/run/secrets:/var/run/secrets redis-operator:dev
+```
+
+Detailed setup
+
 **1. Setting up a cluster**
 
 ```bash

@@ -146,7 +146,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 	pod := corev1.Pod{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("redis-node-%s", nodeNumber),
+			Name:        fmt.Sprintf("redis-node-%s-%s", leaderNumber, nodeNumber),
 			Namespace:   redisCluster.ObjectMeta.Namespace,
 			Labels:      podLabels,
 			Annotations: redisCluster.Annotations,
@@ -157,7 +157,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 	return pod
 }
 
-func (r *RedisClusterReconciler) makeFollowerPod(redisCluster *dbv1.RedisCluster, nodeNumber string, leaderNumber string) (corev1.Pod, error) {
+func (r *RedisClusterReconciler) makeFollowerPod(redisCluster *dbv1.RedisCluster, leaderNumber string, nodeNumber string) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-number", Operator: metav1.LabelSelectorOpIn, Values: []string{leaderNumber}}}
 	pod := r.makeRedisPod(redisCluster, "follower", leaderNumber, nodeNumber, preferredLabelSelectorRequirement)
 
@@ -197,9 +197,9 @@ func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.Redi
 	return followerPods, nil
 }
 
-func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, nodeNumber string) (corev1.Pod, error) {
+func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, leaderNumber string) (corev1.Pod, error) {
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
-	pod := r.makeRedisPod(redisCluster, "leader", nodeNumber, nodeNumber, preferredLabelSelectorRequirement)
+	pod := r.makeRedisPod(redisCluster, "leader", leaderNumber, "0", preferredLabelSelectorRequirement)
 
 	if err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme); err != nil {
 		return pod, err
@@ -208,6 +208,7 @@ func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, 
 }
 
 // Creates one or more leader pods; waits for available IP before returing
+// nodeNumbers: variadric, one or more string node numbers
 func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNumbers ...string) ([]corev1.Pod, error) {
 
 	if len(nodeNumbers) == 0 {

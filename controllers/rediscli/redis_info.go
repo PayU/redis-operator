@@ -34,6 +34,7 @@ type RedisClusterNode struct {
 	PingRecv    string
 	ConfigEpoch string
 	LinkState   string
+	Slots       []string
 }
 
 func NewRedisInfo(rawInfo string) *RedisInfo {
@@ -127,8 +128,8 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 				PingRecv:    nodeInfo[5],
 				ConfigEpoch: nodeInfo[6],
 				LinkState:   nodeInfo[7],
+				Slots:       nodeInfo[8:],
 			})
-
 		}
 	}
 	return &nodes
