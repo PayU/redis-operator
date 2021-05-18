@@ -2,6 +2,7 @@ image: docker-registry.zooz.co:4567/cd/ci-runners/runners:docker-bash-git
 
 stages:
 - build
+- publish-dashboards
 - deploy-dev-crd
 - deploy-dev
 - deploy-qa-crd
@@ -419,20 +420,18 @@ release:
     - EULER_DEFINITION=$PWD/dashboards/redis-cluster.json FOLDER=$DASHBOARD_FOLDER_NAME DISABLE_DEFAULT_ADDITIONAL_FILTERS=true build-dashboards
   when: manual
 
-publish-dashboards-dev:
-  stage: deploy-dev
+dev-publish-dashboards:
+  stage: publish-dashboards
   extends: .k8s-dashboard-template
   variables:
     ENV: eks-maps-apps
   tags:
     - eks-mars-apps-apps
 
-publish-dashboards-prd-apps:
-  stage: deploy-prd-apps
+prd-publish-dashboards:
+  stage: publish-dashboards
   extends: .k8s-dashboard-template
   variables:
     ENV: eks-prd-apps
   tags:
     - eks-prd-apps-apps
-  only:
-    - tags
