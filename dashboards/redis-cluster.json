@@ -14,9 +14,9 @@
   },
   "editable": true,
   "gnetId": null,
-  "graphTooltip": 0,
-  "id": 5467,
-  "iteration": 1615791914593,
+  "graphTooltip": 1,
+  "id": 5848,
+  "iteration": 1621336520820,
   "links": [],
   "panels": [
     {
@@ -80,16 +80,30 @@
       "description": "",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
           "custom": {},
           "mappings": [],
-          "max": 300,
-          "min": 3,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "dark-red",
                 "value": null
+              },
+              {
+                "color": "dark-red",
+                "value": 1
+              },
+              {
+                "color": "yellow",
+                "value": 2
+              },
+              {
+                "color": "dark-green",
+                "value": 3
               }
             ]
           }
@@ -98,11 +112,11 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 12,
+        "w": 6,
         "x": 12,
         "y": 0
       },
-      "id": 6,
+      "id": 26,
       "interval": null,
       "links": [],
       "maxDataPoints": 1,
@@ -110,7 +124,7 @@
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
-            "min"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -122,17 +136,90 @@
       "pluginVersion": "7.4.3",
       "targets": [
         {
-          "expr": "min(min_over_time(redis_cluster_known_nodes{pod_name=~\"redis-node.*\",env=~\"$env\"}[5m])) by (env)",
+          "expr": "count(redis_instance_info{role=\"master\",namespace=\"$namespace\",env=\"$env\"})",
           "format": "time_series",
-          "instant": true,
+          "hide": false,
+          "instant": false,
           "interval": "",
-          "legendFormat": "",
+          "legendFormat": "Leaders",
           "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Cluster Size",
+      "title": "Leader nodes",
+      "type": "gauge"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": null,
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {},
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "yellow",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2
+              },
+              {
+                "color": "dark-green",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 6,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 1,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "pluginVersion": "7.4.3",
+      "targets": [
+        {
+          "expr": "count(redis_instance_info{role=\"slave\",namespace=\"$namespace\",env=\"$env\"})",
+          "format": "time_series",
+          "hide": false,
+          "instant": false,
+          "interval": "",
+          "legendFormat": "Followers",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Follower nodes",
       "type": "gauge"
     },
     {
@@ -401,7 +488,15 @@
       "steppedLine": false,
       "targets": [
         {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{env=\"$env\", container_name=\"$container\"}[5m])) by (container_name,pod_name) /\nsum(container_spec_cpu_quota{env=\"$env\", container_name=\"$container\"}/container_spec_cpu_period{env=\"$env\", container_name=\"$container\"}) by (container_name,pod_name)",
+          "hide": false,
+          "interval": "",
+          "legendFormat": "{{pod_name}}",
+          "refId": "B"
+        },
+        {
           "expr": "irate(redis_cpu_sys_seconds_total{env=~\"$env\", pod_name=~\"redis-node.*\"}[1m]) * 10",
+          "hide": true,
           "interval": "",
           "legendFormat": " {{ pod_name }}",
           "refId": "A"
@@ -427,14 +522,16 @@
       },
       "yaxes": [
         {
-          "format": "short",
-          "label": "Cores",
+          "$$hashKey": "object:137",
+          "format": "percentunit",
+          "label": "% of limit",
           "logBase": 1,
           "max": null,
           "min": null,
           "show": true
         },
         {
+          "$$hashKey": "object:138",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -450,7 +547,13 @@
     },
     {
       "aliasColors": {
-        "max": "#BF1B00"
+        "max": "#BF1B00",
+        "redis-node-0 limit": "dark-red",
+        "redis-node-1 limit": "dark-red",
+        "redis-node-2 limit": "dark-red",
+        "redis-node-3 limit": "dark-red",
+        "redis-node-4 limit": "dark-red",
+        "redis-node-5 limit": "dark-red"
       },
       "bars": false,
       "dashLength": 10,
@@ -465,7 +568,7 @@
         },
         "overrides": []
       },
-      "fill": 1,
+      "fill": 0,
       "fillGradient": 0,
       "grid": {},
       "gridPos": {
@@ -515,6 +618,14 @@
           "refId": "A",
           "step": 240,
           "target": ""
+        },
+        {
+          "expr": "avg(container_spec_memory_limit_bytes{env=\"$env\",container_name=\"$container\"}) by (pod_name)",
+          "hide": false,
+          "instant": false,
+          "interval": "",
+          "legendFormat": "{{pod_name}} limit",
+          "refId": "B"
         }
       ],
       "thresholds": [],
@@ -538,6 +649,7 @@
       },
       "yaxes": [
         {
+          "$$hashKey": "object:309",
           "format": "bytes",
           "label": null,
           "logBase": 1,
@@ -546,6 +658,7 @@
           "show": true
         },
         {
+          "$$hashKey": "object:310",
           "format": "short",
           "label": null,
           "logBase": 1,
@@ -1263,10 +1376,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           },
@@ -1283,6 +1392,9 @@
       "id": 25,
       "links": [],
       "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -1291,9 +1403,8 @@
           "fields": "",
           "values": false
         },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "text": {}
+        "text": {},
+        "textMode": "auto"
       },
       "pluginVersion": "7.4.3",
       "targets": [
@@ -1311,7 +1422,7 @@
       "timeFrom": null,
       "timeShift": null,
       "title": "Uptime",
-      "type": "gauge"
+      "type": "stat"
     }
   ],
   "schemaVersion": 27,
@@ -1382,16 +1493,53 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "allValue": null,
+        "current": {
+          "selected": false,
+          "text": "redis-container",
+          "value": "redis-container"
+        },
+        "datasource": null,
+        "definition": "label_values(container_cpu_usage_seconds_total{env=\"$env\",namespace=\"$namespace\",container_name=~\"redis-container.*\"},container_name)",
+        "description": null,
+        "error": null,
+        "hide": 2,
+        "includeAll": false,
+        "label": null,
+        "multi": false,
+        "name": "container",
+        "options": [
+          {
+            "selected": true,
+            "text": "redis-container",
+            "value": "redis-container"
+          }
+        ],
+        "query": {
+          "query": "label_values(container_cpu_usage_seconds_total{env=\"$env\",namespace=\"$namespace\",container_name=~\"redis-container.*\"},container_name)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 0,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
       }
     ]
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-5m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "Redis cluster",
   "uid": "v6uILQuqv",
-  "version": 3
+  "version": 5
 }
