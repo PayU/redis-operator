@@ -11,6 +11,7 @@ Requirements:
 
 * `kind`: [v0.10.0](https://github.com/kubernetes-sigs/kind/releases/tag/v0.10.0)
 * `controller-gen` > 0.4
+* `kustomize` >= 4.0
 
 **1. Setting up a cluster**
 

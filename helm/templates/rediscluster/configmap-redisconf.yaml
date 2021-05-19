@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.redisCluster.name }}-redisconfig
+  namespace: {{ .Values.redisCluster.namespace }}
+data:
+  redis.conf: |-
+{{ .Files.Get .Values.redisCluster.redisConfigFile | indent 4 }}

@@ -30,8 +30,10 @@ spec:
       ports:
       - containerPort: 6379
       volumeMounts:
-      - name: redis-node-configuration
+      - name: redis-configuration
         mountPath: "/usr/local/etc/redis"
+      - name: redis-users
+        mountPath: "/usr/local/etc/redis/acl"
 
     - name: redis-metric-exporter
       image: metrics-exporter:testing
@@ -59,9 +61,12 @@ spec:
       # - "&& grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
 
     volumes:
-    - name: redis-node-configuration
+    - name: redis-configuration
       configMap:
-        name: redis-node-settings-config-map
+        name: redis-operator-dev-rdc-redisconfig
+    - name: redis-users
+      configMap:
+        name: redis-operator-dev-rdc-users-acl
     - name: host-sys
       hostPath:
         path: "/sys"

@@ -1,0 +1,10 @@
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapgenerator:
+- name: dev-rdc-redisconfig
+  files:
+    - ../redis/redis.conf
+- name: dev-rdc-users-acl
+  files:
+    - ../redis/users.acl
