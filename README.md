@@ -6,7 +6,11 @@ Kubernetes operator that creates and manages Redis HA clustered databases - [Red
 ### Using the operator on a local cluster
 
 The project uses a [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) cluster for development and test purposes.
-Current `kind` version: [v0.10.0](https://github.com/kubernetes-sigs/kind/releases/tag/v0.10.0)
+
+Requirements:
+
+* `kind`: [v0.10.0](https://github.com/kubernetes-sigs/kind/releases/tag/v0.10.0)
+* `controller-gen` > 0.4
 
 **1. Setting up a cluster**
 
