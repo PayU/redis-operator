@@ -79,7 +79,7 @@ func (v *RedisClusterView) String() string {
 			}
 			result = result + fmt.Sprintf("%s(%s,%s)", follower.NodeNumber, podStatus, status)
 		}
-		result = result + "]"
+		result += "]"
 	}
 	return result
 }
@@ -212,10 +212,6 @@ func (r *RedisClusterReconciler) getNodeIPs(redisCluster *dbv1.RedisCluster) (ma
 
 func (r *RedisClusterReconciler) createNewRedisCluster(redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("Creating new cluster...")
-
-	if _, err := r.createRedisSettingConfigMap(redisCluster); err != nil {
-		return err
-	}
 
 	if _, err := r.createRedisService(redisCluster); err != nil {
 		return err

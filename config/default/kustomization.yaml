@@ -15,6 +15,7 @@ namePrefix: redis-operator-
 bases:
 - ../crd
 - ../rbac
+- ../configmap
 - ../manager/base
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in 
 # crd/kustomization.yaml
