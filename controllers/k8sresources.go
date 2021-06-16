@@ -96,6 +96,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 	podLabels["redis-node-role"] = nodeRole
 	podLabels["leader-number"] = leaderNumber
 	podLabels["node-number"] = nodeNumber
+	podLabels["redis-cluster"] = redisCluster.Name
 
 	if redisCluster.Spec.EnableDefaultAffinity {
 		if redisCluster.Spec.RedisPodSpec.Affinity == nil {

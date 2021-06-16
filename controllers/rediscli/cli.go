@@ -312,11 +312,15 @@ func (r *RedisCLI) ACLLoad(nodeIP string) (string, error) {
 }
 
 // https://redis.io/commands/acl-list
-func (r *RedisCLI) ACLList(nodeIP string) (string, error) {
+func (r *RedisCLI) ACLList(nodeIP string) (*RedisACL, error) {
 	args := []string{"-h", nodeIP, "acl", "list"}
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute ACL LIST (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+		return nil, errors.Errorf("Failed to execute ACL LIST (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-	return stdout, nil
+	acl, err := NewRedisACL(stdout)
+	if err != nil {
+		return nil, err
+	}
+	return acl, nil
 }
