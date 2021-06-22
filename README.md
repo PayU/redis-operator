@@ -9,7 +9,7 @@ The project uses a [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) clust
 
 Requirements:
 
-* `kind`: [v0.10.0](https://github.com/kubernetes-sigs/kind/releases/tag/v0.10.0)
+* `kind`: [v0.11.1](https://github.com/kubernetes-sigs/kind/releases/tag/v0.11.1)
 * `controller-gen` > 0.4
 * `kustomize` >= 4.0
 
