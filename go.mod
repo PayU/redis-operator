@@ -1,4 +1,4 @@
-module github.com/PayU/Redis-Operator
+module github.com/PayU/redis-operator
 
 go 1.15
 
