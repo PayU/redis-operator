@@ -12,8 +12,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
-	"github.com/PayU/Redis-Operator/test/framework"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
+	"github.com/PayU/redis-operator/test/framework"
 )
 
 func printAZMap(azMap map[string]map[string][]*corev1.Pod) {

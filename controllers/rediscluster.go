@@ -13,8 +13,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
-	rediscli "github.com/PayU/Redis-Operator/controllers/rediscli"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
+	rediscli "github.com/PayU/redis-operator/controllers/rediscli"
 )
 
 var EMPTY struct{}

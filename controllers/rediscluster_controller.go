@@ -27,10 +27,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/PayU/Redis-Operator/controllers/rediscli"
+	"github.com/PayU/redis-operator/controllers/rediscli"
 )
 
 // RedisClusterReconciler reconciles a RedisCluster object

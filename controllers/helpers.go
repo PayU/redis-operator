@@ -3,7 +3,7 @@ package controllers
 import (
 	"time"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
 )
 
 // RedisClusterState describes the current

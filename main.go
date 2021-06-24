@@ -10,9 +10,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
-	"github.com/PayU/Redis-Operator/controllers"
-	"github.com/PayU/Redis-Operator/controllers/rediscli"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
+	"github.com/PayU/redis-operator/controllers"
+	"github.com/PayU/redis-operator/controllers/rediscli"
 	// +kubebuilder:scaffold:imports
 )
 
