@@ -3,18 +3,22 @@ image: docker-registry.zooz.co:4567/cd/ci-runners/runners:docker-bash-git
 stages:
 - build
 - publish-dashboards
-- deploy-dev-crd
-- deploy-dev
-- deploy-qa-crd
-- deploy-qa
-- deploy-mars-pci-crd
-- deploy-mars-pci
-- deploy-mars-apps-crd
-- deploy-mars-apps
-- deploy-prd-pci-crd
-- deploy-prd-pci
-- deploy-prd-apps-crd
-- deploy-prd-apps
+- dev-crd
+- dev
+- qa-crd
+- qa
+- mars-pci-crd
+- mars-pci
+- mars-apps-crd
+- mars-apps
+- mars-data-crd
+- mars-data
+- prd-pci-crd
+- prd-pci
+- prd-apps-crd
+- prd-apps
+- prd-data-crd
+- prd-data
 - release
 
 services:
@@ -108,7 +112,7 @@ build-image:
   when: manual
 
 deploy-dev-crd:
-  stage: deploy-dev-crd
+  stage: dev-crd
   extends: .deploy-crd
   tags:
   - eks-dev-kube-system
@@ -116,7 +120,7 @@ deploy-dev-crd:
   - tags
 
 remove-dev-crd:
-  stage: deploy-dev-crd
+  stage: dev-crd
   extends: .remove-crd
   tags:
   - eks-dev-kube-system
@@ -124,7 +128,7 @@ remove-dev-crd:
   - tags
 
 deploy-dev-operator:
-  stage: deploy-dev
+  stage: dev
   extends: .deploy-operator
   tags:
   - eks-dev-infra
@@ -132,7 +136,7 @@ deploy-dev-operator:
   - tags
 
 remove-dev-operator:
-  stage: deploy-dev
+  stage: dev
   extends: .remove-operator
   tags:
   - eks-dev-infra
@@ -140,7 +144,7 @@ remove-dev-operator:
   - tags
 
 deploy-dev-rediscluster:
-  stage: deploy-dev
+  stage: dev
   extends: .deploy-rediscluster
   tags:
   - eks-dev-infra
@@ -148,7 +152,7 @@ deploy-dev-rediscluster:
   - tags
 
 remove-dev-rediscluster:
-  stage: deploy-dev
+  stage: dev
   extends: .remove-rediscluster
   tags:
   - eks-dev-infra
@@ -156,7 +160,7 @@ remove-dev-rediscluster:
   - tags
 
 deploy-qa-crd:
-  stage: deploy-qa-crd
+  stage: qa-crd
   extends: .deploy-crd
   tags:
   - eks-qa-kube-system
@@ -164,7 +168,7 @@ deploy-qa-crd:
   - tags
 
 remove-qa-crd:
-  stage: deploy-qa-crd
+  stage: qa-crd
   extends: .remove-crd
   tags:
   - eks-qa-kube-system
@@ -172,7 +176,7 @@ remove-qa-crd:
   - tags
 
 deploy-qa-operator:
-  stage: deploy-qa
+  stage: qa
   extends: .deploy-operator
   tags:
   - eks-qa-infra
@@ -182,7 +186,7 @@ deploy-qa-operator:
     ENV: qa
 
 remove-qa-operator:
-  stage: deploy-qa
+  stage: qa
   extends: .remove-operator
   tags:
   - eks-qa-infra
@@ -190,7 +194,7 @@ remove-qa-operator:
   - tags
 
 deploy-qa-rediscluster:
-  stage: deploy-qa
+  stage: qa
   extends: .deploy-rediscluster
   tags:
   - eks-qa-infra
@@ -200,7 +204,7 @@ deploy-qa-rediscluster:
     ENV: qa
 
 remove-qa-rediscluster:
-  stage: deploy-qa
+  stage: qa
   extends: .remove-rediscluster
   tags:
   - eks-qa-infra
@@ -208,7 +212,7 @@ remove-qa-rediscluster:
   - tags
 
 deploy-mars-pci-crd:
-  stage: deploy-mars-pci-crd
+  stage: mars-pci-crd
   extends: .deploy-crd
   tags:
   - eks-mars-pci-kube-system
@@ -216,7 +220,7 @@ deploy-mars-pci-crd:
   - tags
 
 remove-mars-pci-crd:
-  stage: deploy-mars-pci-crd
+  stage: mars-pci-crd
   extends: .remove-crd
   tags:
   - eks-mars-pci-kube-system
@@ -224,7 +228,7 @@ remove-mars-pci-crd:
   - tags
 
 deploy-mars-pci-operator:
-  stage: deploy-mars-pci
+  stage: mars-pci
   extends: .deploy-operator
   tags:
   - eks-mars-pci-infra
@@ -234,33 +238,85 @@ deploy-mars-pci-operator:
     ENV: mars-pci
 
 remove-mars-pci-operator:
-  stage: deploy-mars-pci
+  stage: mars-pci
   extends: .remove-operator
   tags:
   - eks-mars-pci-infra
   except:
   - tags
 
-deploy-mars-pci-rediscluster:
-  stage: deploy-mars-pci
+deploy-mars-data-rediscluster:
+  stage: mars-data
   extends: .deploy-rediscluster
   tags:
-  - eks-mars-pci-infra
+  - eks-mars-data-infra
   except:
   - tags
   variables:
-    ENV: mars-pci
+    ENV: mars-data
 
-remove-mars-pci-rediscluster:
-  stage: deploy-mars-pci
+remove-mars-data-rediscluster:
+  stage: mars-data
   extends: .remove-rediscluster
   tags:
-  - eks-mars-pci-infra
+  - eks-mars-data-infra
+  except:
+  - tags
+
+deploy-mars-data-crd:
+  stage: mars-data-crd
+  extends: .deploy-crd
+  tags:
+  - eks-mars-data-kube-system
+  except:
+  - tags
+
+remove-mars-data-crd:
+  stage: mars-data-crd
+  extends: .remove-crd
+  tags:
+  - eks-mars-data-kube-system
+  except:
+  - tags
+
+deploy-mars-data-operator:
+  stage: mars-data
+  extends: .deploy-operator
+  tags:
+  - eks-mars-data-infra
+  except:
+  - tags
+  variables:
+    ENV: mars-data
+
+remove-mars-data-operator:
+  stage: mars-data
+  extends: .remove-operator
+  tags:
+  - eks-mars-data-infra
+  except:
+  - tags
+
+deploy-mars-data-rediscluster:
+  stage: mars-data
+  extends: .deploy-rediscluster
+  tags:
+  - eks-mars-data-infra
+  except:
+  - tags
+  variables:
+    ENV: mars-data
+
+remove-mars-data-rediscluster:
+  stage: mars-data
+  extends: .remove-rediscluster
+  tags:
+  - eks-mars-data-infra
   except:
   - tags
 
 deploy-mars-apps-crd:
-  stage: deploy-mars-apps-crd
+  stage: mars-apps-crd
   extends: .deploy-crd
   tags:
   - eks-mars-apps-kube-system
@@ -268,7 +324,7 @@ deploy-mars-apps-crd:
   - tags
 
 remove-mars-apps-crd:
-  stage: deploy-mars-apps-crd
+  stage: mars-apps-crd
   extends: .remove-crd
   tags:
   - eks-mars-apps-kube-system
@@ -276,7 +332,7 @@ remove-mars-apps-crd:
   - tags
 
 deploy-mars-apps-operator:
-  stage: deploy-mars-apps
+  stage: mars-apps
   extends: .deploy-operator
   tags:
   - eks-mars-apps-infra
@@ -286,7 +342,7 @@ deploy-mars-apps-operator:
     ENV: mars-apps
 
 remove-mars-apps-operator:
-  stage: deploy-mars-apps
+  stage: mars-apps
   extends: .remove-operator
   tags:
   - eks-mars-apps-infra
@@ -294,7 +350,7 @@ remove-mars-apps-operator:
   - tags
 
 deploy-mars-apps-rediscluster:
-  stage: deploy-mars-apps
+  stage: mars-apps
   extends: .deploy-rediscluster
   tags:
   - eks-mars-apps-infra
@@ -304,7 +360,7 @@ deploy-mars-apps-rediscluster:
     ENV: mars-apps
 
 remove-mars-apps-rediscluster:
-  stage: deploy-mars-apps
+  stage: mars-apps
   extends: .remove-rediscluster
   tags:
   - eks-mars-apps-infra
@@ -312,7 +368,7 @@ remove-mars-apps-rediscluster:
   - tags
 
 deploy-prd-pci-crd:
-  stage: deploy-prd-pci-crd
+  stage: prd-pci-crd
   extends: .deploy-crd
   tags:
   - eks-prd-pci-kube-system
@@ -320,7 +376,7 @@ deploy-prd-pci-crd:
   - tags
 
 deploy-prd-pci-operator:
-  stage: deploy-prd-pci
+  stage: prd-pci
   extends: .deploy-operator
   tags:
   - eks-prd-pci-infra
@@ -330,7 +386,7 @@ deploy-prd-pci-operator:
   - tags
 
 remove-prd-pci-operator:
-  stage: deploy-prd-pci
+  stage: prd-pci
   extends: .remove-operator
   tags:
   - eks-prd-pci-infra
@@ -338,7 +394,7 @@ remove-prd-pci-operator:
   - tags
 
 deploy-prd-pci-rediscluster:
-  stage: deploy-prd-pci
+  stage: prd-pci
   extends: .deploy-rediscluster
   tags:
   - eks-prd-pci-infra
@@ -347,8 +403,44 @@ deploy-prd-pci-rediscluster:
   only:
   - tags
 
+deploy-prd-data-crd:
+  stage: prd-data-crd
+  extends: .deploy-crd
+  tags:
+  - eks-prd-data-kube-system
+  only:
+  - tags
+
+deploy-prd-data-operator:
+  stage: prd-data
+  extends: .deploy-operator
+  tags:
+  - eks-prd-data-infra
+  variables:
+    ENV: prd-data
+  only:
+  - tags
+
+remove-prd-data-operator:
+  stage: prd-data
+  extends: .remove-operator
+  tags:
+  - eks-prd-data-infra
+  only:
+  - tags
+
+deploy-prd-data-rediscluster:
+  stage: prd-data
+  extends: .deploy-rediscluster
+  tags:
+  - eks-prd-data-infra
+  variables:
+    ENV: prd-data
+  only:
+  - tags
+
 deploy-prd-apps-crd:
-  stage: deploy-prd-apps-crd
+  stage: prd-apps-crd
   extends: .deploy-crd
   tags:
   - eks-prd-apps-kube-system
@@ -356,7 +448,7 @@ deploy-prd-apps-crd:
   - tags
 
 deploy-prd-apps-operator:
-  stage: deploy-prd-apps
+  stage: prd-apps
   extends: .deploy-operator
   tags:
   - eks-prd-apps-infra
@@ -366,7 +458,7 @@ deploy-prd-apps-operator:
   - tags
 
 remove-prd-apps-operator:
-  stage: deploy-prd-apps
+  stage: prd-apps
   extends: .remove-operator
   tags:
   - eks-prd-apps-infra
@@ -374,7 +466,7 @@ remove-prd-apps-operator:
   - tags
 
 deploy-prd-apps-rediscluster:
-  stage: deploy-prd-apps
+  stage: prd-apps
   extends: .deploy-rediscluster
   tags:
   - eks-prd-apps-infra
