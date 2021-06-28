@@ -2,9 +2,9 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -12,7 +12,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1a"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -20,7 +20,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1a"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -28,7 +28,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1a"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -36,7 +36,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1b"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -44,7 +44,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1b"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -52,7 +52,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1b"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -60,7 +60,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1c"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
@@ -68,7 +68,7 @@ nodes:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1c"
 - role: worker
-  image: kindest/node:v1.16.15@sha256:c10a63a5bda231c0a379bf91aebf8ad3c79146daca59db816fb963f731852a99
+  image: kindest/node:v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861
   kubeadmConfigPatches:
   - |
     kind: JoinConfiguration
