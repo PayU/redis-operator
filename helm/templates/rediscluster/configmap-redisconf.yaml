@@ -3,6 +3,8 @@ kind: ConfigMap
 metadata:
   name: {{ .Values.redisCluster.name }}-redisconfig
   namespace: {{ .Values.redisCluster.namespace }}
+  labels:
+    redis-cluster: {{ .Values.redisCluster.name }}
 data:
   redis.conf: |-
 {{ .Files.Get .Values.redisCluster.redisConfigFile | indent 4 }}

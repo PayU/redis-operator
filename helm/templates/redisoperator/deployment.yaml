@@ -18,7 +18,7 @@ spec:
       control-plane: controller-manager
   template:
     metadata:
-      annotations: 
+      annotations:
         rollme: {{ randAlphaNum 5 | quote }}
 {{- if .Values.redisOperator.annotations }}
 {{ toYaml .Values.redisOperator.annotations | indent 8 }}
