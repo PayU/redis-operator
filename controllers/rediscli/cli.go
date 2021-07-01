@@ -12,13 +12,19 @@ import (
 	"github.com/pkg/errors"
 )
 
-type RedisCLI struct {
-	Log logr.Logger
+type RedisAuth struct {
+	User string
 }
 
-func NewRedisCLI(log logr.Logger) *RedisCLI {
+type RedisCLI struct {
+	Log  logr.Logger
+	Auth *RedisAuth
+}
+
+func NewRedisCLI(log *logr.Logger) *RedisCLI {
 	return &RedisCLI{
-		Log: log,
+		Log:  *log,
+		Auth: nil,
 	}
 }
 
@@ -37,6 +43,9 @@ func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisCliTimeout)
 	defer cancel()
 
+	if r.Auth != nil {
+		args = append([]string{"--user", r.Auth.User}, args...)
+	}
 	cmd := exec.CommandContext(ctx, "redis-cli", args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -288,6 +297,26 @@ func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string) (string, err
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER REPLICATE (%s, %s): %s | %s | %v", nodeIP, leaderID, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
+// https://redis.io/commands/acl-load
+func (r *RedisCLI) ACLLoad(nodeIP string) (string, error) {
+	args := []string{"-h", nodeIP, "acl", "load"}
+	stdout, stderr, err := r.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
+		return stdout, errors.Errorf("Failed to execute ACL LOAD (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
+// https://redis.io/commands/acl-list
+func (r *RedisCLI) ACLList(nodeIP string) (string, error) {
+	args := []string{"-h", nodeIP, "acl", "list"}
+	stdout, stderr, err := r.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute ACL LIST (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
 	return stdout, nil
 }

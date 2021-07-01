@@ -22,8 +22,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
-	"github.com/PayU/Redis-Operator/controllers/rediscli"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
+	"github.com/PayU/redis-operator/controllers/rediscli"
 )
 
 // Testing framework for integration and e2e tests.
@@ -69,7 +69,8 @@ func NewFramework(kubeconfig, opImage string) (*Framework, error) {
 		return nil, errors.Wrap(err, "creating new apiextensions client failed")
 	}
 
-	redisCLI := rediscli.NewRedisCLI(ctrl.Log.WithName("redis-op-testing"))
+	logger := ctrl.Log.WithName("redis-op-testing")
+	redisCLI := rediscli.NewRedisCLI(&logger)
 
 	serverVersion, err := GetServerVersion(goCli.RESTClient())
 	if err != nil {

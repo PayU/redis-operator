@@ -87,11 +87,10 @@ func (f *Framework) CreateResources(ctx *TestCtx, timeout time.Duration, objs ..
 // CreateYAMLResources uses kubectl apply to create resources using a YAML string.
 func (f *Framework) CreateYAMLResources(ctx *TestCtx, timeout time.Duration, yamlResources ...string) error {
 	for _, res := range yamlResources {
-		resName := strings.Split(res, "\n")[1]
-		resName = strings.Split(resName, ": ")[1]
-		fmt.Printf("[E2E] Creating resource %v...\n", resName)
+		resKind := strings.Split(strings.Split(res, "kind: ")[1], "\n")[0]
+		fmt.Printf("[E2E] Creating resource %v...\n", resKind)
 		if _, _, err := f.kubectlApply(res, timeout, false); err != nil {
-			fmt.Printf("Failed to create resource %v\n", resName)
+			fmt.Printf("Failed to create resource %v\n", resKind)
 			return err
 		}
 		ctx.AddFinalizerFn(func() error {
@@ -143,7 +142,7 @@ func (f *Framework) InitializeDefaultResources(ctx *TestCtx, kustPath string, op
 	}
 
 	if crd, ok := kustomizeConfigYAML["CustomResourceDefinition"]; ok {
-		err = f.CreateYAMLResources(ctx, timeout, crd)
+		err = f.CreateYAMLResources(ctx, timeout, crd[0])
 		if err != nil {
 			return errors.Wrap(err, "Could not create all resources")
 		}
@@ -153,9 +152,11 @@ func (f *Framework) InitializeDefaultResources(ctx *TestCtx, kustPath string, op
 		if kind == "CustomResourceDefinition" {
 			continue
 		}
-		err = f.CreateYAMLResources(ctx, timeout, res)
-		if err != nil {
-			return errors.Wrap(err, "Could not create all resources")
+		for i := range res {
+			err = f.CreateYAMLResources(ctx, timeout, res[i])
+			if err != nil {
+				return errors.Wrap(err, "Could not create all resources")
+			}
 		}
 	}
 	return nil

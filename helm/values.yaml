@@ -30,6 +30,11 @@ redisOperator:
         memory: 256Mi
     ports:
     - containerPort: 9808
+    env:
+    - name: REDIS_USERNAME
+      value: "admin"
+    - name: REDISCLI_AUTH
+      value: "adminpass"
     command:
     - "./manager"
     args:
@@ -39,13 +44,15 @@ redisOperator:
 
 redisCluster:
   enabled: true
-  name: rdc-test
+  name: dev-rdc
   namespace: default
   leaderCount: 3
   leaderFollowersCount: 1
   enableDefaultAffinity: true
   podLabelSelector:
     app: redis-cluster-pod
+  redisConfigFile: "redis/redis.conf"
+  redisACLConfigFile: "redis/users.acl"
 
   redisPodSpec:
     imagePullSecrets:
@@ -89,8 +96,10 @@ redisCluster:
       ports:
       - containerPort: 6379
       volumeMounts:
-      - name: redis-node-configuration
+      - name: redis-configuration
         mountPath: "/usr/local/etc/redis"
+      - name: redis-users
+        mountPath: "/usr/local/etc/redis/acl"
 
     - name: redis-metric-exporter
       image: metrics-exporter:testing
@@ -99,9 +108,12 @@ redisCluster:
       - containerPort: 9121
 
     volumes:
-    - name: redis-node-configuration
+    - name: redis-configuration
       configMap:
-        name: redis-node-settings-config-map
+        name: dev-rdc-redisconfig
+    - name: redis-users
+      configMap:
+        name: dev-rdc-users-acl
     - name: host-sys
       hostPath:
         path: "/sys"
