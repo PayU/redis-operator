@@ -56,7 +56,7 @@ redisCluster:
 
     containers:
     - name: redis-container
-      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:2.1.0
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/branches:upgrade-to-624
       imagePullPolicy: Always
       resources:
         limits:
