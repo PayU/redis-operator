@@ -38,8 +38,8 @@ redisOperator:
     - "-enable-leader-election=true"
 
 redisCluster:
-  redisACLConfigFile: "./redis.conf"
-  redisConfigFile: "./users.acl"
+  redisACLConfigFile: "/redis-config/redis.conf"
+  redisConfigFile: "/redis-config/users.acl"
   enabled: true
   name: rdc-test
   namespace: default
