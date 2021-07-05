@@ -94,7 +94,7 @@ redisCluster:
     volumes:
     - name: redis-node-configuration
       configMap:
-        name: redis-node-settings-config-map
+        name: main-redis-cluster-redisconfig
     - name: host-sys
       hostPath:
         path: "/sys"

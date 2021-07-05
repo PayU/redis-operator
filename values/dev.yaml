@@ -75,6 +75,8 @@ redisCluster:
       volumeMounts:
       - name: redis-node-configuration
         mountPath: "/usr/local/etc/redis"
+      - name: redis-acl-configuration
+        mountPath: "/usr/local/etc/redis/acl"  
 
     - name: redis-metric-exporter
       image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-exporter-docker/release:1.2.0
@@ -92,7 +94,10 @@ redisCluster:
     volumes:
     - name: redis-node-configuration
       configMap:
-        name: redis-node-settings-config-map
+        name: main-redis-cluster-redisconfig
+    - name: redis-acl-configuration
+      configMap:
+        name: main-redis-cluster-users-acl
     - name: host-sys
       hostPath:
         path: "/sys"
