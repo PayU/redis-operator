@@ -88,7 +88,7 @@ build-image:
   image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
   - timeout -t 30 bash -c "until curl -s --fail localhost:15020/healthz/ready; do sleep 1; done"
-  - helm upgrade --install redis-operator-rediscluster ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisOperator.enabled=false --set redisCluster.namespace=$REDIS_CLUSTER_NAMESPACE --include-dir redis-config=./values/redis-config/* --skip-crds --debug
+  - helm upgrade --install redis-operator-rediscluster ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisOperator.enabled=false --set redisCluster.namespace=$REDIS_CLUSTER_NAMESPACE --skip-crds --debug
   when: manual
 
 .remove-crd: # removes the CRD
