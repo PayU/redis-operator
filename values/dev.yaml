@@ -29,8 +29,8 @@ redisOperator:
     - "-enable-leader-election=true"
 
 redisCluster:
-  redisACLConfigFile: "/redis-internal/redis.conf"
-  redisConfigFile: "/redis-internal/users-dev.acl"
+  redisACLConfigFile: "redis-internal/redis.conf"
+  redisConfigFile: "redis-internal/users-dev.acl"
   enabled: true
   name: main-redis-cluster
   namespace: infra
