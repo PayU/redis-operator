@@ -1,5 +1,5 @@
 domain: payu.com
-repo: github.com/PayU/Redis-Operator
+repo: github.com/PayU/redis-operator
 resources:
 - group: db
   kind: RedisCluster

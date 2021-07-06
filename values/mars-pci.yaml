@@ -29,6 +29,8 @@ redisOperator:
     - "-enable-leader-election=true"
 
 redisCluster:
+  redisConfigFile: "redis-internal/redis.conf"
+  redisACLConfigFile: "redis-internal/users-mars-pci.acl"
   enabled: true
   name: main-redis-cluster
   namespace: infra
@@ -94,7 +96,7 @@ redisCluster:
     volumes:
     - name: redis-node-configuration
       configMap:
-        name: redis-node-settings-config-map
+        name: main-redis-cluster-redisconfig
     - name: host-sys
       hostPath:
         path: "/sys"

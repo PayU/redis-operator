@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -276,37 +276,6 @@ func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisClus
 		return nil, err
 	}
 	return &svc, nil
-}
-
-func (r *RedisClusterReconciler) makeRedisSettingsConfigMap(redisCluster *dbv1.RedisCluster) (corev1.ConfigMap, error) {
-	data := make(map[string]string)
-	data["redis.conf"] = redisConf
-
-	redisSettingConfigMap := corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "redis-node-settings-config-map",
-			Namespace: redisCluster.ObjectMeta.Namespace,
-		},
-		Data: data,
-	}
-
-	if err := ctrl.SetControllerReference(redisCluster, &redisSettingConfigMap, r.Scheme); err != nil {
-		return redisSettingConfigMap, err
-	}
-
-	return redisSettingConfigMap, nil
-}
-
-func (r *RedisClusterReconciler) createRedisSettingConfigMap(redisCluster *dbv1.RedisCluster) (*corev1.ConfigMap, error) {
-	cm, err := r.makeRedisSettingsConfigMap(redisCluster)
-	if err != nil {
-		return nil, err
-	}
-	err = r.Create(context.Background(), &cm)
-	if !apierrors.IsAlreadyExists(err) {
-		return nil, err
-	}
-	return &cm, nil
 }
 
 func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.Pod, error) {

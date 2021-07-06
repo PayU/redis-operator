@@ -1,11 +1,17 @@
 # PayU Redis Operator
 
 Kubernetes operator that creates and manages Redis HA clustered databases - [Redis docs](https://redislabs.com/redis-enterprise/technology/redis-enterprise-cluster-architecture/).<br>
-[ Feature state wiki page ](https://github.com/PayU/Redis-Operator/wiki/Feature-state)
+[ Feature state wiki page ](https://github.com/PayU/redis-operator/wiki/Feature-state)
 
 ### Using the operator on a local cluster
 
 The project uses a [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) cluster for development and test purposes.
+
+Requirements:
+
+* `kind`: [v0.11.1](https://github.com/kubernetes-sigs/kind/releases/tag/v0.11.1)
+* `controller-gen` > 0.4
+* `kustomize` >= 4.0
 
 **1. Setting up a cluster**
 
@@ -30,7 +36,7 @@ After having a running `kind` cluster the operator can be deployed using
 
 `make deploy NOTEST=true`
 
-A development operator YAML file can be found in `Redis-Operator/config/samples/local_cluster.yaml`, apply it to the cluster after the operator deployment is up with:
+A development operator YAML file can be found in `redis-operator/config/samples/local_cluster.yaml`, apply it to the cluster after the operator deployment is up with:
 
 `kubectl apply -f config/samples/local_cluster.yaml`
 

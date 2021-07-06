@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"

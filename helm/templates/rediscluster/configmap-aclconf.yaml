@@ -1,0 +1,12 @@
+{{ if and .Values.redisCluster.redisACLConfigFile .Values.redisCluster.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.redisCluster.name }}-users-acl
+  namespace: {{ .Values.redisCluster.namespace }}
+  labels:
+    redis-cluster: {{ .Values.redisCluster.name }}
+data:
+  users.acl: |-
+{{ .Files.Get .Values.redisCluster.redisACLConfigFile | indent 4 }}
+{{- end }}
