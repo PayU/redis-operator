@@ -10,9 +10,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	dbv1 "github.com/PayU/Redis-Operator/api/v1"
-	"github.com/PayU/Redis-Operator/controllers"
-	"github.com/PayU/Redis-Operator/controllers/rediscli"
+	dbv1 "github.com/PayU/redis-operator/api/v1"
+	"github.com/PayU/redis-operator/controllers"
+	"github.com/PayU/redis-operator/controllers/rediscli"
+	"github.com/go-logr/logr"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -26,6 +27,17 @@ func init() {
 
 	_ = dbv1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
+}
+
+func getRedisCLI(log *logr.Logger) *rediscli.RedisCLI {
+	cli := rediscli.NewRedisCLI(log)
+	user := os.Getenv("REDIS_USERNAME")
+	if user != "" {
+		cli.Auth = &rediscli.RedisAuth{
+			User: user,
+		}
+	}
+	return cli
 }
 
 // used in zap logger in order to configure settings
@@ -61,7 +73,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Log:      log,
 		Scheme:   mgr.GetScheme(),
-		RedisCLI: rediscli.NewRedisCLI(log),
+		RedisCLI: getRedisCLI(&log),
 		State:    controllers.NotExists,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisCluster")

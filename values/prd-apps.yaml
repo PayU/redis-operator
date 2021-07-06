@@ -29,6 +29,8 @@ redisOperator:
     - "-enable-leader-election=true"
 
 redisCluster:
+  redisConfigFile: "redis-internal/redis.conf"
+  redisACLConfigFile: "redis-internal/users-prd-apps.acl"
   enabled: true
   name: main-redis-cluster
   namespace: infra
@@ -58,7 +60,7 @@ redisCluster:
 
     containers:
     - name: redis-container
-      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:2.1.0
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:2.1.1
       imagePullPolicy: Always
       resources:
         limits:

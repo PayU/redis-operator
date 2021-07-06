@@ -1,9 +1,10 @@
-module github.com/PayU/Redis-Operator
+module github.com/PayU/redis-operator
 
 go 1.15
 
 require (
 	github.com/go-logr/logr v0.1.0
+	github.com/go-test/deep v1.0.7 // indirect
 	github.com/pkg/errors v0.9.1
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	k8s.io/api v0.18.6

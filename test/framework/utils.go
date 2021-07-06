@@ -25,6 +25,7 @@ import (
 func (f *Framework) runKustomizeCommand(command []string, path string) (string, string, error) {
 	var sout, serr bytes.Buffer
 
+	command = append(command, "--stack-trace")
 	cmd := exec.Command("kustomize", command...)
 	cmd.Dir = path
 	cmd.Stdout = &sout
@@ -32,33 +33,31 @@ func (f *Framework) runKustomizeCommand(command []string, path string) (string, 
 	err := cmd.Run()
 
 	if err != nil {
-		return sout.String(), serr.String(), errors.Wrapf(err, "kustomize incountered an error on command %s", command)
+		return sout.String(), serr.String(), errors.Wrapf(err, "kustomize encountered an error on command %s", command)
 	} else if strings.TrimSpace(serr.String()) != "" {
 		return sout.String(), serr.String(), errors.Errorf("kustomize encountered an error on command %s\n%s", command, serr.String())
-	} else if strings.TrimSpace(sout.String()) == "" {
-		return sout.String(), serr.String(), errors.Errorf("kustomize returned empty config for command %s", command)
 	}
 
 	return sout.String(), serr.String(), err
 }
 
-func (f *Framework) BuildKustomizeConfig(configPath string, image string, namespace string) ([]runtime.Object, map[string]string, error) {
+func (f *Framework) BuildKustomizeConfig(configPath string, image string, namespace string) ([]runtime.Object, map[string][]string, error) {
 	// TODO better, more generic approach to parsing the config is with unstructured objects:
 	// https://github.com/kubernetes-sigs/controller-runtime/blob/v0.6.3/pkg/envtest/crd.go#L354
 	fmt.Println("[E2E] Building kustomize config...")
-	yamlMap := make(map[string]string)
+	yamlMap := make(map[string][]string)
 	var configObjects []runtime.Object
 	customResourceDefinition := extv1.CustomResourceDefinition{}
 	crdGenerated := false
 
-	editCmd := []string{"edit", "image", "controller=" + image, "namespace=" + namespace}
-	sout, _, err := f.runKustomizeCommand(editCmd, "")
+	editCmd := []string{"edit", "set", "image", "controller=" + image}
+	sout, _, err := f.runKustomizeCommand(editCmd, "../../config/manager/base")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	buildCmd := []string{"build", configPath}
-	sout, _, err = f.runKustomizeCommand(buildCmd, "")
+	buildCmd := []string{"build", "--load-restrictor", "LoadRestrictionsNone"}
+	sout, _, err = f.runKustomizeCommand(buildCmd, configPath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -70,9 +69,8 @@ func (f *Framework) BuildKustomizeConfig(configPath string, image string, namesp
 
 	for _, res := range yamlRes {
 		strRes := string(res)
-		lines := strings.Split(strRes, "\n")
-		kind := strings.Split(lines[1], ": ")[1]
-		yamlMap[kind] = strRes
+		kind := strings.Split(strings.Split(strRes, "kind: ")[1], "\n")[0]
+		yamlMap[kind] = append(yamlMap[kind], strRes)
 		switch kind {
 		case "Namespace":
 			namespace := corev1.Namespace{}
@@ -105,6 +103,10 @@ func (f *Framework) BuildKustomizeConfig(configPath string, image string, namesp
 			deployment := appsv1.Deployment{}
 			err = yaml.Unmarshal(res, &deployment)
 			configObjects = append(configObjects, &deployment)
+		case "ConfigMap":
+			configMap := corev1.ConfigMap{}
+			err = yaml.Unmarshal(res, &configMap)
+			configObjects = append(configObjects, &configMap)
 		default:
 			fmt.Printf("Kustomize genrated unsupported resource kind: %v\n", kind)
 		}
@@ -202,8 +204,7 @@ func (f *Framework) kubectlApply(yamlResource string, timeout time.Duration, dry
 
 func (f *Framework) kubectlDelete(yamlResource string, timeout time.Duration) (string, string, error) {
 	deleteCmd := []string{"delete", "-f", "-"}
-	lines := strings.Split(yamlResource, "\n")
-	kind := strings.Split(lines[1], ": ")[1]
+	kind := strings.Split(strings.Split(yamlResource, "kind: ")[1], "\n")[0]
 	fmt.Printf("[E2E] kubectl delete %v\n", kind)
 	return f.executeKubectlCommand(yamlResource, deleteCmd, timeout, false)
 }

@@ -36,5 +36,5 @@ ENV ENABLE_LEADER_ELECTION_ENV=${ENABLE_LEADER_ELECTION_ARG}
 
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on
 
-ENTRYPOINT CompileDaemon --build="go build -o manager main.go" --command="./manager -namespace=$NAMESPACE_ENV -metrics-addr=$METRICS_ADDR_ENV -enable-leader-election=$ENABLE_LEADER_ELECTION_ENV"
+ENTRYPOINT CompileDaemon --build="go build -o bin/manager main.go" --command="./bin/manager -namespace=$NAMESPACE_ENV -metrics-addr=$METRICS_ADDR_ENV -enable-leader-election=$ENABLE_LEADER_ELECTION_ENV"
 

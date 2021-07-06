@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PayU/Redis-Operator/test/framework"
+	"github.com/PayU/redis-operator/test/framework"
 )
 
 var (

@@ -5,7 +5,7 @@ class ClusterParams:
     NODE_LAYOUT = [['eu-central-1a']*3, ['eu-central-1b']*3, ['eu-central-1c']*3]
     ZONE_KEY = 'failure-domain.beta.kubernetes.io/zone'
     KIND_API_VERSION = 'kind.x-k8s.io/v1alpha4'
-    KUBERNETES_VERSION = 'v1.16.15@sha256:a89c771f7de234e6547d43695c7ab047809ffc71a0c3b65aa54eda051c45ed20'
+    KUBERNETES_VERSION = 'v1.16.15@sha256:83067ed51bf2a3395b24687094e283a7c7c865ccc12a8b1d7aa673ba0c5e8861'
 
 def get_node_count():
     return len([zone for group in ClusterParams.NODE_LAYOUT for zone in group])

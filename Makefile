@@ -63,7 +63,7 @@ config-build: $(CONFIG_ENV)
 
 # Use kustomize to build the YAML configuration files for the default (local) setup
 config-build-local:
-	kustomize build config/default | kubectl apply -f -
+	kustomize build config/default --load-restrictor LoadRestrictionsNone | kubectl apply -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy-default: generate manifests config-build docker-build-operator docker-build-local-redis docker-build-local-redis-init docker-build-local-metrics-exporter kind-load-all
@@ -138,7 +138,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.2.5 ;\
+	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.5.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen

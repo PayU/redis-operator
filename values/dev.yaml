@@ -29,6 +29,8 @@ redisOperator:
     - "-enable-leader-election=true"
 
 redisCluster:
+  redisConfigFile: "redis-internal/redis.conf"
+  redisACLConfigFile: "redis-internal/users-dev.acl"
   enabled: true
   name: main-redis-cluster
   namespace: infra
@@ -56,7 +58,7 @@ redisCluster:
 
     containers:
     - name: redis-container
-      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:2.1.0
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:2.1.1
       imagePullPolicy: Always
       resources:
         limits:
@@ -75,6 +77,8 @@ redisCluster:
       volumeMounts:
       - name: redis-node-configuration
         mountPath: "/usr/local/etc/redis"
+      - name: redis-acl-configuration
+        mountPath: "/usr/local/etc/redis/acl"  
 
     - name: redis-metric-exporter
       image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-exporter-docker/release:1.2.0
@@ -92,7 +96,10 @@ redisCluster:
     volumes:
     - name: redis-node-configuration
       configMap:
-        name: redis-node-settings-config-map
+        name: main-redis-cluster-redisconfig
+    - name: redis-acl-configuration
+      configMap:
+        name: main-redis-cluster-users-acl
     - name: host-sys
       hostPath:
         path: "/sys"

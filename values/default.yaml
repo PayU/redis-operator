@@ -38,6 +38,8 @@ redisOperator:
     - "-enable-leader-election=true"
 
 redisCluster:
+  redisConfigFile: "redis-internal/redis.conf"
+  redisACLConfigFile: "redis-internal/users.acl"
   enabled: true
   name: rdc-test
   namespace: default
@@ -101,7 +103,7 @@ redisCluster:
     volumes:
     - name: redis-node-configuration
       configMap:
-        name: redis-node-settings-config-map
+        name: rdc-test-redisconfig
     - name: host-sys
       hostPath:
         path: "/sys"
