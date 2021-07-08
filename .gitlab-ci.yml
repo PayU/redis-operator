@@ -49,7 +49,6 @@ variables:
   - tags
 
 build-image:
-  stage: build
   tags:
   - eks-dev-apps
   stage: build
@@ -245,21 +244,21 @@ remove-mars-pci-operator:
   except:
   - tags
 
-deploy-mars-data-rediscluster:
-  stage: mars-data
+deploy-mars-pci-rediscluster:
+  stage: mars-pci
   extends: .deploy-rediscluster
   tags:
-  - eks-mars-data-infra
+  - eks-mars-pci-infra
   except:
   - tags
   variables:
-    ENV: mars-data
+    ENV: mars-pci
 
-remove-mars-data-rediscluster:
-  stage: mars-data
+remove-mars-pci-rediscluster:
+  stage: mars-pci
   extends: .remove-rediscluster
   tags:
-  - eks-mars-data-infra
+  - eks-mars-pci-infra
   except:
   - tags
 
@@ -480,7 +479,7 @@ release:
   - eks-dev-apps
   stage: release
   script:
-  - source scripts/loadEnv.sh  
+  - source scripts/loadEnv.sh
   - echo "Setup ssh inside the runner.."
   - git config --global user.email $GITLAB_USER_EMAIL
   - git config --global user.name $GITLAB_USER_LOGIN
