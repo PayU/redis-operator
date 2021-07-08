@@ -495,9 +495,10 @@ release:
   - git reset --hard $CI_COMMIT_SHA
   # Release the project tag
   - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$LATEST_TAG"
-  - git tag --force -a $LATEST_TAG-internal -m $GIT_TAG_MESSAGE
+  - git push origin cicd :refs/tags/$LATEST_TAG-internal
+  - git tag -fa $LATEST_TAG-internal -m $GIT_TAG_MESSAGE
   # Push the commit tag to gitlab
-  - git push --follow-tags origin cicd
+  - git push origin cicd --tags
   when: manual
   only:
   - cicd
