@@ -52,6 +52,11 @@ type RedisClusterSpec struct {
 
 	// PodSpec for Redis pods.
 	RedisPodSpec corev1.PodSpec `json:"redisPodSpec"`
+
+	// +optional
+	// +kubebuilder:default:=false
+	// Flag that will initiate redis cluster rolling update (even if no pod change was made)
+	DoRollingUpdate bool `json:"doRollingUpdate,omitempty"`
 }
 
 // RedisClusterStatus defines the observed state of RedisCluster

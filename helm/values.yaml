@@ -49,6 +49,7 @@ redisCluster:
   leaderCount: 3
   leaderFollowersCount: 1
   enableDefaultAffinity: true
+  DoRollingUpdate: false
   podLabelSelector:
     app: redis-cluster-pod
   redisConfigFile: "redis/redis.conf"

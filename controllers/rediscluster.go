@@ -1052,6 +1052,11 @@ func (r *RedisClusterReconciler) isClusterUpToDate(redisCluster *dbv1.RedisClust
 	if err != nil {
 		return false, err
 	}
+
+	if redisCluster.Spec.DoRollingUpdate {
+		return false, nil
+	}
+
 	for _, pod := range pods {
 		podUpdated, err := r.isPodUpToDate(redisCluster, &pod)
 		if err != nil {
