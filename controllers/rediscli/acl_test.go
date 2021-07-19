@@ -82,11 +82,12 @@ var ACLObj RedisACL = RedisACL{
 }
 
 func TestNewRedisACL(t *testing.T) {
+	SortACLFields(&ACLObj)
 	aclObj, err := NewRedisACL(ACL)
 	if err != nil {
 		t.Errorf("Failed to create the ACL object: %v\n", err)
 	}
-	if diff := deep.Equal(aclObj, ACLObj); diff != nil {
+	if diff := deep.Equal(aclObj, &ACLObj); diff != nil {
 		t.Errorf("Generated ACL representation is incorrect\n--- generated: ---\n%+v\n--- check: ---\n%+v\ndiff:\n%+v", Pprint(aclObj), Pprint(ACLObj), diff)
 	}
 	fmt.Printf("Testing acl: %v\n", aclObj)
