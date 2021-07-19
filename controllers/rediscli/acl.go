@@ -1,6 +1,8 @@
 package rediscli
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -44,20 +46,41 @@ type RedisACLUser struct {
 	Passwords RedisACLPasswords
 }
 
+type ByName []RedisACLUser
+
+func (a ByName) Len() int           { return len(a) }
+func (a ByName) Less(i, j int) bool { return a[i].Name < a[j].Name }
+func (a ByName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
 type RedisACL struct {
 	Users []RedisACLUser
 }
 
-func parseACL(rawData string) (RedisACL, error) {
+func SortACLFields(acl *RedisACL) {
+	for i := range acl.Users {
+		sort.Strings(acl.Users[i].Passwords.Hashes)
+		sort.Strings(acl.Users[i].Passwords.RmHashes)
+		sort.Strings(acl.Users[i].Passwords.Passwords)
+		sort.Strings(acl.Users[i].Passwords.RmPasswords)
+		sort.Strings(acl.Users[i].Channels.Patterns)
+		sort.Strings(acl.Users[i].Keys.Patterns)
+		sort.Strings(acl.Users[i].Commands.Commands)
+		sort.Strings(acl.Users[i].Commands.RmCommands)
+	}
+	sort.Sort(ByName(acl.Users))
+}
+
+func parseACL(rawData string) (*RedisACL, error) {
 	aclList := make([][]string, 0)
 	acl := RedisACL{
 		Users: []RedisACLUser{},
 	}
+	rawData = strings.Trim(rawData, "\n")
 	entries := strings.Split(rawData, "\n")
 	for i, e := range entries {
 		user := RedisACLUser{}
 		entries[i] = strings.TrimLeft(e, "0123456789) \"")
-		entries[i] = entries[i][:len(entries[i])-1]
+		entries[i] = strings.Trim(entries[i], "\" ")
 		aclList = append(aclList, strings.Split(entries[i], " "))
 		user.Name = aclList[i][1]
 		for j, e := range aclList[i] {
@@ -109,9 +132,110 @@ func parseACL(rawData string) (RedisACL, error) {
 		}
 		acl.Users = append(acl.Users, user)
 	}
-	return acl, nil
+
+	SortACLFields(&acl)
+
+	return &acl, nil
 }
 
-func NewRedisACL(rawData string) (RedisACL, error) {
+func NewRedisACL(rawData string) (*RedisACL, error) {
 	return parseACL(rawData)
+}
+
+func (t *RedisACLChannels) String() string {
+	result := ""
+	for _, pattern := range t.Patterns {
+		result += fmt.Sprintf("&%s ", pattern)
+	}
+	if t.AllChannels {
+		result += "allchannels "
+	}
+	// the string version will ignore the resetchannels because it can be set by
+	// default in redis.conf and all users will have it unless otherwise specified
+	// TODO find a better handling for the default flags
+	// if t.ResetChannels {
+	// 	result += "resetchannels"
+	// }
+	return strings.Trim(result, " ")
+}
+
+func (t *RedisACLCommands) String() string {
+	result := ""
+	for _, rmcommand := range t.RmCommands {
+		result += fmt.Sprintf("-%s ", rmcommand)
+	}
+	for _, command := range t.Commands {
+		result += fmt.Sprintf("+%s ", command)
+	}
+	if t.AllCommands {
+		result += "allcommands "
+	}
+	if t.NoCommands {
+		result += "nocommands"
+	}
+	return strings.Trim(result, " ")
+}
+
+func (t *RedisACLKeys) String() string {
+	result := ""
+	for _, pattern := range t.Patterns {
+		result += fmt.Sprintf("~%s ", pattern)
+	}
+	if t.AllKeys {
+		result += "allchannels "
+	}
+	if t.ResetKeys {
+		result += "resetkeys"
+	}
+	return strings.Trim(result, " ")
+}
+
+func (t *RedisACLPasswords) String() string {
+	var passes, rmpasses, hashes, rmhashes, nopass, resetpass string
+
+	if t.NoPass {
+		nopass = "nopass "
+	}
+	if t.ResetPass {
+		resetpass = "resetpass "
+	}
+	for _, rmpass := range t.RmPasswords {
+		rmpasses += fmt.Sprintf("<%s ", rmpass)
+	}
+	for _, rmhash := range t.RmHashes {
+		rmhashes += fmt.Sprintf("!%s ", rmhash)
+	}
+	for _, pass := range t.Passwords {
+		passes += fmt.Sprintf(">%s ", pass)
+	}
+	for _, hash := range t.Hashes {
+		hashes += fmt.Sprintf("#%s ", hash)
+	}
+	return strings.Trim(fmt.Sprintf("%s%s%s%s%s%s", rmpasses, rmhashes, passes, hashes, nopass, resetpass), " ")
+}
+
+func (r *RedisACL) String() string {
+	result := ""
+	for _, user := range r.Users {
+		result = fmt.Sprintf("%suser %s", result, user.Name)
+		on := "on"
+		if !user.On {
+			on = "off"
+		}
+		result = fmt.Sprintf("%s %s", result, on)
+		if user.Passwords.String() != "" {
+			result = fmt.Sprintf("%s %s", result, user.Passwords.String())
+		}
+		if user.Keys.String() != "" {
+			result = fmt.Sprintf("%s %s", result, user.Keys.String())
+		}
+		if user.Channels.String() != "" {
+			result = fmt.Sprintf("%s %s", result, user.Channels.String())
+		}
+		if user.Commands.String() != "" {
+			result = fmt.Sprintf("%s %s", result, user.Commands.String())
+		}
+		result += "\n"
+	}
+	return strings.Trim(result, " ")[:len(result)-1]
 }
