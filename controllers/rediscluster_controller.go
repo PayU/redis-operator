@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,17 +31,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/PayU/redis-operator/controllers/rediscli"
-)
-
-const (
-	syncCheckInterval     = 500 * time.Millisecond
-	syncCheckTimeout      = 10 * time.Second
-	loadCheckInterval     = 500 * time.Millisecond
-	loadCheckTimeout      = 10 * time.Second
-	genericCheckInterval  = 2 * time.Second
-	genericCheckTimeout   = 50 * time.Second
-	clusterCreateInterval = 5 * time.Second
-	clusterCreateTimeout  = 30 * time.Second
 )
 
 const (
@@ -73,6 +61,7 @@ type RedisClusterReconciler struct {
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
 	RedisCLI *rediscli.RedisCLI
+	Config   *OperatorConfig
 	State    RedisClusterState
 }
 

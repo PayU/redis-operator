@@ -2,15 +2,21 @@ generatorOptions:
   disableNameSuffixHash: true
 
 configMapgenerator:
-- name: dev-rdc-redisconfig
+- name: redisconfig
   files:
-    - ../redis/redis.conf
+    - ../configfiles/redis.conf
   options:
     labels:
       redis-cluster: rdc-test
-- name: dev-rdc-users-acl
+- name: users-acl
   files:
-    - ../redis/users.acl
+    - ../configfiles/users.acl
   options:
     labels:
       redis-cluster: rdc-test
+- name: operator-config
+  files:
+    - ../configfiles/operator.conf
+  options:
+    labels:
+      redis-operator: rdc-test
