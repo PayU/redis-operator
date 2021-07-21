@@ -75,7 +75,6 @@ func parseACL(rawData string) (*RedisACL, error) {
 	rawData = strings.Trim(rawData, "\n")
 	entries := strings.Split(rawData, "\n")
 	for i, e := range entries {
-		fmt.Printf("ACL entrie: %s\n", e)
 		user := RedisACLUser{}
 		entries[i] = strings.TrimLeft(e, "0123456789) \"")
 		entries[i] = strings.Trim(entries[i], "\" ")
