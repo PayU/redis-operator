@@ -72,6 +72,12 @@ helm install redis-operator-rbac ./helm -n default --set redisOperator=false glo
 If you plan to make a contribution to the project please make sure the change is tested with the E2E test suite.
 Check the README on how to use E2E tests: [https://github.com/PayU/redis-operator/blob/master/test/README.md](https://github.com/PayU/redis-operator/blob/master/test/README.md)
 
+### Running UnitTests
+Run non cache `go test` command on specific path. for example:  
+```
+go test -count=1 ./controllers/rediscli/
+```
+
 ---
 
 ### Quick development using Telepresence
