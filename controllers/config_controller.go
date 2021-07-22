@@ -56,6 +56,7 @@ const ACLFilePropagationDuration time.Duration = time.Millisecond * 5000
 // Defines the time it takes for Redis to load the new config
 const ACLFileLoadDuration time.Duration = time.Millisecond * 500
 const redisConfigLabelKey string = "redis-cluster"
+const handleACLConfigErrorMessage = "Failed to handle ACL configuation"
 
 func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
 
@@ -146,51 +147,56 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 
 	for i := range rdcPods.Items {
 		wg.Add(1)
-		go func(failSignal *bool, pod *corev1.Pod, wg *sync.WaitGroup) error {
+		go func(failSignal *bool, pod *corev1.Pod, wg *sync.WaitGroup) {
 			defer wg.Done()
 			redisNodeConfigHash, err := r.getACLConfigHash(pod)
 			if err != nil {
 				r.Log.Error(err, "Failed to get the config for %s(%s)", pod.Name, pod.Status.PodIP)
 				*failSignal = true
-				return err
+				return
 			}
 			annotationHash, ok := pod.Annotations["acl-config"]
 			if !ok {
 				if redisNodeConfigHash == configMapACLHash {
 					if err := r.updateACLHashStatus(configMapACLHash, *pod); err != nil {
+						r.Log.Error(err, handleACLConfigErrorMessage)
 						*failSignal = true
-						return err
+						return
 					}
 				} else {
 					if err := r.updateACLHashStatus("update", *pod); err != nil {
+						r.Log.Error(err, handleACLConfigErrorMessage)
 						*failSignal = true
-						return err
+						return
 					}
 					if err := r.syncConfig(configMapACLHash, *pod); err != nil {
+						r.Log.Error(err, handleACLConfigErrorMessage)
 						*failSignal = true
-						return err
+						return
 					}
 					r.Log.Info(fmt.Sprintf("Successfully synced ACL config of %s(%s)", pod.Name, pod.Status.PodIP))
 				}
 			} else {
 				if configMapACLHash != redisNodeConfigHash {
 					if err := r.updateACLHashStatus("update", *pod); err != nil {
+						r.Log.Error(err, handleACLConfigErrorMessage)
 						*failSignal = true
-						return err
+						return
 					}
 					if err := r.syncConfig(configMapACLHash, *pod); err != nil {
 						*failSignal = true
-						return err
+						r.Log.Error(err, handleACLConfigErrorMessage)
+						return
 					}
 					r.Log.Info(fmt.Sprintf("Successfully synced ACL config of %s(%s)", pod.Name, pod.Status.PodIP))
 				} else if annotationHash != configMapACLHash {
 					if err := r.updateACLHashStatus(configMapACLHash, *pod); err != nil {
+						r.Log.Error(err, handleACLConfigErrorMessage)
 						*failSignal = true
-						return err
+						return
 					}
 				}
 			}
-			return nil
 		}(&syncFail, &rdcPods.Items[i], &wg)
 	}
 
