@@ -1,6 +1,7 @@
 package rediscli
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"sort"
 	"strings"
@@ -28,12 +29,10 @@ type RedisACLChannels struct {
 }
 
 type RedisACLPasswords struct {
-	Passwords   []string
-	RmPasswords []string
-	Hashes      []string
-	RmHashes    []string
-	NoPass      bool
-	ResetPass   bool
+	Hashes    []string
+	RmHashes  []string
+	NoPass    bool
+	ResetPass bool
 }
 
 type RedisACLUser struct {
@@ -60,8 +59,6 @@ func SortACLFields(acl *RedisACL) {
 	for i := range acl.Users {
 		sort.Strings(acl.Users[i].Passwords.Hashes)
 		sort.Strings(acl.Users[i].Passwords.RmHashes)
-		sort.Strings(acl.Users[i].Passwords.Passwords)
-		sort.Strings(acl.Users[i].Passwords.RmPasswords)
 		sort.Strings(acl.Users[i].Channels.Patterns)
 		sort.Strings(acl.Users[i].Keys.Patterns)
 		sort.Strings(acl.Users[i].Commands.Commands)
@@ -86,9 +83,9 @@ func parseACL(rawData string) (*RedisACL, error) {
 		for j, e := range aclList[i] {
 			switch e[0] {
 			case '>':
-				user.Passwords.Passwords = append(user.Passwords.Passwords, aclList[i][j][1:])
+				user.Passwords.Hashes = append(user.Passwords.Hashes, fmt.Sprintf("%x", sha256.Sum256([]byte(e[1:]))))
 			case '<':
-				user.Passwords.RmPasswords = append(user.Passwords.RmPasswords, aclList[i][j][1:])
+				user.Passwords.RmHashes = append(user.Passwords.RmHashes, fmt.Sprintf("%x", sha256.Sum256([]byte(e[1:]))))
 			case '#':
 				user.Passwords.Hashes = append(user.Passwords.Hashes, aclList[i][j][1:])
 			case '!':
@@ -161,9 +158,8 @@ func (t *RedisACLChannels) String() string {
 
 func (t *RedisACLCommands) String() string {
 	result := ""
-	for _, rmcommand := range t.RmCommands {
-		result += fmt.Sprintf("-%s ", rmcommand)
-	}
+	ignoreNoCommands := false
+
 	for _, command := range t.Commands {
 		result += fmt.Sprintf("+%s ", command)
 	}
@@ -173,6 +169,23 @@ func (t *RedisACLCommands) String() string {
 	if t.NoCommands {
 		result += "nocommands"
 	}
+
+	//  the string version will ingore '-@all' in case there
+	//  is some specific commands for this user. this is because redis will
+	//  automatically set '-@all' in order to block
+	//  all other commands except the desired onces
+	if len(t.Commands) > 0 && (find(t.RmCommands, "@all")) {
+		ignoreNoCommands = true
+	}
+
+	for _, rmcommand := range t.RmCommands {
+		if rmcommand == "@all" && ignoreNoCommands {
+			continue
+		}
+
+		result += fmt.Sprintf("-%s ", rmcommand)
+	}
+
 	return strings.Trim(result, " ")
 }
 
@@ -199,14 +212,8 @@ func (t *RedisACLPasswords) String() string {
 	if t.ResetPass {
 		resetpass = "resetpass "
 	}
-	for _, rmpass := range t.RmPasswords {
-		rmpasses += fmt.Sprintf("<%s ", rmpass)
-	}
 	for _, rmhash := range t.RmHashes {
 		rmhashes += fmt.Sprintf("!%s ", rmhash)
-	}
-	for _, pass := range t.Passwords {
-		passes += fmt.Sprintf(">%s ", pass)
 	}
 	for _, hash := range t.Hashes {
 		hashes += fmt.Sprintf("#%s ", hash)
@@ -237,5 +244,16 @@ func (r *RedisACL) String() string {
 		}
 		result += "\n"
 	}
+
 	return strings.Trim(result, " ")[:len(result)-1]
+}
+
+// Find takes a string slice and looks for an element in it
+func find(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
 }
