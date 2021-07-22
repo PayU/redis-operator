@@ -1,2 +1,2 @@
 user default on nopass ~* &* +@all
-user iam-user on >12345678 +expire +hset +hgetall +hget +ping +del
+user iam-user on >12345678 +expire +hset +hgetall +hget +ping +del +info
