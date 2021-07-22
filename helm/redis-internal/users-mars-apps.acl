@@ -1,2 +1,1 @@
 user default on nopass ~* &* +@all
-user iamuser on >12345678 +expire +hset +hgetall +hget +ping +del
