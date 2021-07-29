@@ -63,10 +63,10 @@ spec:
     volumes:
     - name: redis-configuration
       configMap:
-        name: redis-operator-dev-rdc-redisconfig
+        name: redis-operator-redisconfig
     - name: redis-users
       configMap:
-        name: redis-operator-dev-rdc-users-acl
+        name: redis-operator-users-acl
     - name: host-sys
       hostPath:
         path: "/sys"

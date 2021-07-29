@@ -4,6 +4,7 @@ kind: Deployment
 metadata:
   labels:
     control-plane: controller-manager
+    redis-operator: {{ template "redis-operator.fullname" . }}
   name: {{ template "redis-operator.fullname" . }}-manager
   namespace: {{ .Values.redisOperator.namespace }}
 spec:
@@ -29,4 +30,5 @@ spec:
       terminationGracePeriodSeconds: {{ .Values.redisOperator.terminationGracePeriodSeconds }}
       serviceAccountName: {{ .Values.redisOperator.serviceAccount.name }}
       containers: {{ toYaml .Values.redisOperator.containers | nindent 8 }}
+      volumes: {{ toYaml .Values.redisOperator.volumes | nindent 8 }}
 {{- end }}

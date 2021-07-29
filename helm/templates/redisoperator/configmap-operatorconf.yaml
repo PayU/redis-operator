@@ -1,0 +1,12 @@
+{{ if and .Values.redisOperator.configFile .Values.redisOperator.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "redis-operator.fullname" . }}-config
+  namespace: {{ .Values.redisOperator.namespace }}
+  labels:
+    redis-operator: {{ template "redis-operator.fullname" . }}
+data:
+  operator.conf: |-
+{{ .Files.Get .Values.redisOperator.configFile | indent 4 }}
+{{- end }}

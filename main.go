@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -36,6 +37,7 @@ func getRedisCLI(log *logr.Logger) *rediscli.RedisCLI {
 	}
 	return cli
 }
+
 func main() {
 	var metricsAddr, namespace, enableLeaderElection, devmode string
 
@@ -72,11 +74,24 @@ func main() {
 		WithName("controllers").
 		WithName("RedisConfig")
 
+	operatorConfig, err := controllers.NewRedisOperatorConfig("/usr/local/etc/operator.conf", setupLogger)
+	if err != nil {
+		setupLogger.Error(err, fmt.Sprintf("Failed to get operator config file, falling back to default config"))
+		operatorConfig = controllers.DefaultRedisOperatorConfig(setupLogger)
+		setupLogger.Info(fmt.Sprintf("Loaded config: %+v", operatorConfig.Config))
+	}
+
+	k8sManager := controllers.K8sManager{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Log:    configLogger}
+
 	if err = (&controllers.RedisClusterReconciler{
 		Client:   mgr.GetClient(),
 		Log:      rdcLogger,
 		Scheme:   mgr.GetScheme(),
 		RedisCLI: getRedisCLI(&rdcLogger),
+		Config:   &operatorConfig.Config,
 		State:    controllers.NotExists,
 	}).SetupWithManager(mgr); err != nil {
 		setupLogger.Error(err, "unable to create controller", "controller", "RedisCluster")
@@ -84,14 +99,18 @@ func main() {
 	}
 
 	if err = (&controllers.RedisConfigReconciler{
-		Client:   mgr.GetClient(),
-		Log:      configLogger,
-		Scheme:   mgr.GetScheme(),
-		RedisCLI: getRedisCLI(&configLogger),
+		Client:     mgr.GetClient(),
+		Log:        configLogger,
+		K8sManager: &k8sManager,
+		Scheme:     mgr.GetScheme(),
+		Config:     &operatorConfig.Config,
+		RedisCLI:   getRedisCLI(&configLogger),
 	}).SetupWithManager(mgr); err != nil {
 		setupLogger.Error(err, "unable to create controller", "controller", "RedisConfig")
 		os.Exit(1)
 	}
+
+	operatorConfig.Log = configLogger
 
 	// +kubebuilder:scaffold:builder
 

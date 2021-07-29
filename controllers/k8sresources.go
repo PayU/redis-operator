@@ -7,10 +7,13 @@ import (
 	"strings"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -287,7 +290,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 			return nil, err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
-		if pollErr := wait.PollImmediate(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(r.Config.Times.PodReadyCheckInterval, r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return false, err
@@ -315,7 +318,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(r.Config.Times.PodNetworkCheckInterval, r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil
@@ -342,7 +345,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 			return err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
-		if pollErr := wait.Poll(genericCheckInterval, genericCheckTimeout, func() (bool, error) {
+		if pollErr := wait.Poll(r.Config.Times.PodDeleteCheckInterval, r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &p)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
@@ -353,6 +356,27 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 			return false, nil
 		}); pollErr != nil {
 			return pollErr
+		}
+	}
+	return nil
+}
+
+type K8sManager struct {
+	client.Client
+	Log    logr.Logger
+	Config *RedisOperatorConfig
+	Scheme *runtime.Scheme
+}
+
+func (r *K8sManager) WritePodAnnotations(annotations map[string]string, pods ...corev1.Pod) error {
+	annotationsString := ""
+	for key, val := range annotations {
+		annotationsString = fmt.Sprintf("\"%s\": \"%s\",%s", key, val, annotationsString)
+	}
+	patch := []byte(fmt.Sprintf(`{"metadata":{"annotations":{%s}}}`, annotationsString[:len(annotationsString)-1]))
+	for i, pod := range pods {
+		if err := r.Patch(context.Background(), &pods[i], client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
+			r.Log.Error(err, fmt.Sprintf("Failed to patch the annotations on pod %s (%s)", pod.Name, pod.Status.PodIP))
 		}
 	}
 	return nil

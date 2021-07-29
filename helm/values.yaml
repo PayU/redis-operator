@@ -8,8 +8,10 @@ redisOperator:
   enabled: true
   namespace: default
   managerReplicas: 2 # Number of manger pods the Deployment will create
+  configFile: "configfiles/operator.conf"
   labels:
     control-plane: "controller-manager"
+    redis-operator: "redis-operator"
   serviceAccount:
   #   create: true
     name: "redis-operator-manager"
@@ -41,6 +43,13 @@ redisOperator:
     - "-namespace=default"
     - "-metrics-addr=0.0.0.0:9808"
     - "-enable-leader-election=true"
+    volumeMounts:
+    - name: operator-configuration
+      mountPath: "/usr/local/etc/"
+  volumes:
+  - name: operator-configuration
+    configMap:
+      name: redis-operator-config
 
 redisCluster:
   enabled: true
@@ -51,8 +60,8 @@ redisCluster:
   enableDefaultAffinity: true
   podLabelSelector:
     app: redis-cluster-pod
-  redisConfigFile: "redis/redis.conf"
-  redisACLConfigFile: "redis/users.acl"
+  redisConfigFile: "configfiles/redis.conf"
+  redisACLConfigFile: "configfiles/users.acl"
 
   redisPodSpec:
     imagePullSecrets:
