@@ -1,3 +1,3 @@
 user default on nopass ~* &* +@all
-user iam-api-user on #f1c0ab997ee006065b9a13eb44d4239abe4f6878473a2280855f8adc7d3af2c7 +cluster +ping +info +hset +hgetall +expire +del +hdel +exec ~iam-api*
-user iam-services-user on #136bf2f4e88ba4bf554dbf4a39891c616c07a41ca57ae9804fc08aa682819461 +cluster +ping +info +hset +hgetall +expire +del +hdel +exec ~iam-services*
+user iam-api-user on #f1c0ab997ee006065b9a13eb44d4239abe4f6878473a2280855f8adc7d3af2c7 +cluster +ping +info +hset +hgetall +expire +del +hdel +exec +multi ~iam-api*
+user iam-services-user on #136bf2f4e88ba4bf554dbf4a39891c616c07a41ca57ae9804fc08aa682819461 +cluster +ping +info +hset +hgetall +expire +del +hdel +exec +multi ~iam-services*
