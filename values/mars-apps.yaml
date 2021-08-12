@@ -64,7 +64,7 @@ redisCluster:
       imagePullPolicy: Always
       resources:
         limits:
-          cpu: 500m
+          cpu: 501m
           memory: 3Gi
         requests:
           cpu: 250m
