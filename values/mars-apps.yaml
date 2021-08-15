@@ -60,11 +60,11 @@ redisCluster:
 
     containers:
     - name: redis-container
-      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/branches:debug-image
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:2.1.1
       imagePullPolicy: Always
       resources:
         limits:
-          cpu: 501m
+          cpu: 500m
           memory: 3Gi
         requests:
           cpu: 250m
