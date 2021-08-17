@@ -90,6 +90,15 @@ build-image:
   - helm upgrade --install redis-operator-rediscluster ./helm --namespace infra -f values/default.yaml -f values/$ENV.yaml --set global.rbac.create=false --set redisOperator.enabled=false --set redisCluster.namespace=$REDIS_CLUSTER_NAMESPACE --skip-crds --debug
   when: manual
 
+.update-beta-crd: # applyes changes to the CRD
+  image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
+  script:
+  - echo "patching the beta CRD..."
+  - kubectl --v=3 patch crd redisclusters.db.payu.com -p '{"spec":{"preserveUnknownFields":false}}'
+  - echo "updating the beta CRD..."
+  - kubectl apply --v=3 -f ./helm/crds/crd-rediscluster.yaml
+  when: manual
+
 .remove-crd: # removes the CRD
   image: docker-registry.zooz.co:4567/cd/ci-runners/runners:helm-3.5.0
   script:
@@ -113,6 +122,14 @@ build-image:
 deploy-dev-crd:
   stage: dev-crd
   extends: .deploy-crd
+  tags:
+  - eks-dev-kube-system
+  except:
+  - tags
+
+update-beta-dev-crd:
+  stage: dev-crd
+  extends: .update-beta-crd
   tags:
   - eks-dev-kube-system
   except:
@@ -161,6 +178,14 @@ remove-dev-rediscluster:
 deploy-qa-crd:
   stage: qa-crd
   extends: .deploy-crd
+  tags:
+  - eks-qa-kube-system
+  except:
+  - tags
+
+update-beta-qa-crd:
+  stage: qa-crd
+  extends: .update-beta-crd
   tags:
   - eks-qa-kube-system
   except:
@@ -218,6 +243,14 @@ deploy-mars-pci-crd:
   except:
   - tags
 
+update-beta-mars-pci-crd:
+  stage: mars-pci-crd
+  extends: .update-beta-crd
+  tags:
+  - eks-mars-pci-kube-system
+  except:
+  - tags
+
 remove-mars-pci-crd:
   stage: mars-pci-crd
   extends: .remove-crd
@@ -265,6 +298,14 @@ remove-mars-pci-rediscluster:
 deploy-mars-data-crd:
   stage: mars-data-crd
   extends: .deploy-crd
+  tags:
+  - eks-mars-data-kube-system
+  except:
+  - tags
+
+update-beta-mars-data-crd:
+  stage: mars-data-crd
+  extends: .update-beta-crd
   tags:
   - eks-mars-data-kube-system
   except:
@@ -322,6 +363,14 @@ deploy-mars-apps-crd:
   except:
   - tags
 
+update-beta-mars-apps-crd:
+  stage: mars-apps-crd
+  extends: .update-beta-crd
+  tags:
+  - eks-mars-apps-kube-system
+  except:
+  - tags
+
 remove-mars-apps-crd:
   stage: mars-apps-crd
   extends: .remove-crd
@@ -374,6 +423,14 @@ deploy-prd-pci-crd:
   only:
   - tags
 
+update-beta-prd-pci-crd:
+  stage: prd-pci-crd
+  extends: .update-beta-crd
+  tags:
+  - eks-prd-pci-kube-system
+  except:
+  - tags
+
 deploy-prd-pci-operator:
   stage: prd-pci
   extends: .deploy-operator
@@ -420,6 +477,14 @@ deploy-prd-data-operator:
   only:
   - tags
 
+update-beta-prd-data-crd:
+  stage: prd-data-crd
+  extends: .update-beta-crd
+  tags:
+  - eks-prd-data-kube-system
+  except:
+  - tags
+
 remove-prd-data-operator:
   stage: prd-data
   extends: .remove-operator
@@ -444,6 +509,14 @@ deploy-prd-apps-crd:
   tags:
   - eks-prd-apps-kube-system
   only:
+  - tags
+
+update-beta-prd-apps-crd:
+  stage: prd-apps-crd
+  extends: .update-beta-crd
+  tags:
+  - eks-prd-apps-kube-system
+  except:
   - tags
 
 deploy-prd-apps-operator:
