@@ -78,7 +78,7 @@ fmt:
 
 # Run go vet against code
 vet:
-	go vet ./...
+	export GOOS=linux ; go vet ./...
 
 # Generate code
 generate: controller-gen
