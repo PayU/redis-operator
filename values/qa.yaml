@@ -41,6 +41,13 @@ redisCluster:
     prometheus.io/port: '9121'
 
   redisPodSpec:
+    nodeSelector:
+      "node-manager" : "zooz"
+    tolerations:
+      - effect: NoSchedule
+        key: qa-ondemand
+        operator: Equal
+        value: "true"
     initContainers:
     - name: redis-init-container
       image: docker-registry.zooz.co:4567/payu-clan-sre/redis/sysctl-init-container/release:1.0.1
