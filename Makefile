@@ -41,7 +41,7 @@ e2e-test-setup: docker-build-operator docker-build-local-redis docker-build-loca
 
 # Build manager binary
 manager: generate fmt vet
-	go build -o bin/manager main.go
+	export GOOS=linux ; go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet manifests
