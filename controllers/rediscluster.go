@@ -277,7 +277,7 @@ func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisClust
 		return err
 	}
 
-	if _, err = r.RedisCLI.ClusterCreate(nodeIPs); err != nil {
+	if _, err = r.RedisCLI.ClusterCreate(r.RedisCLI.SetDefaultPortToIps(nodeIPs)); err != nil {
 		return err
 	}
 
