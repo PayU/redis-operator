@@ -92,6 +92,14 @@ func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
 	return stdOutput, errOutput, nil
 }
 
+func (r *RedisCLI) SetDefaultPortToIps(ipList []string) map[string]string {
+	ipPortMap := make(map[string]string)
+	for _, ip := range ipList {
+		ipPortMap[ip] = DEFAULT_REDIS_PORT
+	}
+	return ipPortMap
+}
+
 // ClusterCreate uses the '--cluster create' option on redis-cli to create a cluster using a list of nodes
 func (r *RedisCLI) ClusterCreate(leadersIpPortMap map[string]string) (string, error) {
 	var leaderAddrs []string
@@ -108,14 +116,6 @@ func (r *RedisCLI) ClusterCreate(leadersIpPortMap map[string]string) (string, er
 		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", leaderAddrs, stdout, stderr, err)
 	}
 	return stdout, nil
-}
-
-func (r *RedisCLI) SetDefaultPortToIps(ipList []string) map[string]string {
-	ipPortMap := make(map[string]string)
-	for _, ip := range ipList {
-		ipPortMap[ip] = DEFAULT_REDIS_PORT
-	}
-	return ipPortMap
 }
 
 func (r *RedisCLI) ClusterCheck(nodeIP string, nodePort string) (string, error) {
@@ -135,9 +135,14 @@ func (r *RedisCLI) ClusterCheck(nodeIP string, nodePort string) (string, error) 
 // newNodeIP: IP of the follower that will join the cluster
 // nodeIP: 		IP of a node in the cluster
 // leaderID: 	Redis ID of the leader that the new follower will replicate
-func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string) (string, error) {
-	args := []string{"--cluster", "add-node", newNodeIP + ":" + DEFAULT_REDIS_PORT, nodeIP + ":" + DEFAULT_REDIS_PORT, "--cluster-slave", "--cluster-master-id", leaderID}
-
+func (r *RedisCLI) AddFollower(newNodeIP string, newNodePort string, nodeIP string, nodePort string, leaderID string) (string, error) {
+	if len(newNodePort) == 0 {
+		newNodePort = DEFAULT_REDIS_PORT
+	}
+	if len(nodePort) == 0 {
+		nodePort = DEFAULT_REDIS_PORT
+	}
+	args := []string{"--cluster", "add-node", newNodeIP + ":" + newNodePort, nodeIP + ":" + nodePort, "--cluster-slave", "--cluster-master-id", leaderID}
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
@@ -148,8 +153,11 @@ func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string)
 // DelNode uses the '--cluster del-node' option of redis-cli to remove a node from the cluster
 // nodeIP: any node of the cluster
 // nodeID: node that needs to be removed
-func (r *RedisCLI) DelNode(nodeIP string, nodeID string) (string, error) {
-	args := []string{"--cluster", "del-node", nodeIP + ":" + DEFAULT_REDIS_PORT, nodeID}
+func (r *RedisCLI) DelNode(nodeIP string, nodePort string, nodeID string) (string, error) {
+	if len(nodePort) == 0 {
+		nodePort = DEFAULT_REDIS_PORT
+	}
+	args := []string{"--cluster", "del-node", nodeIP + ":" + nodePort, nodeID}
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)

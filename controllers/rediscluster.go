@@ -297,7 +297,7 @@ func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP str
 		return err
 	}
 
-	if stdout, err := r.RedisCLI.AddFollower(followerIP, leaderIP, leaderID); err != nil {
+	if stdout, err := r.RedisCLI.AddFollower(followerIP, "", leaderIP, "", leaderID); err != nil {
 		if !strings.Contains(stdout, "All nodes agree about slots configuration") {
 			return err
 		}
