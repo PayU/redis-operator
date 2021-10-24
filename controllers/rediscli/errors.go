@@ -81,8 +81,5 @@ func IsError(message string) bool {
 			return true
 		}
 	}
-	if IsGenericError(errors.Errorf(message)) {
-		return true
-	}
-	return false
+	return IsGenericError(errors.Errorf(message))
 }
