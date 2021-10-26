@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const IP_IDX = 0
+const PORT_IDX = 1
 const DEFAULT_REDIS_PORT = "6379"
 
 type RedisAuth struct {
@@ -19,14 +22,16 @@ type RedisAuth struct {
 }
 
 type RedisCLI struct {
-	Log  logr.Logger
-	Auth *RedisAuth
+	Log         logr.Logger
+	Auth        *RedisAuth
+	DefaultPort string
 }
 
 func NewRedisCLI(log *logr.Logger) *RedisCLI {
 	return &RedisCLI{
-		Log:  *log,
-		Auth: nil,
+		Log:         *log,
+		Auth:        nil,
+		DefaultPort: DEFAULT_REDIS_PORT,
 	}
 }
 
@@ -39,11 +44,17 @@ const (
  * The error is non-nil if execution was unsuccessful, stderr is not empty or stdout
  * contains an error message
  */
-func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
+func (r *RedisCLI) executeCommand(args []string, port ...string) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisCliTimeout)
 	defer cancel()
+
+	if len(port) == 0 {
+		args = append([]string{"-p", r.DefaultPort}, args...)
+	} else {
+		args = append([]string{"-p", port[0]}, args...)
+	}
 
 	if r.Auth != nil {
 		args = append([]string{"--user", r.Auth.User}, args...)
@@ -92,84 +103,139 @@ func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
 	return stdOutput, errOutput, nil
 }
 
-func (r *RedisCLI) SetDefaultPortToIps(ipList []string) map[string]string {
-	ipPortMap := make(map[string]string)
-	for _, ip := range ipList {
-		ipPortMap[ip] = DEFAULT_REDIS_PORT
+func (r *RedisCLI) validatePortOrSetDefault(address string) string {
+	addrSplit := strings.Split(address, ":")
+	if len(addrSplit) == 1 {
+		address = addrSplit[IP_IDX] + ":" + r.DefaultPort
 	}
-	return ipPortMap
+	return address
+}
+
+func standardizeSpaces(s []string) string {
+	argsLine := ""
+	for _, str := range s {
+		argsLine += " " + strings.Join(strings.Fields(str), " ")
+	}
+	return argsLine
+}
+
+func argumentLineToArgMap(argumentLine []string) map[string]string {
+	argsValuesLine := strings.Split(standardizeSpaces(argumentLine), " ")
+	argMap := make(map[string]string)
+	skip := false
+	for i, arg := range argsValuesLine {
+		if !skip {
+			if i+1 < len(argsValuesLine) {
+				argMap[arg] = argsValuesLine[i+1]
+			} else {
+				argMap[arg] = ""
+			}
+		}
+		skip = !skip
+	}
+	return argMap
+}
+
+func (r *RedisCLI) validateOptionalPortArg(argumentLine []string) (bool, string) {
+	argMap := argumentLineToArgMap(argumentLine)
+	if _, ok := argMap["-p"]; ok {
+		return true, argMap["-p"]
+	}
+	return false, ""
+}
+
+func removeOptionalPortArgFromCommandLine(argLine string) string {
+	regex := " -p \\d+ "
+	matcher := regexp.MustCompile(regex)
+	return matcher.ReplaceAllString(argLine, " ")
+}
+
+func (r *RedisCLI) getRoutingPortFromCommandLine(opt []string) (string, string) {
+	routingPort := ""
+	optinalArgsLine := ""
+	if len(opt) == 0 {
+		routingPort = r.DefaultPort
+	} else {
+		portProvided, port := r.validateOptionalPortArg(opt)
+		if portProvided {
+			routingPort = port
+		} else {
+			routingPort = r.DefaultPort
+		}
+		optinalArgsLine = removeOptionalPortArgFromCommandLine(standardizeSpaces(opt))
+	}
+	return routingPort, optinalArgsLine
 }
 
 // ClusterCreate uses the '--cluster create' option on redis-cli to create a cluster using a list of nodes
-func (r *RedisCLI) ClusterCreate(leadersIpPortMap map[string]string) (string, error) {
-	var leaderAddrs []string
-	for leaderIP, leaderPort := range leadersIpPortMap {
-		leaderAddrs = append(leaderAddrs, leaderIP+":"+leaderPort)
+func (r *RedisCLI) ClusterCreate(leaderAddrses []string, opt ...string) (string, error) {
+	for i, leaderAddrs := range leaderAddrses {
+		leaderAddrses[i] = r.validatePortOrSetDefault(leaderAddrs)
 	}
-	args := append([]string{"--cluster", "create"}, leaderAddrs...)
+
+	args := []string{"--cluster", "create"}
+	args = append(args, leaderAddrses...)
 
 	// this will run the command non-interactively
 	args = append(args, "--cluster-yes")
-
-	stdout, stderr, err := r.executeCommand(args)
+	// Command line might be provided with extra optinal arguments, including the port that shuold be used by redis-client
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args = append(args, optinalArgsLine)
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", leaderAddrs, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", leaderAddrses, stdout, stderr, err)
 	}
 	return stdout, nil
 }
 
-func (r *RedisCLI) ClusterCheck(nodeIP string, nodePort string) (string, error) {
-	if len(nodePort) == 0 {
-		nodePort = DEFAULT_REDIS_PORT
-	}
-	args := []string{"--cluster", "check", nodeIP + ":" + nodePort}
-
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ClusterCheck(nodeAddr string, opt ...string) (string, error) {
+	nodeAddr = r.validatePortOrSetDefault(nodeAddr)
+	routingPort, optionalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"--cluster", "check", nodeAddr, optionalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+		return stdout, errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeAddr, stdout, stderr, err)
 	}
 	return stdout, nil
 }
 
 // AddFollower uses the '--cluster add-node' option on redis-cli to add a node to the cluster
-// newNodeIP: IP of the follower that will join the cluster
-// nodeIP: 		IP of a node in the cluster
-// leaderID: 	Redis ID of the leader that the new follower will replicate
-func (r *RedisCLI) AddFollower(newNodeIP string, newNodePort string, nodeIP string, nodePort string, leaderID string) (string, error) {
-	if len(newNodePort) == 0 {
-		newNodePort = DEFAULT_REDIS_PORT
-	}
-	if len(nodePort) == 0 {
-		nodePort = DEFAULT_REDIS_PORT
-	}
-	args := []string{"--cluster", "add-node", newNodeIP + ":" + newNodePort, nodeIP + ":" + nodePort, "--cluster-slave", "--cluster-master-id", leaderID}
-	stdout, stderr, err := r.executeCommand(args)
+// newNodeAddr:      Address of the follower that will join the cluster, in a form of <IP>:<Port>
+// existingNodeAdrr: Address of existing node in the cluster, in a form of <IP>:<Port>
+// leaderID: 	     Redis ID of the leader that the new follower will replicate
+// In case IP addresses will be provided without a port, the default redis port will be used
+func (r *RedisCLI) AddFollower(newNodeAddr string, existingNodeAdrr string, leaderID string, opt ...string) (string, error) {
+	newNodeAddr = r.validatePortOrSetDefault(newNodeAddr)
+	existingNodeAdrr = r.validatePortOrSetDefault(existingNodeAdrr)
+	routingPort, optionalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"--cluster", "add-node", newNodeAddr, existingNodeAdrr, "--cluster-slave", "--cluster-master-id", leaderID, optionalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeAddr, existingNodeAdrr, leaderID, stdout, stderr, err)
 	}
 	return stdout, nil
 }
 
 // DelNode uses the '--cluster del-node' option of redis-cli to remove a node from the cluster
-// nodeIP: any node of the cluster
+// nodeAddr: node of interest from the cluster, address format is <IP>:<Port>
 // nodeID: node that needs to be removed
-func (r *RedisCLI) DelNode(nodeIP string, nodePort string, nodeID string) (string, error) {
-	if len(nodePort) == 0 {
-		nodePort = DEFAULT_REDIS_PORT
-	}
-	args := []string{"--cluster", "del-node", nodeIP + ":" + nodePort, nodeID}
-	stdout, stderr, err := r.executeCommand(args)
+// In case IP address will be provided without a port, the default redis port will be used
+func (r *RedisCLI) DelNode(nodeAddr string, nodeID string, opt ...string) (string, error) {
+	nodeAddr = r.validatePortOrSetDefault(nodeAddr)
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"--cluster", "del-node", nodeAddr, nodeID, optinalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeAddr, nodeID, stdout, stderr, err)
 	}
 	return stdout, nil
 }
 
 // https://redis.io/commands/cluster-info
-func (r *RedisCLI) ClusterInfo(nodeIP string) (*RedisClusterInfo, error) {
-	args := []string{"-h", nodeIP, "cluster", "info"}
-
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ClusterInfo(nodeIP string, opt ...string) (*RedisClusterInfo, error) {
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "cluster", "info", optinalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute CLUSTER INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -177,10 +243,10 @@ func (r *RedisCLI) ClusterInfo(nodeIP string) (*RedisClusterInfo, error) {
 }
 
 // https://redis.io/commands/info
-func (r *RedisCLI) Info(nodeIP string) (*RedisInfo, error) {
-	args := []string{"-h", nodeIP, "info"}
-
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) Info(nodeIP string, opt ...string) (*RedisInfo, error) {
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "info", optinalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -188,12 +254,10 @@ func (r *RedisCLI) Info(nodeIP string) (*RedisInfo, error) {
 }
 
 // https://redis.io/commands/ping
-func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
-	args := []string{"-h", nodeIP, "ping"}
-	if len(message) != 0 {
-		args = append(args, message[0])
-	}
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) Ping(nodeIP string, opt ...string) (string, error) {
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "ping", optinalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -201,10 +265,10 @@ func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
 }
 
 // https://redis.io/commands/cluster-nodes
-func (r *RedisCLI) ClusterNodes(nodeIP string) (*RedisClusterNodes, error) {
-	args := []string{"-h", nodeIP, "cluster", "nodes"}
-
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*RedisClusterNodes, error) {
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "cluster", "nodes", optinalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute CLUSTER NODES(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -212,9 +276,10 @@ func (r *RedisCLI) ClusterNodes(nodeIP string) (*RedisClusterNodes, error) {
 }
 
 // https://redis.io/commands/cluster-myid
-func (r *RedisCLI) MyClusterID(nodeIP string) (string, error) {
-	args := []string{"-h", nodeIP, "cluster", "myid"}
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) MyClusterID(nodeIP string, opt ...string) (string, error) {
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "cluster", "myid", optinalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute MYID(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -224,10 +289,10 @@ func (r *RedisCLI) MyClusterID(nodeIP string) (string, error) {
 // ForgetNode command is used in order to remove a node, specified via its node ID, from the set of known nodes of the Redis Cluster node receiving the command.
 // In other words the specified node is removed from the nodes table of the node receiving the command.
 // https://redis.io/commands/cluster-forget
-func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string) (string, error) {
-	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
-
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string, opt ...string) (string, error) {
+	routingPort, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID, optinalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FORGET (%s, %s): %s | %s | %v", nodeIP, forgetNodeID, stdout, stderr, err)
 	}
@@ -236,10 +301,10 @@ func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string) (string, er
 
 // ClusterReplicas command provides a list of replica nodes replicating from a specified leader node
 // https://redis.io/commands/cluster-replicas
-func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string) (*RedisClusterNodes, error) {
-	args := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID}
-
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string, opt ...string) (*RedisClusterNodes, error) {
+	routingPort, optionalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID, optionalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute CLUSTER REPLICAS (%s, %s): %s | %s | %v", nodeIP, leaderNodeID, stdout, stderr, err)
 	}
@@ -248,6 +313,7 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string) (*RedisCl
 
 // https://redis.io/commands/cluster-failover
 func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error) {
+	routingPort, _ := r.getRoutingPortFromCommandLine(opt)
 	args := []string{"-h", nodeIP, "cluster", "failover"}
 
 	if len(opt) != 0 && opt[0] != "" {
@@ -258,7 +324,7 @@ func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error)
 		}
 	}
 
-	stdout, stderr, err := r.executeCommand(args)
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FAILOVER (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
@@ -266,20 +332,25 @@ func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error)
 }
 
 // https://redis.io/commands/cluster-meet
-func (r *RedisCLI) ClusterMeet(nodeIP string, newNodeIP string, newNodePort string, newNodeBusPort ...string) (string, error) {
-	args := []string{"-h", nodeIP, "cluster", "meet", newNodeIP, newNodePort}
-	if len(newNodeBusPort) != 0 {
-		args = append(args, newNodeBusPort[0])
-	}
-	stdout, stderr, err := r.executeCommand(args)
+// nodeIP: IP address of our node of interest from the redis cluster
+// newNodeAddr: address of the node that is requested to be met, address in the form of <IP>:<Port>
+// In case IP address will be provided without a port, the default redis port will be used
+func (r *RedisCLI) ClusterMeet(nodeIP string, newNodeAddr string, opt ...string) (string, error) {
+
+	newNodeAddr = r.validatePortOrSetDefault(newNodeAddr)
+	newAddr := strings.Split(newNodeAddr, ":")
+	routingPort, optionalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "cluster", "meet", newAddr[IP_IDX], newAddr[PORT_IDX], optionalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
-		return stdout, errors.Errorf("Failed to execute CLUSTER MEET (%s, %s, %s, %v): %s | %s | %v", nodeIP, newNodeIP, newNodePort, newNodeBusPort, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute CLUSTER MEET (%s, %s, %s, %v): %s | %s | %v", nodeIP, newAddr[IP_IDX], newAddr[PORT_IDX], opt, stdout, stderr, err)
 	}
 	return stdout, nil
 }
 
 // https://redis.io/commands/cluster-reset
 func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
+	routingPort, _ := r.getRoutingPortFromCommandLine(opt)
 	args := []string{"-h", nodeIP, "cluster", "reset"}
 	if len(opt) != 0 {
 		if strings.ToLower(opt[0]) != "hard" && strings.ToLower(opt[0]) != "soft" {
@@ -288,7 +359,7 @@ func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 			args = append(args, opt[0])
 		}
 	}
-	stdout, stderr, err := r.executeCommand(args)
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER RESET (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
@@ -297,6 +368,7 @@ func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 
 // https://redis.io/commands/flushall
 func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
+	routingPort, _ := r.getRoutingPortFromCommandLine(opt)
 	args := []string{"-h", nodeIP, "flushall"}
 	if len(opt) != 0 {
 		if strings.ToLower(opt[0]) != "async" {
@@ -305,7 +377,7 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 			args = append(args, opt[0])
 		}
 	}
-	stdout, stderr, err := r.executeCommand(args)
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute FLUSHALL (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
@@ -313,9 +385,10 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 }
 
 // https://redis.io/commands/cluster-replicate
-func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string) (string, error) {
-	args := []string{"-h", nodeIP, "cluster", "replicate", leaderID}
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string, opt ...string) (string, error) {
+	routingPort, optionalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "cluster", "replicate", leaderID, optionalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER REPLICATE (%s, %s): %s | %s | %v", nodeIP, leaderID, stdout, stderr, err)
 	}
@@ -323,9 +396,10 @@ func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string) (string, err
 }
 
 // https://redis.io/commands/acl-load
-func (r *RedisCLI) ACLLoad(nodeIP string) (string, error) {
-	args := []string{"-h", nodeIP, "acl", "load"}
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ACLLoad(nodeIP string, opt ...string) (string, error) {
+	routingPort, optionalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "acl", "load", optionalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute ACL LOAD (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -333,9 +407,10 @@ func (r *RedisCLI) ACLLoad(nodeIP string) (string, error) {
 }
 
 // https://redis.io/commands/acl-list
-func (r *RedisCLI) ACLList(nodeIP string) (*RedisACL, error) {
-	args := []string{"-h", nodeIP, "acl", "list"}
-	stdout, stderr, err := r.executeCommand(args)
+func (r *RedisCLI) ACLList(nodeIP string, opt ...string) (*RedisACL, error) {
+	routingPort, optionalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{"-h", nodeIP, "acl", "list", optionalArgsLine}
+	stdout, stderr, err := r.executeCommand(args, routingPort)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, errors.Errorf("Failed to execute ACL LIST (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
