@@ -277,7 +277,7 @@ func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisClust
 		return err
 	}
 
-	if _, err = r.RedisCLI.ClusterCreate(r.RedisCLI.SetDefaultPortToIps(nodeIPs)); err != nil {
+	if _, err = r.RedisCLI.ClusterCreate(nodeIPs); err != nil {
 		return err
 	}
 
@@ -297,7 +297,7 @@ func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP str
 		return err
 	}
 
-	if stdout, err := r.RedisCLI.AddFollower(followerIP, "", leaderIP, "", leaderID); err != nil {
+	if stdout, err := r.RedisCLI.AddFollower(followerIP, leaderIP, leaderID); err != nil {
 		if !strings.Contains(stdout, "All nodes agree about slots configuration") {
 			return err
 		}
