@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -104,11 +105,15 @@ func (r *RedisCLI) validatePortOrSetDefault(address string) string {
 	return address
 }
 
-func standardizeSpaces(s string) string {
-	return strings.Join(strings.Fields(s), " ")
+func standardizeSpaces(s []string) string {
+	argsLine := ""
+	for _, str := range s {
+		argsLine += " " + strings.Join(strings.Fields(str), " ")
+	}
+	return argsLine
 }
 
-func argumentLineToArgMap(argumentLine string) map[string]string {
+func argumentLineToArgMap(argumentLine []string) map[string]string {
 	argsValuesLine := strings.Split(standardizeSpaces(argumentLine), " ")
 	argMap := make(map[string]string)
 	skip := false
@@ -125,12 +130,34 @@ func argumentLineToArgMap(argumentLine string) map[string]string {
 	return argMap
 }
 
-func (r *RedisCLI) validatePortArgumentForRequestRout(argumentLine string) string {
+func (r *RedisCLI) validatePortOptArgumentForRequestRout(argumentLine []string) (bool, string) {
 	argMap := argumentLineToArgMap(argumentLine)
-	if _, ok := argMap["-p"]; !ok {
-		return "-p " + r.DefaultPort + " " + argumentLine
+	if _, ok := argMap["-p"]; ok {
+		return true, argMap["-p"]
 	}
-	return argumentLine
+	return false, ""
+}
+
+func cleanPortOptArgFromCommandLine(argLine string) string {
+	matcher := regexp.MustCompile(" -p \\d+ ")
+	return matcher.ReplaceAllString(argLine, " ")
+}
+
+func (r *RedisCLI) getRoutingPortFromCommandLine(opt []string) (string, string) {
+	routPortArg := "-p"
+	optinalArgsLine := ""
+	if len(opt) == 0 {
+		routPortArg += r.DefaultPort
+	} else {
+		portProvided, port := r.validatePortOptArgumentForRequestRout(opt)
+		if portProvided {
+			routPortArg += " " + port
+		} else {
+			routPortArg += " " + r.DefaultPort
+		}
+		optinalArgsLine = cleanPortOptArgFromCommandLine(standardizeSpaces(opt))
+	}
+	return routPortArg, optinalArgsLine
 }
 
 // ClusterCreate uses the '--cluster create' option on redis-cli to create a cluster using a list of nodes
@@ -138,10 +165,14 @@ func (r *RedisCLI) ClusterCreate(leaderAddrses []string, opt ...string) (string,
 	for i, leaderAddrs := range leaderAddrses {
 		leaderAddrses[i] = r.validatePortOrSetDefault(leaderAddrs)
 	}
-	args := append([]string{"--cluster", "create"}, leaderAddrses...)
+	routPortArg, optinalArgsLine := r.getRoutingPortFromCommandLine(opt)
+	args := []string{routPortArg, "--cluster create"}
+	args = append(args, leaderAddrses...)
 
 	// this will run the command non-interactively
 	args = append(args, "--cluster-yes")
+	// Command line might be provided with extra optinal arguments
+	args = append(args, optinalArgsLine)
 
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
