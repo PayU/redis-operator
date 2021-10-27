@@ -278,8 +278,7 @@ func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisClust
 	}
 
 	createHandler := r.RedisCLI.ClusterCreate(nodeIPs)
-	err = createHandler.Error
-	if err != nil {
+	if err = createHandler.Error; err != nil {
 		return err
 	}
 
