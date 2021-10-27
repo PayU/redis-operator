@@ -1,4 +1,4 @@
-package controller_cli
+package rediscli
 
 import "testing"
 
