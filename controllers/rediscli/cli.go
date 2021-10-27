@@ -38,7 +38,7 @@ type RedisCLI struct {
 }
 
 func (p *CommandHandlerProvider) provideCommandHandler() *CommandHandler {
-	return &CommandHandler{}
+	return NewCommandHandler()
 }
 
 func NewRedisCLI(log *logr.Logger) *RedisCLI {
@@ -46,7 +46,20 @@ func NewRedisCLI(log *logr.Logger) *RedisCLI {
 		Log:         *log,
 		Auth:        nil,
 		DefaultPort: DEFAULT_REDIS_PORT,
-		Provider:    &CommandHandlerProvider{},
+		Provider:    NewCommandHandlerProvider(),
+	}
+}
+
+func NewCommandHandlerProvider() *CommandHandlerProvider {
+	return &CommandHandlerProvider{}
+}
+
+func NewCommandHandler() *CommandHandler {
+	return &CommandHandler{
+		Command: "",
+		ExecMsg: "",
+		ErrMsg:  "",
+		Error:   nil,
 	}
 }
 
@@ -54,8 +67,10 @@ const (
 	defaultRedisCliTimeout = 20 * time.Second
 )
 
-func (h *CommandHandler) buildCommand(args []string, commandRoutingPort string, user string) {
-	args = append([]string{"--user", user}, args...)
+func (h *CommandHandler) buildCommand(args []string, commandRoutingPort string, auth *RedisAuth) {
+	if auth != nil {
+		args = append([]string{"--user", auth.User}, args...)
+	}
 	args = append([]string{"-p", commandRoutingPort}, args...)
 
 	for _, arg := range args {
@@ -69,7 +84,6 @@ func (h *CommandHandler) buildCommand(args []string, commandRoutingPort string, 
  * contains an error message
  */
 func (h *CommandHandler) executeCommand() {
-	// TODO: change signature to one that does not need to be provided with port
 	var stdout, stderr bytes.Buffer
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisCliTimeout)
@@ -202,7 +216,7 @@ func (r *RedisCLI) ClusterCreate(leadersAddr []string, opt ...string) *CommandHa
 	args = append(args, optinalArgsLine)
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -217,7 +231,7 @@ func (r *RedisCLI) ClusterCheck(nodeAddr string, opt ...string) *CommandHandler 
 	args := []string{"--cluster", "check", nodeAddr, optionalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -238,7 +252,7 @@ func (r *RedisCLI) AddFollower(newNodeAddr string, existingNodeAdrr string, lead
 	args := []string{"--cluster", "add-node", newNodeAddr, existingNodeAdrr, "--cluster-slave", "--cluster-master-id", leaderID, optionalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -257,7 +271,7 @@ func (r *RedisCLI) DelNode(nodeAddr string, nodeID string, opt ...string) *Comma
 	args := []string{"--cluster", "del-node", nodeAddr, nodeID, optinalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -272,7 +286,7 @@ func (r *RedisCLI) ClusterInfo(nodeIP string, opt ...string) (*CommandHandler, *
 	args := []string{"-h", nodeIP, "cluster", "info", optinalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -288,7 +302,7 @@ func (r *RedisCLI) Info(nodeIP string, opt ...string) (*CommandHandler, *RedisIn
 	args := []string{"-h", nodeIP, "info", optinalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -304,7 +318,7 @@ func (r *RedisCLI) Ping(nodeIP string, opt ...string) *CommandHandler {
 	args := []string{"-h", nodeIP, "ping", optinalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -319,7 +333,7 @@ func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*CommandHandler, 
 	args := []string{"-h", nodeIP, "cluster", "nodes", optinalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -335,7 +349,7 @@ func (r *RedisCLI) MyClusterID(nodeIP string, opt ...string) *CommandHandler {
 	args := []string{"-h", nodeIP, "cluster", "myid", optinalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -352,7 +366,7 @@ func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string, opt ...stri
 	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID, optinalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || strings.TrimSpace(h.ExecMsg) != "OK" {
@@ -368,7 +382,7 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string, opt ...st
 	args := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID, optionalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -392,7 +406,7 @@ func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) *CommandHandler
 	}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || strings.TrimSpace(h.ExecMsg) != "OK" {
@@ -413,7 +427,7 @@ func (r *RedisCLI) ClusterMeet(nodeIP string, newNodeAddr string, opt ...string)
 	args := []string{"-h", nodeIP, "cluster", "meet", newAddr[IP_IDX], newAddr[PORT_IDX], optionalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || strings.TrimSpace(h.ExecMsg) != "OK" {
@@ -435,7 +449,7 @@ func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) *CommandHandler {
 	}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || strings.TrimSpace(h.ExecMsg) != "OK" {
@@ -457,7 +471,7 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) *CommandHandler {
 	}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
@@ -472,7 +486,7 @@ func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string, opt ...strin
 	args := []string{"-h", nodeIP, "cluster", "replicate", leaderID, optionalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || strings.TrimSpace(h.ExecMsg) != "OK" {
@@ -487,7 +501,7 @@ func (r *RedisCLI) ACLLoad(nodeIP string, opt ...string) *CommandHandler {
 	args := []string{"-h", nodeIP, "acl", "load", optionalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || strings.TrimSpace(h.ExecMsg) != "OK" {
@@ -502,7 +516,7 @@ func (r *RedisCLI) ACLList(nodeIP string, opt ...string) (*CommandHandler, *Redi
 	args := []string{"-h", nodeIP, "acl", "list", optionalArgsLine}
 
 	h := r.Provider.provideCommandHandler()
-	h.buildCommand(args, routingPort, r.Auth.User)
+	h.buildCommand(args, routingPort, r.Auth)
 	h.executeCommand()
 
 	if h.Error != nil || strings.TrimSpace(h.ErrMsg) != "" || IsError(strings.TrimSpace(h.ExecMsg)) {
