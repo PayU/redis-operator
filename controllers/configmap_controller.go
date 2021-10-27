@@ -65,16 +65,16 @@ func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ..
 	time.Sleep(ACLFilePropagationDuration)
 
 	for _, pod := range redisPods {
-		msg, err := r.RedisCLI.ACLLoad(pod.Status.PodIP)
-		if err != nil {
-			r.Log.Info(fmt.Sprintf("Failed to load ACL file: %s | %+v", msg, err))
+		aclLoadHandler := r.RedisCLI.ACLLoad(pod.Status.PodIP)
+		if err := aclLoadHandler.Error; err != nil {
+			r.Log.Info(fmt.Sprintf("Failed to load ACL file: %s | %+v", aclLoadHandler.ExecMsg, err))
 			return err
 		}
 
 		time.Sleep(ACLFileLoadDuration)
 
-		loadedConfig, err := r.RedisCLI.ACLList(pod.Status.PodIP)
-		if err != nil {
+		aclListHandler, loadedConfig := r.RedisCLI.ACLList(pod.Status.PodIP)
+		if err := aclListHandler.Error; err != nil {
 			r.Log.Error(err, fmt.Sprintf("Failed to list new ACL config from %s(%s)", pod.Name, pod.Status.PodIP))
 			return err
 		}
@@ -102,8 +102,8 @@ func (r *RedisConfigReconciler) updateACLHashStatus(status string, redisPods ...
 
 // Retrieves the ACL config from a Redis node and returns its SHA256 hash
 func (r *RedisConfigReconciler) getACLConfigHash(pod *corev1.Pod) (string, error) {
-	acl, err := r.RedisCLI.ACLList(pod.Status.PodIP)
-	if err != nil {
+	aclListHandler, acl := r.RedisCLI.ACLList(pod.Status.PodIP)
+	if err := aclListHandler.Error; err != nil {
 		r.Log.Error(err, fmt.Sprintf("Failed to list previous ACL config from %s(%s) ", pod.Name, pod.Status.PodIP))
 		return "", err
 	}
