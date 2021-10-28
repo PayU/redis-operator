@@ -120,7 +120,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisClu
 			} else {
 				if pod.Status.PodIP != "" {
 					infoHandler, clusterInfo := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
-					if err := infoHandler.Error; err == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] == "ok" {
+					if infoHandler.Error == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] == "ok" {
 						cv[ln].Failed = false
 					}
 				}
@@ -135,7 +135,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisClu
 			} else {
 				if pod.Status.PodIP != "" {
 					infoHandler, clusterInfo := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
-					if err := infoHandler.Error; err == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] == "ok" {
+					if infoHandler.Error == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] == "ok" {
 						cv[ln].Followers[index].Failed = false
 					}
 				}
