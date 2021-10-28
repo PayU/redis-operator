@@ -71,7 +71,6 @@ func (h *CommandHandler) buildCommand(commandRoutingPort string, auth *RedisAuth
 	if auth != nil {
 		h.Args = append([]string{"--user", auth.User}, h.Args...)
 	}
-	h.Args = append([]string{"-p", commandRoutingPort}, h.Args...)
 }
 
 /*
