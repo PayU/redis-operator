@@ -12,20 +12,46 @@ import (
 	"github.com/pkg/errors"
 )
 
+const REDIS_DEFAULT_PORT string = "6379"
+
 type RedisAuth struct {
 	User string
 }
 
+type CommandHandler interface {
+	buildCommand(args []string, auth *RedisAuth)
+	executeCommand()
+}
+
+type CommandHandlerProvider interface {
+	provideHandler() CommandHandler
+}
+
+type RunTimeCommandHandler struct{}
+
+type RunTimeCommandHandlerProvider struct{}
+
 type RedisCLI struct {
-	Log  logr.Logger
-	Auth *RedisAuth
+	Log             logr.Logger
+	Auth            *RedisAuth
+	Port            string
+	HandlerProvider CommandHandlerProvider
 }
 
 func NewRedisCLI(log *logr.Logger) *RedisCLI {
 	return &RedisCLI{
-		Log:  *log,
-		Auth: nil,
+		Log:             *log,
+		Auth:            nil,
+		Port:            REDIS_DEFAULT_PORT,
+		HandlerProvider: &RunTimeCommandHandlerProvider{},
 	}
+}
+
+func (h *RunTimeCommandHandler) buildCommand(args []string, auth *RedisAuth) {}
+func (h *RunTimeCommandHandler) executeCommand()                             {}
+
+func (p *RunTimeCommandHandlerProvider) provideHandler() CommandHandler {
+	return &RunTimeCommandHandler{}
 }
 
 const (
@@ -46,7 +72,7 @@ func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
 	if r.Auth != nil {
 		args = append([]string{"--user", r.Auth.User}, args...)
 	}
-	args = append([]string{"-p", "6379"}, args...)
+	args = append([]string{"-p", r.Port}, args...)
 
 	fmt.Println("Args: ", args)
 
@@ -98,7 +124,7 @@ func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
 func (r *RedisCLI) ClusterCreate(leaderIPs []string) (string, error) {
 	var leaderAddrs []string
 	for _, leaderIP := range leaderIPs {
-		leaderAddrs = append(leaderAddrs, leaderIP+":6379")
+		leaderAddrs = append(leaderAddrs, leaderIP+":"+r.Port)
 	}
 	args := append([]string{"--cluster", "create"}, leaderAddrs...)
 
@@ -113,7 +139,7 @@ func (r *RedisCLI) ClusterCreate(leaderIPs []string) (string, error) {
 }
 
 func (r *RedisCLI) ClusterCheck(nodeIP string) (string, error) {
-	args := []string{"--cluster", "check", nodeIP + ":6379"}
+	args := []string{"--cluster", "check", nodeIP + ":" + r.Port}
 
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
@@ -127,7 +153,7 @@ func (r *RedisCLI) ClusterCheck(nodeIP string) (string, error) {
 // nodeIP: 		IP of a node in the cluster
 // leaderID: 	Redis ID of the leader that the new follower will replicate
 func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string) (string, error) {
-	args := []string{"--cluster", "add-node", newNodeIP + ":6379", nodeIP + ":6379", "--cluster-slave", "--cluster-master-id", leaderID}
+	args := []string{"--cluster", "add-node", newNodeIP + ":" + r.Port, nodeIP + ":" + r.Port, "--cluster-slave", "--cluster-master-id", leaderID}
 
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
@@ -140,7 +166,7 @@ func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string)
 // nodeIP: any node of the cluster
 // nodeID: node that needs to be removed
 func (r *RedisCLI) DelNode(nodeIP string, nodeID string) (string, error) {
-	args := []string{"--cluster", "del-node", nodeIP + ":6379", nodeID}
+	args := []string{"--cluster", "del-node", nodeIP + ":" + r.Port, nodeID}
 	stdout, stderr, err := r.executeCommand(args)
 	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)
