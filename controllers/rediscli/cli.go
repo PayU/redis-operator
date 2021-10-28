@@ -46,6 +46,10 @@ func (r *RedisCLI) executeCommand(args []string) (string, string, error) {
 	if r.Auth != nil {
 		args = append([]string{"--user", r.Auth.User}, args...)
 	}
+	args = append([]string{"-p", "6379"}, args...)
+
+	fmt.Println("Args: ", args)
+
 	cmd := exec.CommandContext(ctx, "redis-cli", args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
