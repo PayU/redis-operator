@@ -10,9 +10,10 @@ WORKDIR /workspace
 
 # install curl
 RUN apt-get update \
-    && apt-get install -y curl
+    && apt-get install -y curl \
+    && apt-get install xz-utils 
 
-RUN curl -L https://go.kubebuilder.io/dl/2.3.1/linux/amd64 | tar xz
+RUN curl -OLJs https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.1/kubebuilder_2.3.1_linux_amd64.tar.gz | xz
 ENV KUBEBUILDER_ASSETS=/workspace/kubebuilder_2.3.1_linux_amd64/bin
 
 # install redis cli
@@ -43,3 +44,4 @@ ENV REDISAUTH_CLI=${REDISAUTH_CLI_ARG}
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on
 
 ENTRYPOINT CompileDaemon --build="go build -o bin/manager main.go" --command="./bin/manager -namespace=$NAMESPACE_ENV -metrics-addr=$METRICS_ADDR_ENV -enable-leader-election=$ENABLE_LEADER_ELECTION_ENV -devmode=$DEVMODE_ENV"
+
