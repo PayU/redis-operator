@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -48,6 +49,7 @@ func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, 
 	if auth != nil {
 		args = append([]string{"--user", auth.User}, args...)
 	}
+	routingPort, opt = routingPortDecider(routingPort, opt)
 	args = append([]string{"-p", routingPort}, args...)
 	if len(opt) > 0 {
 		args = append(args, opt...)
@@ -111,38 +113,67 @@ func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, e
 }
 
 // Helpers
-func routingPortDecider(cliDefualtPort string, opt ...string) string {
-	if len(opt) == 0 {
-		return cliDefualtPort
+
+func routingPortDecider(cliDefualtPort string, opt []string) (string, []string) {
+	if len(opt) > 0 {
+		for i, arg := range opt {
+			flag := "-p\\s+"
+			flagVal := "\\d+"
+			portArgRegex := flag + flagVal
+			match, _ := regexp.MatchString(portArgRegex, arg)
+			if match {
+				comp, _ := regexp.Compile(portArgRegex)
+				portArg := comp.FindStringSubmatch(arg)[0]
+				port := regexp.MustCompile(flag).ReplaceAllString(portArg, "")
+				arg = regexp.MustCompile("\\s*"+portArgRegex+"\\s*").ReplaceAllString(arg, " ")
+				opt[i] = arg
+				return port, opt
+			}
+		}
 	}
-	return ""
+	return cliDefualtPort, opt
+}
+
+// Receives: address in a format of <ip>:<port> or <ip>: or <ip>
+// Returns: full adress in a format of <ip>:<port>
+//          if port was provided, the exact address will be returned. otherwise the returned address will be <ip>:<default cli port>
+func addressPortDecider(address string, cliDefaultPort string) string {
+	addr := strings.Split(address, ":")
+	if len(addr) == 1 || (len(addr) == 2 && addr[1] == "") {
+		return addr[0] + ":" + cliDefaultPort
+	}
+	return address
+}
+
+func addressesPortDecider(addresses []string, cliDefaultPort string) []string {
+	var updatedAddresses []string
+	for _, addr := range addresses {
+		updatedAddresses = append(updatedAddresses, addressPortDecider(addr, cliDefaultPort))
+	}
+	return updatedAddresses
 }
 
 // End of Helpers
 
 // ClusterCreate uses the '--cluster create' option on redis-cli to create a cluster using a list of nodes
-func (r *RedisCLI) ClusterCreate(leaderIPs []string, opt ...string) (string, error) {
-	var leaderAddrs []string
-	for _, leaderIP := range leaderIPs {
-		leaderAddrs = append(leaderAddrs, leaderIP+":"+r.Port)
-	}
-	args := append([]string{"--cluster", "create"}, leaderAddrs...)
+func (r *RedisCLI) ClusterCreate(leadersAddresses []string, opt ...string) (string, error) {
+	fullAddresses := addressesPortDecider(leadersAddresses, r.Port)
+	args := append([]string{"--cluster", "create"}, fullAddresses...)
 	args = append(args, "--cluster-yes") // this will run the command non-interactively
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", leaderAddrs, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", fullAddresses, stdout, stderr, err)
 	}
 	return stdout, nil
 }
 
-func (r *RedisCLI) ClusterCheck(nodeIP string, opt ...string) (string, error) {
-
-	args := []string{"--cluster", "check", nodeIP + ":" + r.Port}
+func (r *RedisCLI) ClusterCheck(nodeAddr string, opt ...string) (string, error) {
+	args := []string{"--cluster", "check", addressPortDecider(nodeAddr, r.Port)}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+		return stdout, errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeAddr, stdout, stderr, err)
 	}
 	return stdout, nil
 }
@@ -151,13 +182,12 @@ func (r *RedisCLI) ClusterCheck(nodeIP string, opt ...string) (string, error) {
 // newNodeIP: IP of the follower that will join the cluster
 // nodeIP: 		IP of a node in the cluster
 // leaderID: 	Redis ID of the leader that the new follower will replicate
-func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string, opt ...string) (string, error) {
-
-	args := []string{"--cluster", "add-node", newNodeIP + ":" + r.Port, nodeIP + ":" + r.Port, "--cluster-slave", "--cluster-master-id", leaderID}
+func (r *RedisCLI) AddFollower(newNodeAddr string, existingNodeAddr string, leaderID string, opt ...string) (string, error) {
+	args := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port), "--cluster-slave", "--cluster-master-id", leaderID}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeIP, nodeIP, leaderID, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeAddr, existingNodeAddr, leaderID, stdout, stderr, err)
 	}
 	return stdout, nil
 }
@@ -166,8 +196,7 @@ func (r *RedisCLI) AddFollower(newNodeIP string, nodeIP string, leaderID string,
 // nodeIP: any node of the cluster
 // nodeID: node that needs to be removed
 func (r *RedisCLI) DelNode(nodeIP string, nodeID string, opt ...string) (string, error) {
-
-	args := []string{"--cluster", "del-node", nodeIP + ":" + r.Port, nodeID}
+	args := []string{"--cluster", "del-node", addressPortDecider(nodeIP, r.Port), nodeID}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
