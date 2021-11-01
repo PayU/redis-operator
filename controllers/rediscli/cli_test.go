@@ -224,27 +224,136 @@ func testClusterForget() {
 	execClusterForgetTest("5", nodeIP, forgetNodeID, "-p 6489", "-optArg1 optVal1")
 }
 
-func testClusterReplicas() {}
+func testClusterReplicas() {
+	nodeIP := "127.0.0.1"
+	leaderNodeID := "abcd1234"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterReplicasTest("1", nodeIP, leaderNodeID)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterReplicasTest("2", nodeIP, leaderNodeID, "-p 6377")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterReplicasTest("3", nodeIP, leaderNodeID, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterReplicasTest("4", nodeIP, leaderNodeID, "-p 6388 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterReplicasTest("5", nodeIP, leaderNodeID, "-p 6388", "-optArg1 optVal1")
+}
 
-func testClusterFailOver() {}
+func testClusterFailOver() {
+	nodeIP := "127.0.0.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterFailOverTest("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterFailOverTest("2", nodeIP, "-p 6377")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterFailOverTest("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterFailOverTest("4", nodeIP, "-p 6399 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterFailOverTest("5", nodeIP, "-p 6399", "-optArg1 optVal1")
+}
 
-func testClusterMeet() {}
+func testClusterMeet() {
+	nodeAddr := "127.0.0.1"
+	newNodeAddr := "128.0.1.2"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterMeetTest("1", nodeAddr, newNodeAddr)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterMeetTest("2", nodeAddr, newNodeAddr, "-p 6388")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterMeetTest("3", nodeAddr, newNodeAddr, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterMeetTest("4", nodeAddr, newNodeAddr, "-p 8389 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterMeetTest("5", nodeAddr, newNodeAddr, "-p 8389", "-optArg1 optVal1")
+}
 
-func testClusterReset() {}
+func testClusterReset() {
+	nodeIP := "127.0.0.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterResetTest("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterResetTest("2", nodeIP, "-p 8383")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterResetTest("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterResetTest("4", nodeIP, "-p 8384 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterResetTest("5", nodeIP, "-p 6399", "-optArg1 optVal1")
+}
 
-func testFlushAll() {}
+func testFlushAll() {
+	nodeIP := "128.0.1.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execFlushAllTest("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execFlushAllTest("2", nodeIP, "-p 6373")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execFlushAllTest("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execFlushAllTest("4", nodeIP, "-p 8363 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execFlushAllTest("5", nodeIP, "-p 8363", "-optArg1 optVal1")
+}
 
-func testClusterReplicate() {}
+func testClusterReplicate() {
+	nodeIP := "127.0.0.1"
+	leaderID := "abcdefg123456"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterReplicateTest("1", nodeIP, leaderID)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterReplicateTest("2", nodeIP, leaderID, "-p 8090")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterReplicateTest("3", nodeIP, leaderID, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterReplicateTest("4", nodeIP, leaderID, "-optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterReplicateTest("5", nodeIP, leaderID, "-p 9080 -optArg1 optVal1")
+}
 
-func testACLLoad() {}
+func testACLLoad() {
+	nodeIP := "129.3.6.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execACLLoadTest("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execACLLoadTest("2", nodeIP, "-p 8080")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execACLLoadTest("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execACLLoadTest("4", nodeIP, "-p 9090 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execACLLoadTest("5", nodeIP, "-p 9090", "-optArg1 optVal1")
+}
 
-func testACLList() {}
+func testACLList() {
+	nodeIP := "129.4.6.2"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execACLListTest("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execACLListTest("2", nodeIP, "-p 6379")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execACLListTest("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execACLListTest("4", nodeIP, "-p 6381 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execACLListTest("5", nodeIP, "-p 6381", "-optArg1 optVal1")
+}
 
 func execClusterReplicasTest(testCaseId string, nodeIP string, leaderNodeID string, opt ...string) {}
 
 func execClusterFailOverTest(testCaseId string, nodeIP string, opt ...string) {}
 
-//func execClusterMeet(testCaseId string) {}
+func execClusterMeetTest(testCaseId string, nodeAddr string, newNodeAddr string, opt ...string) {}
+
+func execClusterResetTest(testCaseId string, nodeIP string, opt ...string) {}
+
+func execFlushAllTest(testCaseId string, nodeIP string, opt ...string) {}
+
+func execClusterReplicateTest(testCaseId string, nodeIP string, leaderID string, opt ...string) {}
+
+func execACLLoadTest(testcaseId string, nodeIP string, opt ...string) {}
+
+func execACLListTest(testCaseId string, nodeIP string, opt ...string) {}
 
 // Test exec helpers
 

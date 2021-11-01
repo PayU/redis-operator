@@ -119,4 +119,5 @@ func main() {
 		setupLogger.Error(err, "failed to start the manager")
 		os.Exit(1)
 	}
+
 }

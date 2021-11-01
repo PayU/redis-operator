@@ -75,4 +75,3 @@ nodes:
     nodeRegistration:
       kubeletExtraArgs:
         node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1c"
-
