@@ -63,6 +63,8 @@ func TestRedisCLI(test *testing.T) {
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
+
+	t.Fatalf("Test")
 }
 
 func testClusterCreate() {
@@ -75,7 +77,7 @@ func testClusterCreate() {
 	// Test 3 : Routing port is provided, Only part of the addres ports are provided, other optional arguments are provided
 	addresses = []string{"127.0.0.1:8080", "128.1.1.2:6379", "129.2.2.3", "130.3.3.4:"}
 	execClusterCreateTest("3", addresses, "-p 6375 -optArg1 optVal1 -optArg2 optVal2")
-	// Test 4 : Routing port is provided, All of the address ports are provided, other opional arguments are provided (routing port is not the first optional arg among them)
+	// Test 4 : Routing port is provided, All of the address ports are provided, other optional arguments are provided (routing port is not the first optional arg among them)
 	addresses = []string{"127.0.0.1:8090", "128.1.1.2:8090", "129.2.2.3:8090", "130.3.3.4:8090"}
 	execClusterCreateTest("4", addresses, "-optArg1 optVal1 -p 6363 -optArg2 optVal2")
 	// Test 5 : Routing port is provided, Address ports are not provided, optional arguments are given as a parametrized list
@@ -84,7 +86,7 @@ func testClusterCreate() {
 }
 
 func testClusterCheck() {
-	// Test 1 : Routing port is not provided, adress port is not provided, no optional arguments
+	// Test 1 : Routing port is not provided, address port is not provided, no optional arguments
 	address := "127.0.0.1"
 	execClusterCheckTest("1", address)
 	// Test 2 : Routing port is provided, address port is not provided, no optional arguments
@@ -93,7 +95,7 @@ func testClusterCheck() {
 	// Test 3 : Routing port is not provided, address port is provided, optional arguments provided
 	address = "127.0.0.1:6397"
 	execClusterCheckTest("3", address, "-optArg1 optVal1 -optArg2 optVal2")
-	// Test 4 : Routing port is provided, adress port is provided, optional arguments provided
+	// Test 4 : Routing port is provided, address port is provided, optional arguments provided
 	address = "127.0.0.1:6398"
 	execClusterCheckTest("4", address, "-p 6398 -optArg1 optVal1")
 	// Test 5 : Routing port is provided, Address port is not provided, optional arguments are given as a parametrized list
@@ -203,7 +205,7 @@ func testMyClusterID() {
 	execMyClusterIDTest("3", nodeIP, "-optArg1 optVal1")
 	// Test 4 : Routing port is provided, optional arguments are provided
 	execMyClusterIDTest("4", nodeIP, "-optArg1 optVal1 -p 6388")
-	// Test 5 : Routing port is proivded, optional arguments are provided as parametrized arg list
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
 	execMyClusterIDTest("5", nodeIP, "-p 6399", "-optArg1 optVal1")
 }
 
@@ -218,7 +220,7 @@ func testClusterForget() {
 	execClusterForgetTest("3", nodeIP, forgetNodeID, "-optArg1 optVal1")
 	// Test 4 : Routing port is provided, optional arguments are provided
 	execClusterForgetTest("4", nodeIP, forgetNodeID, "-p 6399 -optArg1 optVal1")
-	// Test 5 : Routing port is proivded, optional arguments are provided as parametrized arg list
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
 	execClusterForgetTest("5", nodeIP, forgetNodeID, "-p 6489", "-optArg1 optVal1")
 }
 

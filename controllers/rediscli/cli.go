@@ -58,7 +58,7 @@ func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, 
 }
 
 /* Executes command and returns cmd stdout, stderr and runtime error if appears
- *  args: arguments, flags and their values, in the order they shuold appear as if they were executed in the cli itself
+ *  args: arguments, flags and their values, in the order they should appear as if they were executed in the cli itself
  */
 func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, error) {
 
@@ -115,11 +115,11 @@ func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, e
 
 // Helpers
 
-func routingPortDecider(cliDefualtPort string, opt []string) (string, []string) {
-	port := cliDefualtPort
+func routingPortDecider(cliDefaultPort string, opt []string) (string, []string) {
+	port := cliDefaultPort
 	if len(opt) > 0 {
 		var optionalArgs []string
-		port := cliDefualtPort
+		port := cliDefaultPort
 		portExtracted := false
 		for _, arg := range opt {
 			if !portExtracted {
@@ -152,7 +152,7 @@ func routingPortDecider(cliDefualtPort string, opt []string) (string, []string) 
 }
 
 // Receives: address in a format of <ip>:<port> or <ip>: or <ip>
-// Returns: full adress in a format of <ip>:<port>
+// Returns: full address in a format of <ip>:<port>
 //          if port was provided, the exact address will be returned. otherwise the returned address will be <ip>:<default cli port>
 func addressPortDecider(address string, cliDefaultPort string) string {
 	addr := strings.Split(address, ":")
@@ -323,7 +323,7 @@ func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error)
 	}
 	if !clusterFailoverFlag {
 		if r.Log != nil {
-			r.Log.Info(fmt.Sprintf("Warning: CLUSTER FALOVER called with wrong option, argument list - %s", args))
+			r.Log.Info(fmt.Sprintf("Warning: CLUSTER FAILOVER called with wrong option, argument list - %s", args))
 		}
 	}
 	stdout, stderr, err := r.Handler.executeCommand(args)
