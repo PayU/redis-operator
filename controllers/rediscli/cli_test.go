@@ -63,8 +63,6 @@ func TestRedisCLI(test *testing.T) {
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
-
-	t.Fatalf("Test")
 }
 
 func testClusterCreate() {
