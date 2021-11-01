@@ -63,8 +63,6 @@ func TestRedisCLI(test *testing.T) {
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
-
-	//t.Fatal("For test")
 }
 
 func testClusterCreate() {
@@ -254,18 +252,19 @@ func testClusterFailOver() {
 }
 
 func testClusterMeet() {
-	nodeAddr := "127.0.0.1"
-	newNodeAddr := "128.0.1.2"
+	nodeIP := "127.0.0.1"
+	newNodeIP := "128.0.1.2"
+	newNodePort := "6397"
 	// Test 1 : Routing port is not provided, no optional arguments
-	execClusterMeetTest("1", nodeAddr, newNodeAddr)
+	execClusterMeetTest("1", nodeIP, newNodeIP, newNodePort)
 	// Test 2 : Routing port is provided, no optional arguments
-	execClusterMeetTest("2", nodeAddr, newNodeAddr, "-p 6388")
+	execClusterMeetTest("2", nodeIP, newNodeIP, newNodePort, "-p 6388")
 	// Test 3 : Routing port is not provided, optional arguments are provided
-	execClusterMeetTest("3", nodeAddr, newNodeAddr, "-optArg1 optVal1")
+	execClusterMeetTest("3", nodeIP, newNodeIP, newNodePort, "-optArg1 optVal1")
 	// Test 4 : Routing port is provided, optional arguments are provided
-	execClusterMeetTest("4", nodeAddr, newNodeAddr, "-p 8389 -optArg1 optVal1")
+	execClusterMeetTest("4", nodeIP, newNodeIP, newNodePort, "-p 8389 -optArg1 optVal1")
 	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
-	execClusterMeetTest("5", nodeAddr, newNodeAddr, "-p 8389", "-optArg1 optVal1")
+	execClusterMeetTest("5", nodeIP, newNodeIP, newNodePort, "-p 8389", "-optArg1 optVal1")
 }
 
 func testClusterReset() {
@@ -338,22 +337,6 @@ func testACLList() {
 	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
 	execACLListTest("5", nodeIP, "-p 6381", "-optArg1 optVal1")
 }
-
-func execClusterReplicasTest(testCaseId string, nodeIP string, leaderNodeID string, opt ...string) {}
-
-func execClusterFailOverTest(testCaseId string, nodeIP string, opt ...string) {}
-
-func execClusterMeetTest(testCaseId string, nodeAddr string, newNodeAddr string, opt ...string) {}
-
-func execClusterResetTest(testCaseId string, nodeIP string, opt ...string) {}
-
-func execFlushAllTest(testCaseId string, nodeIP string, opt ...string) {}
-
-func execClusterReplicateTest(testCaseId string, nodeIP string, leaderID string, opt ...string) {}
-
-func execACLLoadTest(testcaseId string, nodeIP string, opt ...string) {}
-
-func execACLListTest(testCaseId string, nodeIP string, opt ...string) {}
 
 // Test exec helpers
 
@@ -437,4 +420,68 @@ func execClusterForgetTest(testCaseId string, nodeIP string, forgetNodeID string
 	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "Cluster Forget "+testCaseId)
+}
+
+func execClusterReplicasTest(testCaseId string, nodeIP string, leaderNodeID string, opt ...string) {
+	_, result, _ := r.ClusterReplicas(nodeIP, leaderNodeID, opt...)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster Replicas "+testCaseId)
+}
+
+func execClusterFailOverTest(testCaseId string, nodeIP string, opt ...string) {
+	result, _ := r.ClusterFailover(nodeIP, opt...)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "failover"}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster Failover "+testCaseId)
+}
+
+func execClusterMeetTest(testCaseId string, nodeIP string, newNodeIP string, newNodePort string, opt ...string) {
+	result, _ := r.ClusterMeet(nodeIP, newNodeIP, newNodePort, opt...)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "meet", newNodeIP, newNodePort}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster Meet "+testCaseId)
+}
+
+func execClusterResetTest(testCaseId string, nodeIP string, opt ...string) {
+	result, _ := r.ClusterReset(nodeIP, opt...)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "reset"}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster Reset "+testCaseId)
+}
+
+func execFlushAllTest(testCaseId string, nodeIP string, opt ...string) {
+	result, _ := r.Flushall(nodeIP, opt...)
+	expectedArgList := []string{"-h", nodeIP, "flushall"}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Flush All "+testCaseId)
+}
+
+func execClusterReplicateTest(testCaseId string, nodeIP string, leaderID string, opt ...string) {
+	result, _ := r.ClusterReplicate(nodeIP, leaderID, opt...)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "replicate", leaderID}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster replicate "+testCaseId)
+}
+
+func execACLLoadTest(testcaseId string, nodeIP string, opt ...string) {
+	result, _ := r.ACLLoad(nodeIP, opt...)
+	expectedArgList := []string{"-h", nodeIP, "acl", "load"}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "ACLLoad "+testcaseId)
+}
+
+func execACLListTest(testCaseId string, nodeIP string, opt ...string) {
+	_, result, _ := r.ACLList(nodeIP, opt...)
+	expectedArgList := []string{"-h", nodeIP, "acl", "list"}
+	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "ACLLoad "+testCaseId)
 }
