@@ -352,7 +352,7 @@ func (r *RedisClusterReconciler) doLeaderFailover(leaderIP string, opt string, f
 			}
 		}
 	} else {
-		followers, err := r.RedisCLI.ClusterReplicas(leaderIP, leaderID)
+		followers, _, err := r.RedisCLI.ClusterReplicas(leaderIP, leaderID)
 		if err != nil {
 			return "", err
 		}
@@ -952,7 +952,7 @@ func (r *RedisClusterReconciler) waitForRedisLoad(nodeIP string) error {
 func (r *RedisClusterReconciler) waitForRedisReplication(leaderIP string, leaderID string, followerID string) error {
 	r.Log.Info(fmt.Sprintf("Waiting for CLUSTER REPLICATION (%s, %s)", leaderIP, followerID))
 	return wait.PollImmediate(r.Config.Times.RedisClusterReplicationCheckInterval, r.Config.Times.RedisClusterReplicationCheckTimeout, func() (bool, error) {
-		replicas, err := r.RedisCLI.ClusterReplicas(leaderIP, leaderID)
+		replicas, _, err := r.RedisCLI.ClusterReplicas(leaderIP, leaderID)
 		if err != nil {
 			return false, err
 		}

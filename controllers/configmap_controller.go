@@ -73,7 +73,7 @@ func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ..
 
 		time.Sleep(ACLFileLoadDuration)
 
-		loadedConfig, err := r.RedisCLI.ACLList(pod.Status.PodIP)
+		loadedConfig, _, err := r.RedisCLI.ACLList(pod.Status.PodIP)
 		if err != nil {
 			r.Log.Error(err, fmt.Sprintf("Failed to list new ACL config from %s(%s)", pod.Name, pod.Status.PodIP))
 			return err
@@ -102,7 +102,7 @@ func (r *RedisConfigReconciler) updateACLHashStatus(status string, redisPods ...
 
 // Retrieves the ACL config from a Redis node and returns its SHA256 hash
 func (r *RedisConfigReconciler) getACLConfigHash(pod *corev1.Pod) (string, error) {
-	acl, err := r.RedisCLI.ACLList(pod.Status.PodIP)
+	acl, _, err := r.RedisCLI.ACLList(pod.Status.PodIP)
 	if err != nil {
 		r.Log.Error(err, fmt.Sprintf("Failed to list previous ACL config from %s(%s) ", pod.Name, pod.Status.PodIP))
 		return "", err
