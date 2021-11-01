@@ -61,9 +61,6 @@ func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, 
  *  args: arguments, flags and their values, in the order they should appear as if they were executed in the cli itself
  */
 func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, error) {
-
-	fmt.Println("Args: ", args)
-
 	var stdout, stderr bytes.Buffer
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisCliTimeout)
