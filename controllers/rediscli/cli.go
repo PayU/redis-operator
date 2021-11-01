@@ -61,6 +61,9 @@ func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, 
  *  args: arguments, flags and their values, in the order they shuold appear as if they were executed in the cli itself
  */
 func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, error) {
+
+	fmt.Println("Args: ", args)
+
 	var stdout, stderr bytes.Buffer
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisCliTimeout)
@@ -118,20 +121,20 @@ func routingPortDecider(cliDefualtPort string, opt []string) (string, []string) 
 		port := cliDefualtPort
 		portExtracted := false
 		for _, arg := range opt {
-			flag := "-p\\s+"
-			flagVal := "\\d+"
-			portArgRegex := flag + flagVal
-			match, _ := regexp.MatchString(portArgRegex, arg)
-			if match && !portExtracted {
-				comp, _ := regexp.Compile(portArgRegex)
-				portArg := comp.FindStringSubmatch(arg)[0]
-				port = regexp.MustCompile(flag).ReplaceAllString(portArg, "")
-				arg = regexp.MustCompile("\\s*"+portArgRegex+"\\s*").ReplaceAllString(arg, " ")
-				optionalArgs = append(optionalArgs, arg)
-				portExtracted = true
-			} else {
-				optionalArgs = append(optionalArgs, arg)
+			if !portExtracted {
+				flag := "-p\\s+"
+				flagVal := "\\d+"
+				portArgRegex := flag + flagVal
+				match, _ := regexp.MatchString(portArgRegex, arg)
+				if match {
+					comp, _ := regexp.Compile(portArgRegex)
+					portArg := comp.FindStringSubmatch(arg)[0]
+					port = regexp.MustCompile(flag).ReplaceAllString(portArg, "")
+					arg = regexp.MustCompile("\\s*"+portArgRegex+"\\s*").ReplaceAllString(arg, " ")
+					portExtracted = true
+				}
 			}
+			optionalArgs = append(optionalArgs, arg)
 		}
 		return port, optionalArgs
 	}
