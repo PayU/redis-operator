@@ -15,6 +15,7 @@ import (
 	dbv1 "github.com/PayU/redis-operator/api/v1"
 	"github.com/PayU/redis-operator/controllers"
 	"github.com/PayU/redis-operator/controllers/rediscli"
+	"github.com/PayU/redis-operator/server"
 	"github.com/go-logr/logr"
 	// +kubebuilder:scaffold:imports
 )
@@ -39,6 +40,12 @@ func getRedisCLI(log *logr.Logger) *rediscli.RedisCLI {
 }
 
 func main() {
+	go startManager()
+
+	server.StartServer()
+}
+
+func startManager() {
 	var metricsAddr, namespace, enableLeaderElection, devmode string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", "0.0.0.0:9808", "The address the metric endpoint binds to.")
@@ -85,7 +92,7 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		Log:    configLogger}
-
+	
 	if err = (&controllers.RedisClusterReconciler{
 		Client:   mgr.GetClient(),
 		Log:      rdcLogger,

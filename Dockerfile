@@ -8,7 +8,7 @@ WORKDIR /workspace
 # install curl
 RUN apt-get update \
     && apt-get install -y curl
-
+    
 # install redis cli
 RUN cd /tmp &&\
     curl http://download.redis.io/redis-stable.tar.gz | tar xz &&\
@@ -27,6 +27,7 @@ RUN go mod download
 COPY main.go main.go
 COPY api/ api/
 COPY controllers/ controllers/
+COPY server/ server/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager main.go

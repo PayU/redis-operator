@@ -31,7 +31,8 @@ redisOperator:
         cpu: 100m
         memory: 256Mi
     ports:
-    - containerPort: 9808
+    - containerPort: 8080
+      name: query
     env:
     - name: REDIS_USERNAME
       value: "admin"

@@ -57,7 +57,7 @@ const ACLFilePropagationDuration time.Duration = time.Millisecond * 5000
 // Defines the time it takes for Redis to load the new config
 const ACLFileLoadDuration time.Duration = time.Millisecond * 500
 const redisConfigLabelKey string = "redis-cluster"
-const handleACLConfigErrorMessage = "Failed to handle ACL configuation"
+const handleACLConfigErrorMessage = "Failed to handle ACL configuration"
 const operatorConfigLabelKey string = "redis-operator"
 
 func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
