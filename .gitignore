@@ -8,6 +8,7 @@
 bin
 /manager
 /redis-operator
+/hack/redis-bin/build
 
 # Test binary, build with `go test -c`
 *.test
@@ -33,4 +34,5 @@ bin
 *.orig
 *kubeconfig.yaml
 
+**/tilt_modules/*
 telepresence.log
