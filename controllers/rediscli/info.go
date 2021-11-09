@@ -86,7 +86,6 @@ func NewRedisInfo(rawInfo string) *RedisInfo {
 				if len(lineInfo) > 1 {
 					(*currentInfo)[lineInfo[0]] = lineInfo[1]
 				}
-
 			}
 		}
 	}

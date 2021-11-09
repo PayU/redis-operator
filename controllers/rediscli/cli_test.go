@@ -63,6 +63,7 @@ func TestRedisCLI(test *testing.T) {
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
+
 }
 
 func testClusterCreate() {
@@ -360,7 +361,12 @@ func execClusterCheckTest(testCaseId string, address string, opt ...string) {
 
 func execAddFollowerTest(testCaseId string, newNodeAddr string, existingNodeAddr string, leaderID string, opt ...string) {
 	result, _ := r.AddFollower(newNodeAddr, existingNodeAddr, leaderID, opt...)
-	expectedArgList := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port), "--cluster-slave", "--cluster-master-id", leaderID}
+	newNodeAddr = addressPortDecider(newNodeAddr, r.Port)
+	existingNodeAddr = addressPortDecider(existingNodeAddr, r.Port)
+	leadershipType := "--cluster-slave"
+	leaderIdFlag := "--cluster-master-id"
+	expectedArgList := []string{"--cluster", "add-node"}
+	expectedArgList = append(expectedArgList, newNodeAddr, existingNodeAddr, leadershipType, leaderIdFlag, leaderID)
 	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "Add follower "+testCaseId)
@@ -483,5 +489,5 @@ func execACLListTest(testCaseId string, nodeIP string, opt ...string) {
 	expectedArgList := []string{"-h", nodeIP, "acl", "list"}
 	expectedArgList = r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
-	resultHandler(expectedResult, result, "ACLLoad "+testCaseId)
+	resultHandler(expectedResult, result, "ACLList "+testCaseId)
 }

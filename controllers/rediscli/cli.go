@@ -46,14 +46,17 @@ func NewRedisCLI(log *logr.Logger) *RedisCLI {
 }
 
 func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) []string {
+
+	routingPort, opt = routingPortDecider(routingPort, opt)
+	if len(opt) > 0 {
+		opt = trimCommandSpaces(opt)
+		args = append(args, opt...)
+	}
 	if auth != nil {
 		args = append([]string{"--user", auth.User}, args...)
 	}
-	routingPort, opt = routingPortDecider(routingPort, opt)
 	args = append([]string{"-p", routingPort}, args...)
-	if len(opt) > 0 {
-		args = append(args, opt...)
-	}
+
 	return args
 }
 
@@ -113,6 +116,20 @@ func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, e
 
 // Helpers
 
+func trimCommandSpaces(command []string) []string {
+	if len(command) > 0 {
+		var trimmedCommand []string
+		for _, arg := range command {
+			trimmed := strings.TrimSpace(arg)
+			if len(trimmed) > 0 {
+				trimmedCommand = append(trimmedCommand, trimmed)
+			}
+		}
+		return trimmedCommand
+	}
+	return command
+}
+
 func routingPortDecider(cliDefaultPort string, opt []string) (string, []string) {
 	port := cliDefaultPort
 	if len(opt) > 0 {
@@ -135,13 +152,7 @@ func routingPortDecider(cliDefaultPort string, opt []string) (string, []string) 
 			}
 			trimmed := strings.TrimSpace(arg)
 			if trimmed != "" {
-				optionalArgs = append(optionalArgs, strings.TrimSpace(arg))
-			}
-		}
-		for i, arg := range optionalArgs {
-			trimmed := strings.TrimSpace(arg)
-			if trimmed != "" {
-				optionalArgs[i] = strings.TrimSpace(arg)
+				optionalArgs = append(optionalArgs, trimmed)
 			}
 		}
 		return port, optionalArgs
@@ -258,7 +269,6 @@ func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
 
 // https://redis.io/commands/cluster-nodes
 func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*RedisClusterNodes, string, error) {
-
 	args := []string{"-h", nodeIP, "cluster", "nodes"}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
@@ -270,7 +280,6 @@ func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*RedisClusterNode
 
 // https://redis.io/commands/cluster-myid
 func (r *RedisCLI) MyClusterID(nodeIP string, opt ...string) (string, error) {
-
 	args := []string{"-h", nodeIP, "cluster", "myid"}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
@@ -309,21 +318,6 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string, opt ...st
 func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "failover"}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	clusterFailoverFlag := false
-	for _, arg := range args {
-		if clusterFailoverFlag {
-			break
-		}
-		toLower := strings.ToLower(arg)
-		if strings.Contains(toLower, "force") || strings.Contains(toLower, "takeover") {
-			clusterFailoverFlag = true
-		}
-	}
-	if !clusterFailoverFlag {
-		if r.Log != nil {
-			r.Log.Info(fmt.Sprintf("Warning: CLUSTER FAILOVER called with wrong option, argument list - %s", args))
-		}
-	}
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FAILOVER (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
@@ -348,12 +342,10 @@ func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	clusterResetFlag := false
 	for _, arg := range args {
-		if clusterResetFlag {
-			break
-		}
 		toLower := strings.ToLower(arg)
 		if strings.Contains(toLower, "hard") || strings.Contains(toLower, "soft") {
 			clusterResetFlag = true
+			break
 		}
 	}
 	if !clusterResetFlag {
@@ -375,11 +367,9 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	flushAllFlag := false
 	for _, arg := range opt {
-		if flushAllFlag {
-			break
-		}
 		if strings.Contains(strings.ToLower(arg), "async") {
 			flushAllFlag = true
+			break
 		}
 	}
 	if !flushAllFlag {
