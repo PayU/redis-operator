@@ -10,10 +10,9 @@ WORKDIR /workspace
 
 # install curl
 RUN apt-get update \
-    && apt-get install -y curl \
-    && apt-get install xz-utils 
+    && apt-get install -y curl
 
-RUN curl -OLJs https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.1/kubebuilder_2.3.1_linux_amd64.tar.gz | xz
+RUN curl -LJs https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.1/kubebuilder_2.3.1_linux_amd64.tar.gz | tar xz
 ENV KUBEBUILDER_ASSETS=/workspace/kubebuilder_2.3.1_linux_amd64/bin
 
 # install redis cli
