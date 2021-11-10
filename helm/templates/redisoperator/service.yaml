@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "redis-operator.fullname" . }}-manager
+  namespace: {{ .Values.redisOperator.namespace }}
+spec:
+  ports:
+  - port: 9808
+    targetPort: 9808
+  selector:
+    control-plane: controller-manager
+    redis-operator: redis-operator

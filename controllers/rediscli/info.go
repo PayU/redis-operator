@@ -83,7 +83,9 @@ func NewRedisInfo(rawInfo string) *RedisInfo {
 				}
 			} else {
 				lineInfo := strings.Split(line, ":")
-				(*currentInfo)[lineInfo[0]] = lineInfo[1]
+				if len(lineInfo) > 1 {
+					(*currentInfo)[lineInfo[0]] = lineInfo[1]
+				}
 			}
 		}
 	}
