@@ -3,7 +3,6 @@ package rediscli
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -340,19 +339,6 @@ func (r *RedisCLI) ClusterMeet(nodeIP string, newNodeIP string, newNodePort stri
 func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "reset"}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	clusterResetFlag := false
-	for _, arg := range args {
-		toLower := strings.ToLower(arg)
-		if strings.Contains(toLower, "hard") || strings.Contains(toLower, "soft") {
-			clusterResetFlag = true
-			break
-		}
-	}
-	if !clusterResetFlag {
-		if r.Log != nil {
-			r.Log.Info(fmt.Sprintf("Warning: CLUSTER RESET called with wrong option, argument list - %s", args))
-		}
-	}
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER RESET (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
@@ -365,19 +351,6 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 
 	args := []string{"-h", nodeIP, "flushall"}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	flushAllFlag := false
-	for _, arg := range opt {
-		if strings.Contains(strings.ToLower(arg), "async") {
-			flushAllFlag = true
-			break
-		}
-	}
-	if !flushAllFlag {
-		if r.Log != nil {
-			r.Log.Info(fmt.Sprintf("Warning: FLUSHALL called with wrong option, argument list - %s", args))
-		}
-	}
-
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute FLUSHALL (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
@@ -387,7 +360,6 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 
 // https://redis.io/commands/cluster-replicate
 func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string, opt ...string) (string, error) {
-
 	args := []string{"-h", nodeIP, "cluster", "replicate", leaderID}
 	args = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
