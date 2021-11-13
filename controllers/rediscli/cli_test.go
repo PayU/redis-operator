@@ -74,7 +74,7 @@ func TestRedisCLI(test *testing.T) {
 	testACLLoad()
 	testACLList()
 
-	test.Errorf("Fail purpose")
+	//test.Errorf("Fail purpose")
 }
 
 func testClusterCreate() {
