@@ -12,6 +12,7 @@ Requirements:
 * `kind`: [v0.11.1](https://github.com/kubernetes-sigs/kind/releases/tag/v0.11.1)
 * `controller-gen` > 0.4
 * `kustomize` >= 4.0
+* `docker`: latest version, at least 6.25 GB of memory limit
 
 **1. Setting up a cluster**
 
@@ -22,7 +23,9 @@ sh ./install.sh # you might need to run this as sudo if a regular user can't use
 
 If the `.kube/config` file was not updated it can be populated using
 
-`kind --name redis-test get kubeconfig > ~/.kube/config`
+`kind --name redis-test get kubeconfig > ~/.kube/config-redis-operator`
+
+And export with `export KUBECONFIG=$KUBECONFIG:${HOME}/.kube/config-redis-operator`
 
 **2. Installing the operator**
 
