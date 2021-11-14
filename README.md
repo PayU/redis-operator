@@ -25,7 +25,7 @@ If the `.kube/config` file was not updated it can be populated using
 
 `kind --name redis-test get kubeconfig > ~/.kube/config-redis-operator`
 
-And adding to `~/.zshrc` or `~/.bash_profile` the command `export KUBECONFIG=${HOME}/.kube/config-redis-operator`
+And export with `export KUBECONFIG=$KUBECONFIG:${HOME}/.kube/config-redis-operator`
 
 **2. Installing the operator**
 
