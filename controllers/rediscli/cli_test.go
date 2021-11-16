@@ -38,13 +38,14 @@ func mapToPrintableStr(argMap map[string]string) string {
 
 func resultHandler(expected string, result string, testCase string, argMap map[string]string, expectedArgMap map[string]string) {
 	msg := "[CLI Unit test]\nExpected result : " + expected + "\nActual result   : " + result
-	var res string
+	msg += "\nExpected arg mapping result:\n" + mapToPrintableStr(expectedArgMap) + "Arg mapping result:\n" + mapToPrintableStr(argMap)
 	if strings.Compare(strings.TrimSpace(expected), strings.TrimSpace(result)) != 0 {
-		res = "Test case " + testCase + " failed"
+		msg += "Test case " + testCase + " failed"
+		t.Errorf(msg)
 	} else {
-		res = "Test case " + testCase + " passed"
+		msg += "Test case " + testCase + " passed"
+		t.Logf(msg)
 	}
-	t.Logf(msg+"\nExpected arg mapping result:\n%v"+"Arg mapping result:\n%v"+res+"\n\n", mapToPrintableStr(expectedArgMap), mapToPrintableStr(argMap))
 }
 
 var r *RedisCLI
