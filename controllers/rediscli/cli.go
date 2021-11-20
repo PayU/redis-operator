@@ -24,6 +24,8 @@ type RedisAuth struct {
 type CommandHandler interface {
 	buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string)
 	executeCommand(args []string) (string, string, error)
+	buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error)
+	buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error)
 }
 
 type RunTimeCommandHandler struct{}
@@ -42,6 +44,14 @@ func NewRedisCLI(log *logr.Logger) *RedisCLI {
 		Port:    REDIS_DEFAULT_PORT,
 		Handler: &RunTimeCommandHandler{},
 	}
+}
+
+func (h *RunTimeCommandHandler) buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error) {
+	return NewRedisInfo(stdoutInfo)
+}
+
+func (h *RunTimeCommandHandler) buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error) {
+	return NewRedisClusterInfo(stdoutInfo)
 }
 
 func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string) {
@@ -268,7 +278,8 @@ func (r *RedisCLI) ClusterInfo(nodeIP string, opt ...string) (*RedisClusterInfo,
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, "", errors.Errorf("Failed to execute CLUSTER INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-	return NewRedisClusterInfo(stdout), stdout, nil
+	c, e := r.Handler.buildRedisClusterInfoModel(stdout)
+	return c, stdout, e
 }
 
 // https://redis.io/commands/info
@@ -280,7 +291,8 @@ func (r *RedisCLI) Info(nodeIP string, opt ...string) (*RedisInfo, string, error
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, "", errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-	return NewRedisInfo(stdout), stdout, nil
+	c, e := r.Handler.buildRedisInfoModel(stdout)
+	return c, stdout, e
 }
 
 // https://redis.io/commands/ping
