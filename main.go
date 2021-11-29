@@ -92,7 +92,7 @@ func startManager() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		Log:    configLogger}
-	
+
 	if err = (&controllers.RedisClusterReconciler{
 		Client:   mgr.GetClient(),
 		Log:      rdcLogger,

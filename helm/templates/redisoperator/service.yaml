@@ -8,6 +8,9 @@ spec:
   - port: 8080
     targetPort: 8080
     name: query
+  - port: 9808
+    targetPort: 9808
+    name: metrics
   selector:
     control-plane: controller-manager
     redis-operator: redis-operator

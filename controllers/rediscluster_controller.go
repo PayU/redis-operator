@@ -31,6 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/PayU/redis-operator/controllers/rediscli"
+	// clusterData "github.com/PayU/redis-operator/data"
 )
 
 const (
@@ -174,6 +175,8 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		err = r.handleUpdatingState(&redisCluster)
 		break
 	}
+
+	// clusterData.SaveRedisClusterState(string(r.State))
 
 	if err != nil {
 		r.Log.Error(err, "Handling error")

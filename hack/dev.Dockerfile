@@ -10,10 +10,9 @@ WORKDIR /workspace
 
 # install curl
 RUN apt-get update \
-    && apt-get install -y curl \
-    && apt-get install xz-utils 
+    && apt-get install -y curl
 
-RUN curl -OLJs https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.1/kubebuilder_2.3.1_linux_amd64.tar.gz | xz
+RUN curl -LJs https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.1/kubebuilder_2.3.1_linux_amd64.tar.gz | tar xz
 ENV KUBEBUILDER_ASSETS=/workspace/kubebuilder_2.3.1_linux_amd64/bin
 
 # install redis cli
@@ -33,6 +32,8 @@ ARG ENABLE_LEADER_ELECTION_ARG="true"
 ARG DEVMODE_ARG="true"
 ARG REDIS_USERNAME_ARG="admin"
 ARG REDISAUTH_CLI_ARG="adminpass"
+ARG CLUSTER_VIEW_FILE_ARG="cluster_data.txt"
+ARG CLUSTER_STATE_FILE_ARG="cluster_state.txt"
 
 ENV NAMESPACE_ENV=${NAMESPACE_ARG}
 ENV METRICS_ADDR_ENV=${METRICS_ADDR_ARG}
@@ -40,6 +41,8 @@ ENV ENABLE_LEADER_ELECTION_ENV=${ENABLE_LEADER_ELECTION_ARG}
 ENV DEVMODE_ENV=${DEVMODE_ARG}
 ENV REDIS_USERNAME=${REDIS_USERNAME_ARG}
 ENV REDISAUTH_CLI=${REDISAUTH_CLI_ARG}
+ENV CLUSTER_VIEW_FILE=${CLUSTER_STATCLUSTER_VIEW_FILE_ARGE_FILE_ARG}
+ENV CLUSTER_STATE_FILE=${CLUSTER_STATE_FILE_ARG}
 
 ENV CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on
 
