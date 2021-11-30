@@ -10,20 +10,20 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-type RelevantRedisClusterView struct {
+type ResponseRedisClusterView struct {
 	State string
-	Nodes []RelevantLeaderNode
+	Nodes []ResponseLeaderNode
 }
 
-type RelevantLeaderNode struct {
+type ResponseLeaderNode struct {
 	PodIp       string
 	NodeNumber  string
 	Failed      bool
 	Terminating bool
-	Followers   []RelevantFollowerNode
+	Followers   []ResponseFollowerNode
 }
 
-type RelevantFollowerNode struct {
+type ResponseFollowerNode struct {
 	PodIp        string
 	NodeNumber   string
 	LeaderNumber string
@@ -41,16 +41,16 @@ func clusterInfo(c echo.Context) error {
 	json.Unmarshal([]byte(byteValue), &result)
 
 	s := clusterData.GetRedisClusterState()
-	relevantRedisClusterView := RelevantRedisClusterView{
+	ResponseRedisClusterView := ResponseRedisClusterView{
 		State: s,
-		Nodes: make([]RelevantLeaderNode, len(result)),
+		Nodes: make([]ResponseLeaderNode, len(result)),
 	}
 
 	for i, leaderNode := range result {
 		ip := getIP(leaderNode.Pod)
 
-		relevantRedisClusterView.Nodes[i] = RelevantLeaderNode{
-			Followers:   make([]RelevantFollowerNode, len(leaderNode.Followers)),
+		ResponseRedisClusterView.Nodes[i] = ResponseLeaderNode{
+			Followers:   make([]ResponseFollowerNode, len(leaderNode.Followers)),
 			PodIp:       ip,
 			NodeNumber:  leaderNode.NodeNumber,
 			Failed:      leaderNode.Failed,
@@ -58,7 +58,7 @@ func clusterInfo(c echo.Context) error {
 		}
 		for j, follower := range leaderNode.Followers {
 			followerIp := getIP(follower.Pod)
-			relevantRedisClusterView.Nodes[i].Followers[j] = RelevantFollowerNode{
+			ResponseRedisClusterView.Nodes[i].Followers[j] = ResponseFollowerNode{
 				PodIp:        followerIp,
 				NodeNumber:   follower.NodeNumber,
 				LeaderNumber: follower.LeaderNumber,
@@ -68,7 +68,7 @@ func clusterInfo(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, relevantRedisClusterView)
+	return c.JSON(http.StatusOK, ResponseRedisClusterView)
 }
 
 func getIP(pod *v1.Pod) string {
