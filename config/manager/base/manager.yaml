@@ -37,9 +37,9 @@ spec:
         - name: REDISCLI_AUTH
           value: "adminpass"
         - name: CLUSTER_VIEW_FILE
-          value: "cluster_data.txt"
+          value: "cluster_data"
         - name: CLUSTER_STATE_FILE
-          value: "cluster_state.txt"
+          value: "cluster_state"
         volumeMounts:
         - name: redis-operator-config
           mountPath: "/usr/local/etc/"

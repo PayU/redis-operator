@@ -40,9 +40,9 @@ func getRedisCLI(log *logr.Logger) *rediscli.RedisCLI {
 }
 
 func main() {
-	go startManager()
-
-	server.StartServer()
+	go server.StartServer()
+	
+	startManager()
 }
 
 func startManager() {

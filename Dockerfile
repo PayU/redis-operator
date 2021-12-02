@@ -8,7 +8,7 @@ WORKDIR /workspace
 # install curl
 RUN apt-get update \
     && apt-get install -y curl
-    
+
 # install redis cli
 RUN cd /tmp &&\
     curl http://download.redis.io/redis-stable.tar.gz | tar xz &&\
