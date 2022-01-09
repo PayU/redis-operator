@@ -1,1 +1,2 @@
 user default on nopass ~* &* +@all
+user payments-v130-user on #4d47a76724100ea9c9c5f4190306fde7b1865caca31bd2e105cfd065fb134e59 +cluster +ping +info +readonly +expire +del +hset +hsetnx +hget +hgetall ~payments-v130-idempotencey*
