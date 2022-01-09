@@ -495,8 +495,6 @@ release:
   - git reset --hard $CI_COMMIT_SHA
   # Start to release the project tag
   - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$LATEST_TAG"
-  # delete the latest tag so we can re-create it
-  - git push --delete origin $LATEST_TAG-internal
   # push the tag and release it
   - git push origin cicd :refs/tags/$LATEST_TAG-internal
   - git tag -fa $LATEST_TAG-internal -m $GIT_TAG_MESSAGE
