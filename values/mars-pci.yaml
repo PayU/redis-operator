@@ -34,6 +34,7 @@ redisCluster:
   enabled: true
   name: main-redis-cluster
   namespace: infra
+  leaderCount: 6
   leaderFollowersCount: 1
   annotations:
     sidecar.istio.io/inject: "false"
@@ -65,10 +66,10 @@ redisCluster:
       resources:
         limits:
           cpu: 500m
-          memory: 3Gi
+          memory: 5Gi
         requests:
           cpu: 250m
-          memory: 2Gi
+          memory: 4Gi
       env:
       - name: PORT
         value: "6379"
