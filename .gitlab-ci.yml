@@ -496,7 +496,7 @@ release:
   # Start to release the project tag
   - export GIT_TAG_MESSAGE="IMAGE_TAGGED_VERSION-$LATEST_TAG"
   # push the tag and release it
-  - git push origin cicd :refs/tags/$LATEST_TAG-internal-$INTERNAL_TAG_NUMBER
+  - git push origin cicd
   - git tag -fa $LATEST_TAG-internal-$INTERNAL_TAG_NUMBER -m $GIT_TAG_MESSAGE
   # Push the commit tag to gitlab
   - git push origin cicd --tags
