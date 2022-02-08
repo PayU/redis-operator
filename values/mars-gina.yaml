@@ -1,0 +1,116 @@
+redisOperator:
+  enabled: true
+  namespace: infra
+  labels:
+    app: "redis-operator-manager"
+  annotations:
+    sidecar.istio.io/inject: "false"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9808"
+
+  containers:
+  - name: manager
+    image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-operator/redis-operator-mirror/branches:cicd
+    imagePullPolicy: Always
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1024Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    ports:
+    - containerPort: 9808
+    command:
+    - "./manager"
+    args:
+    - "-namespace=infra"
+    - "-metrics-addr=0.0.0.0:9808"
+    - "-enable-leader-election=true"
+
+redisCluster:
+  redisConfigFile: "redis-internal/redis.conf"
+  redisACLConfigFile: "redis-internal/users-mars-gina.acl"
+  enabled: true
+  name: main-redis-cluster
+  namespace: infra
+  leaderFollowersCount: 1
+  annotations:
+    sidecar.istio.io/inject: "false"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: '9121'
+
+  redisPodSpec:
+    initContainers:
+    - name: redis-init-container
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/sysctl-init-container/release:1.0.1
+      imagePullPolicy: Always
+      securityContext:
+        privileged: true
+        runAsNonRoot: false
+        runAsUser: 0
+      volumeMounts:
+      - name: host-sys
+        mountPath: "/host-sys"
+      command:
+        - "/bin/sh"
+      args:
+      - "-c"
+      - "install_packages systemd procps && sysctl -w net.core.somaxconn=1024 && echo never > /host-sys/kernel/mm/transparent_hugepage/enabled && grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
+
+    containers:
+    - name: redis-container
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-docker/release:2.1.1
+      imagePullPolicy: Always
+      resources:
+        limits:
+          cpu: 250m
+          memory: 400Mi
+        requests:
+          cpu: 50m
+          memory: 100Mi
+      env:
+      - name: PORT
+        value: "6379"
+      - name: CONF_PATH
+        value: "/usr/local/etc/redis/redis.conf"
+      ports:
+      - containerPort: 6379
+      volumeMounts:
+      - name: redis-node-configuration
+        mountPath: "/usr/local/etc/redis"
+      - name: redis-acl-configuration
+        mountPath: "/usr/local/etc/redis/acl"
+
+    - name: redis-metric-exporter
+      image: docker-registry.zooz.co:4567/payu-clan-sre/redis/redis-exporter-docker/release:1.2.0
+      imagePullPolicy: Always
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+      ports:
+      - containerPort: 9121
+
+    volumes:
+    - name: redis-node-configuration
+      configMap:
+        name: main-redis-cluster-redisconfig
+    - name: redis-acl-configuration
+      configMap:
+        name: main-redis-cluster-users-acl
+    - name: host-sys
+      hostPath:
+        path: "/sys"
+
+    nodeSelector:
+      "node-manager" : "zooz"
+
+    tolerations:
+      - effect: NoSchedule
+        key: mars-ondemand
+        operator: Equal
+        value: "true"

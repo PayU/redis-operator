@@ -13,6 +13,8 @@ stages:
 - mars-apps
 - mars-data-crd
 - mars-data
+- mars-gina-crd
+- mars-gina
 - prd-pci-crd
 - prd-pci
 - prd-apps-crd
@@ -313,6 +315,58 @@ remove-mars-data-rediscluster:
   - eks-mars-data-infra
   except:
   - tags
+
+deploy-mars-gina-crd:
+  stage: mars-gina-crd
+  extends: .deploy-crd
+  tags:
+    - eks-mars-gina-kube-system
+  except:
+    - tags
+
+remove-mars-gina-crd:
+  stage: mars-gina-crd
+  extends: .remove-crd
+  tags:
+    - eks-mars-gina-kube-system
+  except:
+    - tags
+
+deploy-mars-gina-operator:
+  stage: mars-gina
+  extends: .deploy-operator
+  tags:
+    - eks-mars-gina-infra
+  except:
+    - tags
+  variables:
+    ENV: mars-gina
+
+remove-mars-gina-operator:
+  stage: mars-gina
+  extends: .remove-operator
+  tags:
+    - eks-mars-gina-infra
+  except:
+    - tags
+
+deploy-mars-gina-rediscluster:
+  stage: mars-gina
+  extends: .deploy-rediscluster
+  tags:
+    - eks-mars-gina-infra
+  except:
+    - tags
+  variables:
+    ENV: mars-gina
+
+remove-mars-gina-rediscluster:
+  stage: mars-gina
+  extends: .remove-rediscluster
+  tags:
+    - eks-mars-gina-infra
+  except:
+    - tags
 
 deploy-mars-apps-crd:
   stage: mars-apps-crd
