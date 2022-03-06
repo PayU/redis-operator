@@ -7,6 +7,14 @@ import (
 
 type TestCommandHandler struct{}
 
+func (r *TestCommandHandler) buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error) {
+	return &RedisInfo{}, nil
+}
+
+func (h *TestCommandHandler) buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error) {
+	return &RedisClusterInfo{}, nil
+}
+
 func (h *TestCommandHandler) buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string) {
 	if auth != nil {
 		args = append([]string{"--user", auth.User}, args...)
@@ -40,10 +48,10 @@ func resultHandler(expected string, result string, testCase string, argMap map[s
 	msg := "[CLI Unit test]\nExpected result : " + expected + "\nActual result   : " + result
 	msg += "\nExpected arg mapping result:\n" + mapToPrintableStr(expectedArgMap) + "Arg mapping result:\n" + mapToPrintableStr(argMap)
 	if strings.Compare(strings.TrimSpace(expected), strings.TrimSpace(result)) != 0 {
-		msg += "Test case " + testCase + " failed"
+		msg += "Test case " + testCase + " failed" + "\n\n"
 		t.Errorf(msg)
 	} else {
-		msg += "Test case " + testCase + " passed"
+		msg += "Test case " + testCase + " passed" + "\n\n"
 		t.Logf(msg)
 	}
 }

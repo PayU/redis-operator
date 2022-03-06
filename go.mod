@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/go-logr/logr v0.1.0
 	github.com/go-test/deep v1.0.7
+	github.com/labstack/echo/v4 v4.6.1
 	github.com/pkg/errors v0.9.1
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	gopkg.in/yaml.v2 v2.3.0

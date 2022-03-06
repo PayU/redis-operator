@@ -7,7 +7,7 @@ global:
 redisOperator:
   enabled: true
   namespace: default
-  managerReplicas: 2 # Number of manger pods the Deployment will create
+  managerReplicas: 1 # Number of manger pods the Deployment will create
   configFile: "configfiles/operator.conf"
   labels:
     control-plane: "controller-manager"
@@ -31,12 +31,17 @@ redisOperator:
         cpu: 100m
         memory: 256Mi
     ports:
-    - containerPort: 9808
+    - containerPort: 8080
+      name: query
     env:
     - name: REDIS_USERNAME
       value: "admin"
     - name: REDISCLI_AUTH
       value: "adminpass"
+    - name: CLUSTER_VIEW_FILE
+      value: "cluster_data"
+    - name: CLUSTER_STATE_FILE
+      value: "cluster_state"
     command:
     - "./manager"
     args:

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -15,6 +16,7 @@ import (
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
 	rediscli "github.com/PayU/redis-operator/controllers/rediscli"
+	clusterData "github.com/PayU/redis-operator/data"
 )
 
 var EMPTY struct{}
@@ -492,6 +494,8 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 	for id := range lostNodeIDSet {
 		r.forgetNode(healthyNodeIPs, id)
 	}
+	data, _ := json.MarshalIndent(clusterView, "", "")
+	clusterData.SaveRedisClusterView(data)
 	return nil
 }
 
@@ -716,6 +720,8 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 	if err != nil || !complete {
 		return errors.Errorf("Cluster recovery not complete")
 	}
+	data, _ := json.MarshalIndent(clusterView, "", "")
+	clusterData.SaveRedisClusterView(data)
 	return nil
 }
 
@@ -816,6 +822,8 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	if err = r.cleanupNodeList(clusterView.HealthyNodeIPs()); err != nil {
 		return err
 	}
+	data, _ := json.MarshalIndent(clusterView, "", "")
+	clusterData.SaveRedisClusterView(data)
 	return nil
 }
 
@@ -1089,5 +1097,8 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 			}
 		}
 	}
+	data, _ := json.MarshalIndent(clusterView, "", "")
+	clusterData.SaveRedisClusterView(data)
+
 	return true, nil
 }
