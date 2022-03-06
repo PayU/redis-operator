@@ -9,6 +9,7 @@ The project uses a [kind](https://kind.sigs.k8s.io/docs/user/quick-start/) clust
 
 Requirements:
 
+* `go` >= 1.16.5
 * `kind`: [v0.11.1](https://github.com/kubernetes-sigs/kind/releases/tag/v0.11.1)
 * `controller-gen` > 0.4
 * `kustomize` >= 4.0
@@ -104,6 +105,11 @@ v0.22.15, built 2021-10-29
 (ctrl-c) to exit
 ```
 
+Cluster is provided with admin user credentials, which is useful when trying to run commands "manually" on the nodes.
+```
+User name: Admin
+Password: Adminpass
+```
 ---
 
 ### Development using Telepresence

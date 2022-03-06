@@ -3,6 +3,7 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -1101,4 +1102,90 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 	clusterData.SaveRedisClusterView(data)
 
 	return true, nil
+}
+
+func (r *RedisClusterReconciler) scaleHorizontally(redisCluster *dbv1.RedisCluster) error {
+
+	leaderCount, podIndexToIps, e := getLeaderCountAndPodIndexesToIpsMapping()
+	if e != nil {
+		// todo ?
+	}
+
+	nodeCount, IpsToNodeIds, e := getNodeCountAndIpsToNodeIdsMapping()
+	if e != nil {
+		// todo ?
+	}
+
+	var newLeaderCount = redisCluster.Spec.LeaderCount
+	var newFollowersPerLeaderCount = redisCluster.Spec.LeaderFollowersCount
+
+	e = manageLeaders(leaderCount, nodeCount, podIndexToIps, IpsToNodeIds)
+	if e != nil {
+		// ? todo
+	}
+	// todo cluster rebalance
+	e = manageFollowers(leaderCount, nodeCount, newLeaderCount, newFollowersPerLeaderCount)
+	if e != nil {
+		// ? todo
+	}
+	return nil
+}
+
+func manageLeaders(leaderCount int, newLeaderCount int, podIndexToIps map[string]string, IpsToNodeIds map[string]string) error {
+	for i := leaderCount; i < newLeaderCount; i++ {
+		ip, ok := podIndexToIps[string(i)]
+		if ok {
+			nodeId, ok := IpsToNodeIds[ip]
+			if ok {
+				println(nodeId)
+				e := forgetRedisNodeAndDeletePod("todo", "todo")
+				if e != nil {
+					// ? todo
+				}
+			}
+		}
+		// todo
+		// create redis node as leader, pod name: "redis-node-" + i
+		// get the node id, ip, port for meeting command
+		// cluster meet redis-node
+	}
+	return nil
+}
+
+func manageFollowers(leaderCount int, nodeCount int, newLeadersCount int, newFollowersPerLeaderCount int) error {
+	if newFollowersPerLeaderCount > 0 {
+		for i := newLeadersCount; i < nodeCount; i++ {
+			newLeaderIdx := math.Mod(float64(newLeadersCount), float64(i))
+			oldLeaderIdx := math.Mod(float64(leaderCount), float64(i))
+			newNodeCount := newLeadersCount*(newFollowersPerLeaderCount+1) - 1
+
+			if newLeaderIdx != oldLeaderIdx || i > newNodeCount {
+				e := forgetRedisNodeAndDeletePod("todo", "todo")
+				if e != nil {
+					// ? todo
+				}
+			}
+		}
+	} else {
+		for i := newLeadersCount; i < nodeCount; i++ {
+			e := forgetRedisNodeAndDeletePod("todo", "todo")
+			if e != nil {
+				// ? todo
+			}
+		}
+	}
+	return nil
+}
+
+func getNodeCountAndIpsToNodeIdsMapping() (int, map[string]string, error) {
+	return 0, nil, nil
+}
+
+func getLeaderCountAndPodIndexesToIpsMapping() (int, map[string]string, error) {
+	return 0, nil, nil
+}
+
+func forgetRedisNodeAndDeletePod(nodeId string, podName string) error {
+	// todo
+	return nil
 }
