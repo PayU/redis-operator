@@ -1104,71 +1104,46 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 	return true, nil
 }
 
+func (r *RedisClusterReconciler) printForTests(redisCluster *dbv1.RedisCluster) error {
+	leaderCount, podCount, podIdxToNodeId, e := r.extractClusterInfo(redisCluster)
+	println("LEADER COUNT: ", leaderCount)
+	println("POD COUNT: ", podCount)
+	println("POD IDX TO NODE ID : ", podIdxToNodeId)
+	return e
+}
+
 func (r *RedisClusterReconciler) scaleHorizontally(redisCluster *dbv1.RedisCluster) error {
-
-	leaderCount, podIndexToIps, e := getLeaderCountAndPodIndexesToIpsMapping()
-	if e != nil {
-		// todo ?
-	}
-
-	nodeCount, IpsToNodeIds, e := getNodeCountAndIpsToNodeIdsMapping()
-	if e != nil {
-		// todo ?
-	}
-
+	leaderCount, podCount, podIdxToNodeId, e := r.extractClusterInfo(redisCluster)
 	var newLeaderCount = redisCluster.Spec.LeaderCount
 	var newFollowersPerLeaderCount = redisCluster.Spec.LeaderFollowersCount
-
-	e = manageLeaders(leaderCount, nodeCount, podIndexToIps, IpsToNodeIds)
-	if e != nil {
-		// ? todo
+	if e = manageLeaders(leaderCount, podCount, podIdxToNodeId); e != nil {
+		return e
 	}
-	// todo cluster rebalance
-	e = manageFollowers(leaderCount, nodeCount, newLeaderCount, newFollowersPerLeaderCount)
-	if e != nil {
-		// ? todo
+	// cluster rebalance
+	if e = manageFollowers(leaderCount, podCount, newLeaderCount, newFollowersPerLeaderCount, podIdxToNodeId); e != nil {
+		return e
 	}
 	return nil
 }
 
-func manageLeaders(leaderCount int, newLeaderCount int, podIndexToIps map[string]string, IpsToNodeIds map[string]string) error {
-	for i := leaderCount; i < newLeaderCount; i++ {
-		ip, ok := podIndexToIps[string(i)]
-		if ok {
-			nodeId, ok := IpsToNodeIds[ip]
-			if ok {
-				println(nodeId)
-				e := forgetRedisNodeAndDeletePod("todo", "todo")
-				if e != nil {
-					// ? todo
-				}
+func manageLeaders(leaderCount int, newLeaderCount int, podIdxToNodeId map[string]string) error {
+	if leaderCount < newLeaderCount { // scale up
+		for i := leaderCount; i < newLeaderCount; i++ {
+			e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+			if e != nil {
+				// ? todo
 			}
+			// todo
+			// create redis node as leader, pod name: "redis-node-" + i
+			// get the node id, ip, port for meeting command
+			// cluster meet redis-node
 		}
-		// todo
-		// create redis node as leader, pod name: "redis-node-" + i
-		// get the node id, ip, port for meeting command
-		// cluster meet redis-node
-	}
-	return nil
-}
-
-func manageFollowers(leaderCount int, nodeCount int, newLeadersCount int, newFollowersPerLeaderCount int) error {
-	if newFollowersPerLeaderCount > 0 {
-		for i := newLeadersCount; i < nodeCount; i++ {
-			newLeaderIdx := math.Mod(float64(newLeadersCount), float64(i))
-			oldLeaderIdx := math.Mod(float64(leaderCount), float64(i))
-			newNodeCount := newLeadersCount*(newFollowersPerLeaderCount+1) - 1
-
-			if newLeaderIdx != oldLeaderIdx || i > newNodeCount {
-				e := forgetRedisNodeAndDeletePod("todo", "todo")
-				if e != nil {
-					// ? todo
-				}
-			}
-		}
-	} else {
-		for i := newLeadersCount; i < nodeCount; i++ {
-			e := forgetRedisNodeAndDeletePod("todo", "todo")
+	} else if leaderCount > newLeaderCount { // scale down
+		for i := newLeaderCount; i < leaderCount; i++ {
+			// search for a node with less content than the others
+			// reshard: move all slots of this node to the target node
+			// verify the node is empty from slots
+			e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
 			if e != nil {
 				// ? todo
 			}
@@ -1177,15 +1152,89 @@ func manageFollowers(leaderCount int, nodeCount int, newLeadersCount int, newFol
 	return nil
 }
 
-func getNodeCountAndIpsToNodeIdsMapping() (int, map[string]string, error) {
-	return 0, nil, nil
+func manageFollowers(leaderCount int, nodeCount int, newLeaderCount int, newFollowersPerLeaderCount int, podIdxToNodeId map[string]string) error {
+	if leaderCount < newLeaderCount { // leaders scaled up
+		if newFollowersPerLeaderCount > 0 {
+			for i := newLeaderCount; i < nodeCount; i++ {
+				newLeaderIdx := math.Mod(float64(newLeaderCount), float64(i))
+				oldLeaderIdx := math.Mod(float64(leaderCount), float64(i))
+				newNodeCount := newLeaderCount*(newFollowersPerLeaderCount+1) - 1
+				if newLeaderIdx != oldLeaderIdx || i > newNodeCount {
+					e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+					if e != nil {
+						// ? todo
+					}
+				}
+			}
+		} else {
+			for i := newLeaderCount; i < nodeCount; i++ {
+				e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+				if e != nil {
+					// ? todo
+				}
+			}
+		}
+	} else if leaderCount > newLeaderCount { // leaders scaled down
+		if newFollowersPerLeaderCount > 0 {
+			for i := leaderCount; i < nodeCount; i++ {
+				newLeaderIdx := math.Mod(float64(newLeaderCount), float64(i))
+				oldLeaderIdx := math.Mod(float64(leaderCount), float64(i))
+				newNodeCount := newLeaderCount*(newFollowersPerLeaderCount+1) - 1
+				if newLeaderIdx != oldLeaderIdx || i > newNodeCount {
+					e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+					if e != nil {
+						// ? todo
+					}
+				}
+			}
+		} else {
+			for i := leaderCount; i < nodeCount; i++ {
+				e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+				if e != nil {
+					// ? todo
+				}
+			}
+		}
+	}
+	return nil
 }
 
-func getLeaderCountAndPodIndexesToIpsMapping() (int, map[string]string, error) {
-	return 0, nil, nil
+func (r *RedisClusterReconciler) extractClusterInfo(redisCluster *dbv1.RedisCluster) (leaderCount int, podCount int, podIdxToNodeId map[string]string, err error) {
+	clusterView, err := r.NewRedisClusterView(redisCluster)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+	leaderCount = len(*clusterView)
+	podCount = len(clusterView.IPs())
+	podIdxToNodeId = make(map[string]string)
+	for _, leader := range *clusterView {
+		if leader.Pod != nil {
+			nodeId, _, err := r.getRedisNodeNumbersFromIP(redisCluster.Namespace, leader.Pod.Status.PodIP)
+			if err != nil {
+				return 0, 0, nil, err
+			}
+			println("leader name : ", leader.Pod.Name, " leader ip: ", leader.Pod.Status.PodIP, " node id: ", nodeId)
+			podIdxToNodeId[leader.Pod.Name] = nodeId
+			for _, follower := range leader.Followers {
+				if follower.Pod != nil {
+					nodeId, _, err := r.getRedisNodeNumbersFromIP(redisCluster.Namespace, follower.Pod.Status.PodIP)
+					if err != nil {
+						return 0, 0, nil, err
+					}
+					println("follower name : ", leader.Pod.Name, " follower ip: ", leader.Pod.Status.PodIP, " node id: ", nodeId)
+					podIdxToNodeId[follower.Pod.Name] = nodeId
+				}
+			}
+		}
+	}
+	return leaderCount, podCount, podIdxToNodeId, nil
 }
 
-func forgetRedisNodeAndDeletePod(nodeId string, podName string) error {
+func mitigatePartition() error {
+	return nil
+}
+
+func forgetRedisNodeAndDeletePod(podIdx int, podIdxToNodeId map[string]string) error {
 	// todo
 	return nil
 }

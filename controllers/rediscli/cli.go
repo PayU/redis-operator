@@ -218,6 +218,37 @@ func addressesPortDecider(addresses []string, cliDefaultPort string) []string {
 
 // End of Helpers
 
+func (r *RedisCLI) ClusterRebalance(leadersAddress []string, opt ...string) (string, error) {
+	fullAddresses := addressesPortDecider(leadersAddress, r.Port)
+	args := append([]string{"--cluster", "rebalance"}, fullAddresses...)
+	args = append(args, "--cluster-yes")
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", fullAddresses, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
+func (r *RedisCLI) ClusterReshard(fromNodeId string, toNodeId string, slotsToReshardOptional string, leadersAddress []string, opt ...string) (string, error) {
+	const MAX_SLOTS_TO_RESHARD = "16384"
+	var slotsToReshard string
+	if len(slotsToReshardOptional) == 0 {
+		slotsToReshard = MAX_SLOTS_TO_RESHARD
+	} else {
+		slotsToReshard = slotsToReshardOptional
+	}
+	fullAddresses := addressesPortDecider(leadersAddress, r.Port)
+	args := append([]string{"--cluster", "reshard", "--cluster-from", fromNodeId, "--cluster-to", toNodeId, "--cluster-slots", slotsToReshard}, fullAddresses...)
+	args = append(args, "--cluster-yes")
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute cluster reshard (%v): %s | %s | %v", fullAddresses, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
 // ClusterCreate uses the '--cluster create' option on redis-cli to create a cluster using a list of nodes
 func (r *RedisCLI) ClusterCreate(leadersAddresses []string, opt ...string) (string, error) {
 	fullAddresses := addressesPortDecider(leadersAddresses, r.Port)
