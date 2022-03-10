@@ -198,6 +198,11 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.Log.Info(fmt.Sprintf("Updated state to: [%s]", clusterState))
 	}
 
+	e := r.PrintForTests(&redisCluster)
+	if err != nil {
+		println("Error!!! ", e)
+	}
+
 	return ctrl.Result{}, nil
 }
 

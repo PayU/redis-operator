@@ -212,7 +212,7 @@ func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, 
 }
 
 // Creates one or more leader pods; waits for available IP before returing
-func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNumbers ...string) ([]corev1.Pod, error) {
+func (r *RedisClusterReconciler) CreateRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNumbers ...string) ([]corev1.Pod, error) {
 
 	if len(nodeNumbers) == 0 {
 		return nil, errors.New("Failed to create leader pods - no node numbers")
