@@ -42,6 +42,21 @@ type FollowerNode struct {
 	Terminating  bool
 }
 
+type RedisPodView struct {
+	RedisNodeId string
+	IP          string
+	Port        string
+	IsLeader    bool
+}
+
+type ClusterScaleView struct {
+	CurrentLeaderCount         int
+	CurrentPodCount            int
+	NewLeaderCount             int
+	NewFollowersPreLeaderCount int
+	PodIndexToPodView          map[string]*RedisPodView
+}
+
 // In-place sort of a cluster view - ascending alphabetical order by node number
 func (v *RedisClusterView) Sort() {
 	sort.Slice(*v, func(i, j int) bool {
@@ -1104,39 +1119,36 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 }
 
 func (r *RedisClusterReconciler) PrintForTests(redisCluster *dbv1.RedisCluster) error {
-	leaderCount, podCount, podIdxToNodeId, podIdxToNodeIp, e := r.extractClusterInfo(redisCluster)
-	println("LEADER COUNT: ", leaderCount)
-	println("POD COUNT: ", podCount)
-	fmt.Println("POD IDX TO NODE ID : ", podIdxToNodeId)
-	fmt.Println("POD IDX TO NODE IP : ", podIdxToNodeIp)
+	v, e := r.extractClusterInfo(redisCluster)
+	println("LEADER COUNT: ", v.CurrentLeaderCount)
+	println("POD COUNT: ", v.CurrentPodCount)
+	fmt.Println("PODS VIEW: ", v.PodIndexToPodView)
 	return e
 }
 
 func (r *RedisClusterReconciler) ScaleHorizontally(redisCluster *dbv1.RedisCluster) error {
-	leaderCount, podCount, podIdxToNodeId, podIdxToNodeIp, e := r.extractClusterInfo(redisCluster)
+	clusterScaleView, e := r.extractClusterInfo(redisCluster)
 	if e != nil {
 		r.Log.Error(e, "Horizontal scale: Failed. Could not extract cluster data.\n", e)
 		return e
 	}
-	var newLeaderCount = redisCluster.Spec.LeaderCount
-	var newFollowersPerLeaderCount = redisCluster.Spec.LeaderFollowersCount
 
-	if r.isScaleRequired(leaderCount, newLeaderCount) {
+	if r.isScaleRequired(clusterScaleView) {
 		r.Log.Info("Horizontal scale: 1 out of 4 steps succeeded. Attempting to scale leaders...")
-		if e = r.scaleLeaders(leaderCount, podCount, podIdxToNodeId, podIdxToNodeIp, redisCluster); e != nil {
+		if e = r.scaleLeaders(clusterScaleView, redisCluster); e != nil {
 			r.Log.Error(e, "Horizontal scale: Failed. Could not manage leaders scale re-arrangement.\n", e)
 			return e
 		}
 
 		r.Log.Info("Horizontal scale: 2 out of 4 steps succeeded. Attempting to rebalance cluster...")
-		_, e := r.RedisCLI.ClusterRebalance([]string{podIdxToNodeIp["0"]}) // node 0 was chosen to serve for the request as there always should be node-0 present and serving in cluster
+		e = r.requestRebalance(clusterScaleView)
 		if e != nil {
 			r.Log.Error(e, "Horizontal scale: Failed. Could not perform cluster rebalance.\n", e)
 			return e
 		}
 
 		r.Log.Info("Horizontal scale: 3 out of 4 steps succeeded. Attempting to align followers to the new state...")
-		if e = r.scaleFollowers(leaderCount, podCount, newLeaderCount, newFollowersPerLeaderCount, podIdxToNodeId); e != nil {
+		if e = r.scaleFollowers(clusterScaleView, redisCluster); e != nil {
 			r.Log.Error(e, "Horizontal scale: Completed improperly. Attempt to align followers to the new state was interrupted.")
 			// trigger removal of all replica nodes, trigger recover right after
 			return e
@@ -1146,72 +1158,100 @@ func (r *RedisClusterReconciler) ScaleHorizontally(redisCluster *dbv1.RedisClust
 	return nil
 }
 
-func (r *RedisClusterReconciler) isScaleRequired(currentLeaderCount int, newLeaderCount int) bool {
-	const MINIMUM_LEADERS_COUNT = 3
-	if newLeaderCount < MINIMUM_LEADERS_COUNT {
-		r.Log.Info("[WARN] Horizontal scale: New leaders count was set to an unsupported value: %v, minimum number of leaders is %v, Attempt to perform scale horizontally won't be triggered", newLeaderCount, MINIMUM_LEADERS_COUNT)
-		return false
+func (r *RedisClusterReconciler) extractClusterInfo(redisCluster *dbv1.RedisCluster) (*ClusterScaleView, error) {
+	clusterView, e := r.NewRedisClusterView(redisCluster)
+	if e != nil {
+		return nil, e
 	}
-	return currentLeaderCount != newLeaderCount
-}
 
-func (r *RedisClusterReconciler) extractClusterInfo(redisCluster *dbv1.RedisCluster) (leaderCount int, podCount int, podIdxToNodeId map[string]string, podIdxToNodeIp map[string]string, err error) {
-	clusterView, err := r.NewRedisClusterView(redisCluster)
-	if err != nil {
-		return 0, 0, nil, nil, err
+	clusterScaleView := &ClusterScaleView{
+		CurrentLeaderCount:         len(*clusterView),
+		CurrentPodCount:            len(clusterView.IPs()),
+		NewLeaderCount:             redisCluster.Spec.LeaderCount,
+		NewFollowersPreLeaderCount: redisCluster.Spec.LeaderFollowersCount,
+		PodIndexToPodView:          make(map[string]*RedisPodView),
 	}
-	leaderCount = len(*clusterView)
-	podCount = len(clusterView.IPs())
-	podIdxToNodeId = make(map[string]string)
-	podIdxToNodeIp = make(map[string]string)
+
 	for _, leader := range *clusterView {
 		if leader.Pod != nil {
-			nodeId, _, err := r.getRedisNodeNumbersFromIP(redisCluster.Namespace, leader.Pod.Status.PodIP)
-			if err != nil {
-				return 0, 0, nil, nil, err
+			nodeId, _, e := r.getRedisNodeNumbersFromIP(redisCluster.Namespace, leader.Pod.Status.PodIP)
+			if e != nil {
+				return nil, e
 			}
-			nodeClusterId, err := r.RedisCLI.MyClusterID(leader.Pod.Status.PodIP)
-			if err != nil {
-				return 0, 0, nil, nil, err
+			nodeClusterId, e := r.RedisCLI.MyClusterID(leader.Pod.Status.PodIP)
+			if e != nil {
+				return nil, e
 			}
-			podIdxToNodeId[nodeId] = nodeClusterId
-			podIdxToNodeIp[nodeId] = leader.Pod.Status.PodIP
+			clusterScaleView.PodIndexToPodView[nodeId] = &RedisPodView{
+				RedisNodeId: nodeClusterId,
+				IP:          leader.Pod.Status.PodIP,
+				Port:        r.RedisCLI.Port,
+				IsLeader:    true,
+			}
 			for _, follower := range leader.Followers {
 				if follower.Pod != nil {
-					nodeId, _, err := r.getRedisNodeNumbersFromIP(redisCluster.Namespace, follower.Pod.Status.PodIP)
-					if err != nil {
-						return 0, 0, nil, nil, err
+					nodeId, _, e = r.getRedisNodeNumbersFromIP(redisCluster.Namespace, follower.Pod.Status.PodIP)
+					if e != nil {
+						return nil, e
 					}
-					nodeClusterId, err = r.RedisCLI.MyClusterID(follower.Pod.Status.PodIP)
-					podIdxToNodeId[nodeId] = nodeClusterId
-					podIdxToNodeIp[nodeId] = follower.Pod.Status.PodIP
+					nodeClusterId, e = r.RedisCLI.MyClusterID(follower.Pod.Status.PodIP)
+					if e != nil {
+						return nil, e
+					}
+					clusterScaleView.PodIndexToPodView[nodeId] = &RedisPodView{
+						RedisNodeId: nodeClusterId,
+						IP:          follower.Pod.Status.PodIP,
+						Port:        r.RedisCLI.Port,
+						IsLeader:    false,
+					}
 				}
 			}
 		}
 	}
-	return leaderCount, podCount, podIdxToNodeId, podIdxToNodeIp, nil
+	return clusterScaleView, nil
 }
 
-func (r *RedisClusterReconciler) scaleLeaders(leaderCount int, newLeaderCount int, podIdxToNodeId map[string]string, podIdxToNodeIp map[string]string, redisCluster *dbv1.RedisCluster) error {
-	scaledUp := leaderCount < newLeaderCount
-	scaledDown := leaderCount > newLeaderCount
+func (r *RedisClusterReconciler) isScaleRequired(v *ClusterScaleView) bool {
+	const MINIMUM_LEADERS_COUNT = 3
+	if v.NewLeaderCount < MINIMUM_LEADERS_COUNT {
+		r.Log.Info("[WARN] Horizontal scale: New leaders count was set to an unsupported value: %v, minimum number of leaders is %v, Attempt to perform scale horizontally won't be triggered", v.NewLeaderCount, MINIMUM_LEADERS_COUNT)
+		return false
+	}
+	return v.CurrentLeaderCount != v.NewLeaderCount
+}
+
+func (r *RedisClusterReconciler) requestRebalance(v *ClusterScaleView) error {
+	scaleUp := v.CurrentLeaderCount < v.NewLeaderCount
+	scaleDown := v.CurrentLeaderCount > v.NewLeaderCount
+	var e error
+	if scaleUp {
+		_, e = r.RedisCLI.ClusterRebalance([]string{v.PodIndexToPodView["0"].IP}, "--cluster-use-empty-masters")
+	} else if scaleDown {
+		_, e = r.RedisCLI.ClusterRebalance([]string{v.PodIndexToPodView["0"].IP})
+	}
+	return e
+}
+
+func (r *RedisClusterReconciler) scaleLeaders(v *ClusterScaleView, redisCluster *dbv1.RedisCluster) error {
+	scaledUp := v.CurrentLeaderCount < v.NewLeaderCount
+	scaledDown := v.CurrentLeaderCount > v.NewLeaderCount
 	if scaledUp {
-		for i := leaderCount; i < newLeaderCount; i++ {
-			e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+		for i := v.CurrentLeaderCount; i < v.NewLeaderCount; i++ {
+			e := r.forgetRedisNodeAndDeletePod(v.PodIndexToPodView[string(i)])
 			if e != nil {
 				// todo: try to loop and re-attempt, need to find out whats the case for trying to delete non-existing pod, which will be reported as fail but actually fits to allow to continue
 			}
-			pods, e := r.CreateRedisLeaderPods(redisCluster, string(i))
-			if e != nil || len(pods) == 0 {
+			newLeaders, e := r.CreateRedisLeaderPods(redisCluster, string(i))
+			if e != nil || len(newLeaders) == 0 {
 				// todo: see if there is properly implemented increasing-back-off-mechanism
 				if e != nil {
 					return e
 				}
 				return errors.New("Attempt to create new leader failed")
 			}
-			pod := pods[0]
-			ip := pod.Status.PodIP
-			_, e = r.RedisCLI.ClusterMeet(podIdxToNodeIp["0"], ip, r.RedisCLI.Port) // node 0 was chosen to serve for the request as there always should be node-0 present and serving in cluster
+			newLeader := newLeaders[0]
+			newLeaderIp := newLeader.Status.PodIP
+			_, e = r.RedisCLI.ClusterMeet(v.PodIndexToPodView["0"].IP, newLeaderIp, r.RedisCLI.Port) // node 0 was chosen to serve for the request as there always should be node-0 present and serving in cluster
 			if e != nil {
 				// todo: forget leader, delete pod, make sure to know how to handle failure to delete the new leader, as it fits the expected result to cease any use of it before re attempting to scale
 				return errors.New("Attempt to meet new leader failed.")
@@ -1222,18 +1262,18 @@ func (r *RedisClusterReconciler) scaleLeaders(leaderCount int, newLeaderCount in
 		const LOWER_BOUND_FOR_TARGET_NODE = 0
 		const UPPER_BOUND_FOR_TARGET_NODE = 2
 		targetNode := LOWER_BOUND_FOR_TARGET_NODE
-		for i := newLeaderCount; i < leaderCount; i++ {
-			_, e := r.RedisCLI.ClusterReshard(podIdxToNodeId[string(i)], podIdxToNodeId[string(targetNode)], "", []string{podIdxToNodeIp["0"]})
+		for i := v.NewLeaderCount; i < v.CurrentLeaderCount; i++ {
+			_, e := r.RedisCLI.ClusterReshard(v.PodIndexToPodView[string(i)].RedisNodeId, v.PodIndexToPodView[string(targetNode)].RedisNodeId, "", []string{v.PodIndexToPodView[string(i)].RedisNodeId})
 			if e != nil {
 				return e
 			}
 			// todo: verify the node is empty from slots
-			e = forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+			e = r.forgetRedisNodeAndDeletePod(v.PodIndexToPodView[string(i)])
 			if e != nil {
 				return e
 			}
 			if targetNode == UPPER_BOUND_FOR_TARGET_NODE {
-				_, e = r.RedisCLI.ClusterRebalance([]string{podIdxToNodeIp["0"]})
+				r.requestRebalance(v)
 				if e != nil {
 					return e
 				}
@@ -1246,39 +1286,38 @@ func (r *RedisClusterReconciler) scaleLeaders(leaderCount int, newLeaderCount in
 	return nil
 }
 
-func (r *RedisClusterReconciler) scaleFollowers(leaderCount int, nodeCount int, newLeaderCount int, newFollowersPerLeaderCount int, podIdxToNodeId map[string]string) error {
-	scaledUp := newLeaderCount >= leaderCount
+func (r *RedisClusterReconciler) scaleFollowers(v *ClusterScaleView, redisCluster *dbv1.RedisCluster) error {
+	scaledUp := v.NewLeaderCount > v.CurrentLeaderCount
 	var firstFollower int
 	if scaledUp {
-		firstFollower = newLeaderCount
+		firstFollower = v.NewLeaderCount
 	} else {
-		firstFollower = leaderCount
+		firstFollower = v.CurrentLeaderCount
 	}
-	if newFollowersPerLeaderCount > 0 {
-		for i := firstFollower; i < nodeCount; i++ {
-			newLeaderIdx := newLeaderCount % i
-			oldLeaderIdx := leaderCount % i
-			newNodeCount := newLeaderCount*(newFollowersPerLeaderCount+1) - 1
+	if v.NewFollowersPreLeaderCount > 0 {
+		for i := firstFollower; i < v.CurrentPodCount; i++ {
+			newLeaderIdx := v.NewLeaderCount % i
+			oldLeaderIdx := v.CurrentLeaderCount % i
+			newNodeCount := v.NewLeaderCount*(v.NewFollowersPreLeaderCount+1) - 1
 			if newLeaderIdx != oldLeaderIdx || i > newNodeCount {
-				e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+				e := r.forgetRedisNodeAndDeletePod(v.PodIndexToPodView[string(i)])
 				if e != nil {
 					return e
 				}
 			}
 		}
 	} else {
-		for i := firstFollower; i < nodeCount; i++ {
-			e := forgetRedisNodeAndDeletePod(i, podIdxToNodeId)
+		for i := firstFollower; i < v.CurrentPodCount; i++ {
+			e := r.forgetRedisNodeAndDeletePod(v.PodIndexToPodView[string(i)])
 			if e != nil {
 				return e
 			}
 		}
 	}
-	// todo: trigger recover
-	return nil
+	return r.recoverCluster(redisCluster)
 }
 
-func forgetRedisNodeAndDeletePod(podIdx int, podIdxToNodeId map[string]string) error {
+func (r *RedisClusterReconciler) forgetRedisNodeAndDeletePod(p *RedisPodView) error {
 	// todo
 	return nil
 }
