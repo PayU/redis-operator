@@ -38,6 +38,12 @@ type RedisClusterNode struct {
 	LinkState   string
 }
 
+type RedisClusterNodeView struct {
+	ClusterId string
+	IP        string
+	Port      string
+}
+
 func validateRedisInfo(redisInfo *RedisInfo) error {
 	validator := map[string]bool{
 		"serverInfo":      redisInfo.Server != nil,
@@ -64,6 +70,56 @@ func validateRedisInfo(redisInfo *RedisInfo) error {
 	} else {
 		return errors.Errorf(errStr)
 	}
+}
+
+func GetRedisClusterSlotOwnersMap(rawData string) map[string]*RedisClusterNodeView {
+	nodesMap := make(map[string]*RedisClusterNodeView)
+	portFormat := "\\d{2,}"
+	ipFormat := "\\d+.\\d+.\\d+.\\d+"
+	clusterIdFormat := "(\\w+|\\d+){2,}"
+	rangeStartLine := "\\d+\\)\\s*1\\)\\s*\\(integer\\)\\s*\\d+"
+	rangeEndLine := "\\s*2\\)\\s*\\(integer\\)\\s*\\d+"
+	leaderIpLine := "\\s*3\\)\\s*1\\)\\s*\"" + ipFormat + "\""
+	leaderPortLine := "\\s*2\\)\\s*\\(integer\\)\\s*" + portFormat
+	leaderClusterIdLine := "\\s*3\\)\\s*\"" + clusterIdFormat + "\""
+	myRegexTemplate := rangeStartLine + "\\n" + rangeEndLine + "\\n" + leaderIpLine + "\\n" + leaderPortLine + "\\n" + leaderClusterIdLine
+	comp, _ := regexp.Compile(myRegexTemplate)
+	matchingSubstrings := comp.FindAllStringSubmatch(rawData, -1)
+	var ip string
+	var port string
+	var clusterId string
+	if len(matchingSubstrings) > 0 {
+		for _, match := range matchingSubstrings {
+			if len(match) > 0 {
+				m := match[0]
+				lines := strings.Split(m, "\n")
+				formerLineFormat := ""
+				for _, line := range lines {
+					if isLeaderIpLine, _ := regexp.MatchString(leaderIpLine, line); isLeaderIpLine {
+						c, _ := regexp.Compile(ipFormat)
+						ip = c.FindStringSubmatch(line)[0]
+						formerLineFormat = leaderIpLine
+					} else if isLeaderPortLine, _ := regexp.MatchString(leaderPortLine, line); isLeaderPortLine && (formerLineFormat == leaderIpLine) {
+						c, _ := regexp.Compile(portFormat)
+						port = c.FindStringSubmatch(line)[0]
+						formerLineFormat = leaderPortLine
+					} else if isClusterIdLine, _ := regexp.MatchString(leaderClusterIdLine, line); isClusterIdLine {
+						c, _ := regexp.Compile(clusterIdFormat)
+						clusterId = c.FindStringSubmatch(line)[0]
+						formerLineFormat = leaderClusterIdLine
+					} else {
+						formerLineFormat = rangeStartLine
+					}
+				}
+				nodesMap[clusterId] = &RedisClusterNodeView{
+					ClusterId: clusterId,
+					IP:        ip,
+					Port:      port,
+				}
+			}
+		}
+	}
+	return nodesMap
 }
 
 func NewRedisInfo(rawInfo string) (*RedisInfo, error) {
@@ -161,7 +217,6 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 				ConfigEpoch: nodeInfo[6],
 				LinkState:   nodeInfo[7],
 			})
-
 		}
 	}
 	return &nodes

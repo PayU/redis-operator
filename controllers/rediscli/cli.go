@@ -218,19 +218,32 @@ func addressesPortDecider(addresses []string, cliDefaultPort string) []string {
 
 // End of Helpers
 
-func (r *RedisCLI) ClusterRebalance(leadersAddress []string, opt ...string) (string, error) {
-	fullAddresses := addressesPortDecider(leadersAddress, r.Port)
+// https://redis.io/commands/cluster-slots
+// Returns mapping for clusterIds to te leaders nodes which currently holds ownership for slot ranges.
+// Leaders that are not stated in the received map are leaders that does not hold any responsibility for hash slots currently
+func (r *RedisCLI) ClusterSlots(nodeIP string, opt ...string) (map[string]*RedisClusterNodeView, string, error) {
+	args := []string{"-h", nodeIP, "cluster", "slots"}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return nil, "", errors.Errorf("Failed to execute CLUSTER SLOTS(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return GetRedisClusterSlotOwnersMap(stdout), stdout, nil
+}
+
+func (r *RedisCLI) ClusterRebalance(leaderAddress []string, opt ...string) (string, error) {
+	fullAddresses := addressesPortDecider(leaderAddress, r.Port)
 	args := append([]string{"--cluster", "rebalance"}, fullAddresses...)
 	args = append(args, "--cluster-yes")
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", fullAddresses, stdout, stderr, err)
+		return stdout, errors.Errorf("Failed to execute CLUSTER REBALANCE (%v): %s | %s | %v", fullAddresses, stdout, stderr, err)
 	}
 	return stdout, nil
 }
 
-func (r *RedisCLI) ClusterReshard(fromNodeId string, toNodeId string, slotsToReshardOptional string, leadersAddress []string, opt ...string) (string, error) {
+func (r *RedisCLI) ClusterReshard(fromNodeId string, toNodeId string, slotsToReshardOptional string, leaderAddress []string, opt ...string) (string, error) {
 	const MAX_SLOTS_TO_RESHARD = "16384"
 	var slotsToReshard string
 	if len(slotsToReshardOptional) == 0 {
@@ -238,7 +251,7 @@ func (r *RedisCLI) ClusterReshard(fromNodeId string, toNodeId string, slotsToRes
 	} else {
 		slotsToReshard = slotsToReshardOptional
 	}
-	fullAddresses := addressesPortDecider(leadersAddress, r.Port)
+	fullAddresses := addressesPortDecider(leaderAddress, r.Port)
 	args := append([]string{"--cluster", "reshard", "--cluster-from", fromNodeId, "--cluster-to", toNodeId, "--cluster-slots", slotsToReshard}, fullAddresses...)
 	args = append(args, "--cluster-yes")
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)

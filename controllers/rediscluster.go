@@ -1233,9 +1233,9 @@ func (r *RedisClusterReconciler) requestRebalance(v *ClusterScaleView) error {
 }
 
 func (r *RedisClusterReconciler) scaleLeaders(v *ClusterScaleView, redisCluster *dbv1.RedisCluster) error {
-	scaledUp := v.CurrentLeaderCount < v.NewLeaderCount
-	scaledDown := v.CurrentLeaderCount > v.NewLeaderCount
-	if scaledUp {
+	scaleUp := v.CurrentLeaderCount < v.NewLeaderCount
+	scaleDown := v.CurrentLeaderCount > v.NewLeaderCount
+	if scaleUp {
 		for i := v.CurrentLeaderCount; i < v.NewLeaderCount; i++ {
 			e := r.forgetRedisNodeAndDeletePod(v.PodIndexToPodView[string(i)])
 			if e != nil {
@@ -1251,36 +1251,46 @@ func (r *RedisClusterReconciler) scaleLeaders(v *ClusterScaleView, redisCluster 
 			}
 			newLeader := newLeaders[0]
 			newLeaderIp := newLeader.Status.PodIP
-			_, e = r.RedisCLI.ClusterMeet(v.PodIndexToPodView["0"].IP, newLeaderIp, r.RedisCLI.Port) // node 0 was chosen to serve for the request as there always should be node-0 present and serving in cluster
+			servingLeadereIp := v.PodIndexToPodView["0"].IP
+			_, e = r.RedisCLI.ClusterMeet(servingLeadereIp, newLeaderIp, r.RedisCLI.Port)
 			if e != nil {
 				// todo: forget leader, delete pod, make sure to know how to handle failure to delete the new leader, as it fits the expected result to cease any use of it before re attempting to scale
 				return errors.New("Attempt to meet new leader failed.")
 			}
 		}
-	} else if scaledDown {
-		// Plan: perform movement of all slots to the 3 first nodes, trigger reshard after every 3 iterations of such movement (each one of the nodes 0-2 will double its num of slots, which will de-stabilize cluster resiliency until rebalance will be performed)
-		const LOWER_BOUND_FOR_TARGET_NODE = 0
-		const UPPER_BOUND_FOR_TARGET_NODE = 2
+	} else if scaleDown {
+		const NODES_AGREE = "[OK] All nodes agree about slots configuration."
+		const SLOTS_COVERED = "[OK] All 16384 slots covered."
+		LOWER_BOUND_FOR_TARGET_NODE := 0
+		UPPER_BOUND_FOR_TARGET_NODE := v.NewLeaderCount - 1
 		targetNode := LOWER_BOUND_FOR_TARGET_NODE
 		for i := v.NewLeaderCount; i < v.CurrentLeaderCount; i++ {
-			_, e := r.RedisCLI.ClusterReshard(v.PodIndexToPodView[string(i)].RedisNodeId, v.PodIndexToPodView[string(targetNode)].RedisNodeId, "", []string{v.PodIndexToPodView[string(i)].RedisNodeId})
+			fromNodeId := v.PodIndexToPodView[string(i)].RedisNodeId
+			toNodeId := v.PodIndexToPodView[string(targetNode)].RedisNodeId
+			defaultNumOfSlots := ""
+			servingLeadereIp := v.PodIndexToPodView["0"].IP
+			_, e := r.RedisCLI.ClusterReshard(fromNodeId, toNodeId, defaultNumOfSlots, []string{servingLeadereIp})
 			if e != nil {
 				return e
 			}
-			// todo: verify the node is empty from slots
-			e = r.forgetRedisNodeAndDeletePod(v.PodIndexToPodView[string(i)])
-			if e != nil {
-				return e
-			}
-			if targetNode == UPPER_BOUND_FOR_TARGET_NODE {
-				r.requestRebalance(v)
+			if stdout, e := r.RedisCLI.ClusterCheck(servingLeadereIp); e == nil && strings.Contains(stdout, NODES_AGREE) && strings.Contains(stdout, SLOTS_COVERED) {
+				slotOwnersMap, _, e := r.RedisCLI.ClusterSlots(servingLeadereIp)
+				if _, found := slotOwnersMap[fromNodeId]; found {
+					return errors.New("Could not perform leaders scale down, reshard request was interrupted")
+				}
+				e = r.forgetRedisNodeAndDeletePod(v.PodIndexToPodView[string(i)])
 				if e != nil {
 					return e
 				}
-				targetNode = LOWER_BOUND_FOR_TARGET_NODE
+				if targetNode == UPPER_BOUND_FOR_TARGET_NODE {
+					targetNode = LOWER_BOUND_FOR_TARGET_NODE
+				} else {
+					targetNode++
+				}
 			} else {
-				targetNode++
+				return errors.New("Could not perform leaders scale down, reshard request was interrupted")
 			}
+
 		}
 	}
 	return nil
