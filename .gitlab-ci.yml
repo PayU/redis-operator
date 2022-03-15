@@ -571,9 +571,9 @@ dev-publish-dashboards:
   stage: publish-dashboards
   extends: .k8s-dashboard-template
   variables:
-    ENV: eks-maps-apps
+    ENV: eks-dev-apps
   tags:
-    - eks-mars-apps-apps
+    - eks-dev-apps
 
 prd-publish-dashboards:
   stage: publish-dashboards
