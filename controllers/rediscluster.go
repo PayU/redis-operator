@@ -1279,7 +1279,7 @@ func (r *RedisClusterReconciler) scaleDownLeaders(v *ClusterScaleView) error {
 		toNodeId := v.PodIndexToPodView[string(targetNode)].RedisNodeId
 		defaultNumOfSlots := ""
 		servingLeadereIp := v.PodIndexToPodView["0"].IP
-		r.RedisCLI.ClusterReshard(fromNodeId, toNodeId, defaultNumOfSlots, []string{servingLeadereIp})
+		r.RedisCLI.ClusterReshard(fromNodeId, toNodeId, defaultNumOfSlots, servingLeadereIp)
 		if stdout, e := r.RedisCLI.ClusterCheck(servingLeadereIp); e == nil && strings.Contains(stdout, NODES_AGREE) && strings.Contains(stdout, SLOTS_COVERED) {
 			slotOwnersMap, _, e := r.RedisCLI.ClusterSlots(servingLeadereIp)
 			if e != nil {
