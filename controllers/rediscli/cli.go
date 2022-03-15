@@ -231,9 +231,9 @@ func (r *RedisCLI) ClusterSlots(nodeIP string, opt ...string) (map[string]*Redis
 	return GetRedisClusterSlotOwnersMap(stdout), stdout, nil
 }
 
-func (r *RedisCLI) ClusterRebalance(leaderAddress []string, opt ...string) (string, error) {
-	fullAddresses := addressesPortDecider(leaderAddress, r.Port)
-	args := append([]string{"--cluster", "rebalance"}, fullAddresses...)
+func (r *RedisCLI) ClusterRebalance(leaderAddress string, opt ...string) (string, error) {
+	fullAddresses := addressPortDecider(leaderAddress, r.Port)
+	args := append([]string{"--cluster", "rebalance"}, fullAddresses)
 	args = append(args, "--cluster-yes")
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
@@ -243,7 +243,7 @@ func (r *RedisCLI) ClusterRebalance(leaderAddress []string, opt ...string) (stri
 	return stdout, nil
 }
 
-func (r *RedisCLI) ClusterReshard(fromNodeId string, toNodeId string, slotsToReshardOptional string, leaderAddress []string, opt ...string) (string, error) {
+func (r *RedisCLI) ClusterReshard(fromNodeId string, toNodeId string, slotsToReshardOptional string, leaderAddress string, opt ...string) (string, error) {
 	const MAX_SLOTS_TO_RESHARD = "16384"
 	var slotsToReshard string
 	if len(slotsToReshardOptional) == 0 {
@@ -251,8 +251,8 @@ func (r *RedisCLI) ClusterReshard(fromNodeId string, toNodeId string, slotsToRes
 	} else {
 		slotsToReshard = slotsToReshardOptional
 	}
-	fullAddresses := addressesPortDecider(leaderAddress, r.Port)
-	args := append([]string{"--cluster", "reshard", "--cluster-from", fromNodeId, "--cluster-to", toNodeId, "--cluster-slots", slotsToReshard}, fullAddresses...)
+	fullAddresses := addressPortDecider(leaderAddress, r.Port)
+	args := append([]string{"--cluster", "reshard", "--cluster-from", fromNodeId, "--cluster-to", toNodeId, "--cluster-slots", slotsToReshard}, fullAddresses)
 	args = append(args, "--cluster-yes")
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)

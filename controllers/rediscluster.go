@@ -1131,7 +1131,7 @@ func (r *RedisClusterReconciler) PrintForTests(redisCluster *dbv1.RedisCluster) 
 func (r *RedisClusterReconciler) ScaleHorizontally(redisCluster *dbv1.RedisCluster) error {
 	clusterScaleView, e := r.extractClusterInfo(redisCluster)
 	if e != nil {
-		r.Log.Error(e, "Cluster view creation failure. Could not extract cluster data.\n", e)
+		r.Log.Error(e, "Cluster scale-view creation failure. Could not extract cluster data.\n", e)
 		return e
 	}
 	if r.isScaleRequired(clusterScaleView) {
@@ -1226,10 +1226,11 @@ func (r *RedisClusterReconciler) requestRebalance(v *ClusterScaleView) error {
 	scaleDown := v.CurrentLeaderCount > v.NewLeaderCount
 	var e error
 	if scaleUp {
-		_, e = r.RedisCLI.ClusterRebalance([]string{v.PodIndexToPodView["0"].IP}, "--cluster-use-empty-masters")
+		_, e = r.RedisCLI.ClusterRebalance(v.PodIndexToPodView["0"].IP, "--cluster-use-empty-masters")
 	} else if scaleDown {
-		_, e = r.RedisCLI.ClusterRebalance([]string{v.PodIndexToPodView["0"].IP})
+		_, e = r.RedisCLI.ClusterRebalance(v.PodIndexToPodView["0"].IP)
 	}
+	// Rebalance is needed only if number of leaders changed.
 	return e
 }
 
@@ -1336,7 +1337,8 @@ func (r *RedisClusterReconciler) forgetRedisNodeAndDeletePod(p *RedisPodView, v 
 			}
 		}
 	}
-	// delete pod
-
-	// if fails: re-try loop until succeeds
+	_, e := r.deletePodsByIP("", p.IP)
+	if e != nil {
+		// re try loop
+	}
 }

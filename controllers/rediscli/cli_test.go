@@ -72,6 +72,9 @@ func TestRedisCLI(test *testing.T) {
 	testClusterInfo()
 	testInfo()
 	testPing()
+	testClusterSlots()
+	testClusterReshard()
+	testClusterRebalance()
 	testClusterNodes()
 	testMyClusterID()
 	testClusterForget()
@@ -197,6 +200,53 @@ func testPing() {
 	execPingTest("4", nodeIP, "-optArg1 optVal1 -p 6388")
 	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
 	execPingTest("5", nodeIP, "-optArg1 optVal1 -p 6377 -optArg2 optVal2")
+}
+
+func testClusterSlots() {
+	nodeIP := "127.0.0.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterSlots("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterSlots("2", nodeIP, "-p 6379")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterSlots("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execPingTest("4", nodeIP, "-optArg1 optVal1 -p 6388")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized list
+	execPingTest("5", nodeIP, "-optArg1 optVal1 -p 6377 -optArg2 optVal2")
+}
+
+func testClusterReshard() {
+	nodeIP := "127.0.0.2"
+	fromNodeId := "abcd1234"
+	toNodeId := "1234abcd"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterReshard("1.1", nodeIP, fromNodeId, toNodeId, "")
+	execClusterReshard("1.2", nodeIP, fromNodeId, toNodeId, "100")
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterReshard("2.1", nodeIP, fromNodeId, toNodeId, "", "-p 6380")
+	execClusterReshard("2.2", nodeIP, fromNodeId, toNodeId, "100", "-p 6380")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterReshard("3.1", nodeIP, fromNodeId, toNodeId, "", "-optArg1 optVal1")
+	execClusterReshard("3.2", nodeIP, fromNodeId, toNodeId, "100", "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterReshard("4.1", nodeIP, fromNodeId, toNodeId, "", "-optArg1 optVal1 -p 6388")
+	execClusterReshard("4.2", nodeIP, fromNodeId, toNodeId, "100", "-optArg1 optVal1 -p 6388")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized list
+	execClusterReshard("5.1", nodeIP, fromNodeId, toNodeId, "", "-optArg1 optVal1 -p 6377 -optArg2 optVal2")
+	execClusterReshard("5.2", nodeIP, fromNodeId, toNodeId, "100", "-optArg1 optVal1 -p 6377 -optArg2 optVal2")
+}
+
+func testClusterRebalance() {
+	// Test 1 : Routing port is not provided, no optional arguments
+
+	// Test 2 : Routing port is provided, no optional arguments
+
+	// Test 3 : Routing port is not provided, optional arguments are provided
+
+	// Test 4 : Routing port is provided, optional arguments are provided
+
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized list
 }
 
 func testClusterNodes() {
@@ -435,6 +485,43 @@ func execPingTest(testCaseId string, nodeIP string, opt ...string) {
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "Ping "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterSlots(testCaseId string, nodeIP string, opt ...string) {
+	_, result, _ := r.ClusterSlots(nodeIP, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(result, argMap)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "slots"}
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster Slots "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterReshard(testCaseId string, nodeIP string, fromNodeId string, toNodeId string, slotsToReshardOptional string, opt ...string) {
+	const MAX_SLOTS_TO_RESHARD = "16384"
+	var slotsToReshard string
+	if len(slotsToReshardOptional) == 0 {
+		slotsToReshard = MAX_SLOTS_TO_RESHARD
+	} else {
+		slotsToReshard = slotsToReshardOptional
+	}
+	result, _ := r.ClusterReshard(fromNodeId, toNodeId, slotsToReshardOptional, nodeIP, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(result, argMap)
+	expectedArgList := []string{"--cluster", "reshard", "--cluster-from", fromNodeId, "--cluster-to", toNodeId, "--cluster-slots", slotsToReshard, "--cluster-yes"}
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster Reshard "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterRebalance(testCaseId string, nodeIP string, opt ...string) {
+	result, _ := r.ClusterRebalance(nodeIP, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(result, argMap)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "rebalance"}
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Cluster Rebalance "+testCaseId, argMap, expectedArgMap)
 }
 
 func execClusterNodesTest(testCaseId string, nodeIP string, opt ...string) {
