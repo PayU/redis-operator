@@ -123,7 +123,6 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 	if err := r.Get(context.Background(), client.ObjectKey{Namespace: configMap.Namespace, Name: rdcName}, &rdc); err != nil {
 		return err
 	}
-
 	rdcPods := corev1.PodList{}
 	err := r.List(context.Background(), &rdcPods,
 		client.InNamespace(configMap.Namespace),
@@ -141,67 +140,66 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 	configMapACLHash := fmt.Sprintf("%x", sha256.Sum256([]byte(acl.String())))
 	r.Log.Info(fmt.Sprintf("Computed hash: %s", configMapACLHash))
 
-	for i := range rdcPods.Items {
-		wg.Add(1)
-		go func(failSignal *bool, pod *corev1.Pod, wg *sync.WaitGroup) {
-			defer wg.Done()
-			redisNodeConfigHash, err := r.getACLConfigHash(pod)
-			if err != nil {
-				r.Log.Error(err, "Failed to get the config for %s(%s)", pod.Name, pod.Status.PodIP)
-				*failSignal = true
-				return
-			}
-			annotationHash, ok := pod.Annotations["acl-config"]
-			if !ok {
-				if redisNodeConfigHash == configMapACLHash {
-					if err := r.updateACLHashStatus(configMapACLHash, *pod); err != nil {
-						r.Log.Error(err, handleACLConfigErrorMessage)
-						*failSignal = true
-						return
+	if rdcPods.Items != nil && len(rdcPods.Items) > 0 {
+		for i := range rdcPods.Items {
+			wg.Add(1)
+			go func(failSignal *bool, pod *corev1.Pod, wg *sync.WaitGroup) {
+				defer wg.Done()
+				redisNodeConfigHash, err := r.getACLConfigHash(pod)
+				if err != nil {
+					r.Log.Error(err, "Failed to get the config for %s(%s)", pod.Name, pod.Status.PodIP)
+					*failSignal = true
+					return
+				}
+				annotationHash, ok := pod.Annotations["acl-config"]
+				if !ok {
+					if redisNodeConfigHash == configMapACLHash {
+						if err := r.updateACLHashStatus(configMapACLHash, *pod); err != nil {
+							r.Log.Error(err, handleACLConfigErrorMessage)
+							*failSignal = true
+							return
+						}
+					} else {
+						if err := r.updateACLHashStatus("update", *pod); err != nil {
+							r.Log.Error(err, handleACLConfigErrorMessage)
+							*failSignal = true
+							return
+						}
+						if err := r.syncConfig(configMapACLHash, *pod); err != nil {
+							r.Log.Error(err, handleACLConfigErrorMessage)
+							*failSignal = true
+							return
+						}
+						r.Log.Info(fmt.Sprintf("Successfully synced ACL config of %s(%s)", pod.Name, pod.Status.PodIP))
 					}
 				} else {
-					if err := r.updateACLHashStatus("update", *pod); err != nil {
-						r.Log.Error(err, handleACLConfigErrorMessage)
-						*failSignal = true
-						return
-					}
-					if err := r.syncConfig(configMapACLHash, *pod); err != nil {
-						r.Log.Error(err, handleACLConfigErrorMessage)
-						*failSignal = true
-						return
-					}
-					r.Log.Info(fmt.Sprintf("Successfully synced ACL config of %s(%s)", pod.Name, pod.Status.PodIP))
-				}
-			} else {
-				if configMapACLHash != redisNodeConfigHash {
-					if err := r.updateACLHashStatus("update", *pod); err != nil {
-						r.Log.Error(err, handleACLConfigErrorMessage)
-						*failSignal = true
-						return
-					}
-					if err := r.syncConfig(configMapACLHash, *pod); err != nil {
-						*failSignal = true
-						r.Log.Error(err, handleACLConfigErrorMessage)
-						return
-					}
-					r.Log.Info(fmt.Sprintf("Successfully synced ACL config of %s(%s)", pod.Name, pod.Status.PodIP))
-				} else if annotationHash != configMapACLHash {
-					if err := r.updateACLHashStatus(configMapACLHash, *pod); err != nil {
-						r.Log.Error(err, handleACLConfigErrorMessage)
-						*failSignal = true
-						return
+					if configMapACLHash != redisNodeConfigHash {
+						if err := r.updateACLHashStatus("update", *pod); err != nil {
+							r.Log.Error(err, handleACLConfigErrorMessage)
+							*failSignal = true
+							return
+						}
+						if err := r.syncConfig(configMapACLHash, *pod); err != nil {
+							*failSignal = true
+							r.Log.Error(err, handleACLConfigErrorMessage)
+							return
+						}
+						r.Log.Info(fmt.Sprintf("Successfully synced ACL config of %s(%s)", pod.Name, pod.Status.PodIP))
+					} else if annotationHash != configMapACLHash {
+						if err := r.updateACLHashStatus(configMapACLHash, *pod); err != nil {
+							r.Log.Error(err, handleACLConfigErrorMessage)
+							*failSignal = true
+							return
+						}
 					}
 				}
-			}
-		}(&syncFail, &rdcPods.Items[i], &wg)
+			}(&syncFail, &rdcPods.Items[i], &wg)
+		}
 	}
-
 	wg.Wait()
-
 	if syncFail {
 		handleFail = errors.Errorf("Failed to sync all ACL configurations")
 	}
-
 	return handleFail
 }
 
@@ -235,27 +233,27 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	if err := r.Get(context.Background(), req.NamespacedName, &configMap); err != nil {
 		r.Log.Error(err, "Failed to fetch configmap")
 	}
-	labels := configMap.GetObjectMeta().GetLabels()
-	for label := range labels {
-		if label == redisConfigLabelKey {
-			if _, ok := configMap.Data["users.acl"]; ok {
-				if err := r.handleACLConfig(&configMap); err != nil {
-					r.Log.Error(err, "Failed to reconcile ACL config")
-					return ctrl.Result{}, err
+	if labels := configMap.GetObjectMeta().GetLabels(); len(labels) > 0 {
+		for label := range labels {
+			if label == redisConfigLabelKey {
+				if _, ok := configMap.Data["users.acl"]; ok {
+					if err := r.handleACLConfig(&configMap); err != nil {
+						r.Log.Error(err, "Failed to reconcile ACL config")
+						return ctrl.Result{}, err
+					}
+					return ctrl.Result{}, nil
 				}
-				return ctrl.Result{}, nil
-			}
-		} else if label == operatorConfigLabelKey {
-			if _, ok := configMap.Data["operator.conf"]; ok {
-				if err := r.handleOperatorConfig(&configMap); err != nil {
-					r.Log.Error(err, "Failed to reconcile operator config")
-					return ctrl.Result{}, err
+			} else if label == operatorConfigLabelKey {
+				if _, ok := configMap.Data["operator.conf"]; ok {
+					if err := r.handleOperatorConfig(&configMap); err != nil {
+						r.Log.Error(err, "Failed to reconcile operator config")
+						return ctrl.Result{}, err
+					}
+					return ctrl.Result{}, nil
 				}
-				return ctrl.Result{}, nil
 			}
 		}
 	}
-
 	return ctrl.Result{}, nil
 }
 

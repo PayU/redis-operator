@@ -153,6 +153,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	}
 
 	r.State = getCurrentClusterState(&redisCluster)
+	fmt.Printf("State: %+v\n", r.State)
 
 	switch r.State {
 	case NotExists:
@@ -199,9 +200,21 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	}
 
 	e := r.PrintForTests(&redisCluster)
-	if err != nil {
-		println("Error!!! ", e)
+	if e != nil {
+		println("Error!!! ", e.Error())
 	}
+
+	// v, e := r.ExtractClusterInfo(&redisCluster)
+	// if e == nil {
+	// 	if _, ok := v.PodIndexToPodView["9"]; !ok {
+	// 		e = r.CreateNodeForTest(&redisCluster)
+	// 		if e != nil {
+	// 			println("Error: ", e.Error())
+	// 		}
+	// 	}
+	// } else {
+	// 	println("Error: ", e.Error())
+	// }
 
 	return ctrl.Result{}, nil
 }

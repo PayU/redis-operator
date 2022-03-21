@@ -126,7 +126,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 				affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution, requiredPodAffinityTerm)
 		}
 
-		prefferedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
+		preferredPodAffinityTerm := corev1.WeightedPodAffinityTerm{
 			Weight: 100,
 			PodAffinityTerm: corev1.PodAffinityTerm{
 				LabelSelector: &metav1.LabelSelector{
@@ -137,10 +137,10 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 		}
 
 		if affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
-			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{prefferedPodAffinityTerm}
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{preferredPodAffinityTerm}
 		} else {
 			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
-				affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, prefferedPodAffinityTerm)
+				affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, preferredPodAffinityTerm)
 		}
 	}
 
@@ -211,7 +211,7 @@ func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, 
 	return pod, nil
 }
 
-// Creates one or more leader pods; waits for available IP before returing
+// Creates one or more leader pods; waits for available IP before returning
 func (r *RedisClusterReconciler) CreateRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNumbers ...string) ([]corev1.Pod, error) {
 
 	if len(nodeNumbers) == 0 {
