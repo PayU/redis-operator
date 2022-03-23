@@ -1,0 +1,9 @@
+2022.03.23 10:50:19 INFO  tracing is disabled for protocol LSP, to enable tracing of incoming and outgoing JSON messages create an empty file at /Users/nataliaharoni/Projects/redis-operator/.metals/lsp.trace.json or /Users/nataliaharoni/Library/Caches/org.scalameta.metals/lsp.trace.json
+2022.03.23 10:50:21 INFO  logging to file /Users/nataliaharoni/Projects/redis-operator/.metals/metals.log
+2022.03.23 10:50:21 INFO  Started: Metals version 0.11.2 in workspace '/Users/nataliaharoni/Projects/redis-operator' for client Visual Studio Code 1.60.2.
+2022.03.23 10:50:21 INFO  Parse release: 17.0.1
+2022.03.23 10:50:26 INFO  time: initialize in 4.67s
+2022.03.23 10:50:27 WARN  Build server is not auto-connectable.
+2022.03.23 10:50:27 WARN  no build tool detected in workspace '/Users/nataliaharoni/Projects/redis-operator'. The most common cause for this problem is that the editor was opened in the wrong working directory, for example if you use sbt then the workspace directory should contain build.sbt. 
+Mar 23, 2022 2:10:09 PM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notify
+INFO: Unsupported notification method: $/setTrace

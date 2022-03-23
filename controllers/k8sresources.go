@@ -20,6 +20,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type RedisPodsView map[string]*RedisPodView
+
+type RedisPodView struct {
+	Name      string
+	Namespace string
+	IP        string
+	Phase     string
+	Leader    string
+	IsLeader  bool
+	Followers []string
+	Labels    map[string]string
+}
+
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
 	matchingLabels := redisCluster.Spec.PodLabelSelector
@@ -270,6 +283,54 @@ func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (c
 	return service, nil
 }
 
+func (r *RedisClusterReconciler) getPodsByLabel(key string, val string) ([]corev1.Pod, error) {
+	var pods corev1.PodList
+	e := r.List(context.TODO(), &pods, client.MatchingLabels{key: val})
+	return pods.Items, e
+}
+
+func (r *RedisClusterReconciler) getRedisPodsView() (RedisPodsView, error) {
+	leaderPods, e := r.getPodsByLabel("redis-node-role", "leader")
+	if e != nil {
+		return nil, e
+	}
+	followerPods, e := r.getPodsByLabel("redis-node-role", "follower")
+	if e != nil {
+		return nil, e
+	}
+
+	v := make(map[string]*RedisPodView)
+	for _, p := range leaderPods {
+		v[p.Status.PodIP] = &RedisPodView{
+			Name:      p.GetName(),
+			Namespace: p.GetNamespace(),
+			IP:        p.Status.PodIP,
+			Phase:     string(p.Status.Phase),
+			Leader:    p.GetName(),
+			IsLeader:  true,
+			Followers: make([]string, 0),
+			Labels:    p.GetLabels(),
+		}
+	}
+	for _, p := range followerPods {
+		v[p.Status.PodIP] = &RedisPodView{
+			Name:      p.GetName(),
+			Namespace: p.GetNamespace(),
+			IP:        p.Status.PodIP,
+			Phase:     string(p.Status.Phase),
+			Leader:    "redis-node-" + p.GetLabels()["leader-number"],
+			IsLeader:  false,
+			Followers: make([]string, 0),
+			Labels:    p.GetLabels(),
+		}
+
+		leaderIP := v[p.Status.PodIP].Leader
+		v[leaderIP].Followers = append(v[leaderIP].Followers, p.GetName())
+	}
+
+	return v, nil
+}
+
 func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisCluster) (*corev1.Service, error) {
 	svc, err := r.makeService(redisCluster)
 	if err != nil {
@@ -282,6 +343,7 @@ func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisClus
 	return &svc, nil
 }
 
+// todo: requires exponential backoff
 func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.Pod, error) {
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
@@ -290,7 +352,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 			return nil, err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
-		if pollErr := wait.PollImmediate(r.Config.Times.PodReadyCheckInterval, r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(3*r.Config.Times.PodReadyCheckInterval, 5*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return false, err
@@ -318,7 +380,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(r.Config.Times.PodNetworkCheckInterval, r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(3*r.Config.Times.PodNetworkCheckInterval, 5*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil
@@ -345,7 +407,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 			return err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
-		if pollErr := wait.Poll(r.Config.Times.PodDeleteCheckInterval, r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
+		if pollErr := wait.Poll(3*r.Config.Times.PodDeleteCheckInterval, 5*r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &p)
 			if err != nil {
 				if apierrors.IsNotFound(err) {

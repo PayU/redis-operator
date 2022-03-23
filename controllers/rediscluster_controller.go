@@ -193,28 +193,20 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		if apierrors.IsConflict(err) {
 			r.Log.Info("Conflict when updating state to " + string(clusterState))
 		}
-
 		r.Client.Status()
 		r.State = clusterState
 		r.Log.Info(fmt.Sprintf("Updated state to: [%s]", clusterState))
 	}
 
-	e := r.PrintForTests(&redisCluster)
+	v, e := r.getRedisPodsView()
 	if e != nil {
-		println("Error!!! ", e.Error())
+		println("Error: ", e)
+	} else {
+		for key, val := range v {
+			fmt.Printf("Name: %+v\n", key)
+			fmt.Printf("Pods: %+v\n", val)
+		}
 	}
-
-	// v, e := r.ExtractClusterInfo(&redisCluster)
-	// if e == nil {
-	// 	if _, ok := v.PodIndexToPodView["9"]; !ok {
-	// 		e = r.CreateNodeForTest(&redisCluster)
-	// 		if e != nil {
-	// 			println("Error: ", e.Error())
-	// 		}
-	// 	}
-	// } else {
-	// 	println("Error: ", e.Error())
-	// }
 
 	return ctrl.Result{}, nil
 }

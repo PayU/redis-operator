@@ -36,6 +36,9 @@ type RedisClusterNode struct {
 	PingRecv    string
 	ConfigEpoch string
 	LinkState   string
+	IP          string
+	Port        string
+	IsLeader    bool
 }
 
 type RedisClusterNodeView struct {
@@ -207,7 +210,8 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 			nodeInfo = nodeInfo[1:]
 		}
 		if len(nodeInfo) >= 8 {
-			nodes = append(nodes, RedisClusterNode{
+
+			node := RedisClusterNode{
 				ID:          nodeInfo[0],
 				Addr:        nodeInfo[1],
 				Flags:       nodeInfo[2],
@@ -216,9 +220,35 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 				PingRecv:    nodeInfo[5],
 				ConfigEpoch: nodeInfo[6],
 				LinkState:   nodeInfo[7],
-			})
+			}
+
+			ipFormat := "\\d+\\.\\d+\\.\\d+\\.\\d+"
+			portFormat := ":\\d+"
+			cPortFormat := "@\\d+"
+			addressFormat := ipFormat + portFormat + cPortFormat
+			if ipCanBeExtracted, _ := regexp.MatchString(addressFormat, node.Addr); ipCanBeExtracted {
+				segments := strings.FieldsFunc(node.Addr, func(r rune) bool {
+					return r == ':' || r == '@'
+				})
+				if len(segments) == 3 {
+					node.IP = segments[0]
+					node.Port = segments[1]
+				}
+			} else {
+				println("Warning, could not extract ip and port out of redis-node address")
+			}
+
+			if strings.Contains(node.Flags, "master") {
+				node.IsLeader = true
+			} else if strings.Contains(node.Flags, "slave") {
+				node.IsLeader = false
+			} else {
+				println("Warning, could not determine if redis-node is leader or follower")
+			}
+			nodes = append(nodes, node)
 		}
 	}
+
 	return &nodes
 }
 
