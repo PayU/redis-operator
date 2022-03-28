@@ -198,7 +198,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.Log.Info(fmt.Sprintf("Updated state to: [%s]", clusterState))
 	}
 
-	v, e := r.getRedisPodsView()
+	v, e := r.getRedisPodsViewByIp()
 	if e != nil {
 		println("Error: ", e)
 	} else {

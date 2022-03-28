@@ -351,14 +351,15 @@ func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
 }
 
 // https://redis.io/commands/cluster-nodes
-func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*RedisClusterNodes, string, error) {
+func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*RedisClusterNodes, map[string]*RedisClusterNode, string, error) {
 	args := []string{"-h", nodeIP, "cluster", "nodes"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return nil, "", errors.Errorf("Failed to execute CLUSTER NODES(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+		return nil, nil, "", errors.Errorf("Failed to execute CLUSTER NODES(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-	return NewRedisClusterNodes(stdout), stdout, nil
+	asMap, e := NewRedisClusterNodesAsMap(stdout)
+	return NewRedisClusterNodes(stdout), asMap, stdout, e
 }
 
 // https://redis.io/commands/cluster-myid

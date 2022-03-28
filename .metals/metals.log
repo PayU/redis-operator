@@ -7,3 +7,5 @@
 2022.03.23 10:50:27 WARN  no build tool detected in workspace '/Users/nataliaharoni/Projects/redis-operator'. The most common cause for this problem is that the editor was opened in the wrong working directory, for example if you use sbt then the workspace directory should contain build.sbt. 
 Mar 23, 2022 2:10:09 PM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notify
 INFO: Unsupported notification method: $/setTrace
+Mar 24, 2022 1:02:53 AM org.eclipse.lsp4j.jsonrpc.services.GenericEndpoint notify
+INFO: Unsupported notification method: $/setTrace

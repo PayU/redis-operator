@@ -199,6 +199,59 @@ func NewRedisClusterInfo(rawData string) (*RedisClusterInfo, error) {
 	return &info, nil
 }
 
+func NewRedisClusterNodesAsMap(rawData string) (map[string]*RedisClusterNode, error) {
+	mapById := make(map[string]*RedisClusterNode)
+
+	nodeLines := strings.Split(rawData, "\n")
+	for _, nodeLine := range nodeLines {
+		nodeLine := strings.TrimSpace(nodeLine)
+		nodeInfo := strings.Split(nodeLine, " ")
+		if strings.Contains(nodeInfo[0], ")") { // special case for CLUSTER REPLICAS output
+			nodeInfo = nodeInfo[1:]
+		}
+		if len(nodeInfo) >= 8 {
+
+			node := &RedisClusterNode{
+				ID:          nodeInfo[0],
+				Addr:        nodeInfo[1],
+				Flags:       nodeInfo[2],
+				Leader:      nodeInfo[3],
+				PingSend:    nodeInfo[4],
+				PingRecv:    nodeInfo[5],
+				ConfigEpoch: nodeInfo[6],
+				LinkState:   nodeInfo[7],
+			}
+
+			ipFormat := "\\d+\\.\\d+\\.\\d+\\.\\d+"
+			portFormat := ":\\d+"
+			cPortFormat := "@\\d+"
+			addressFormat := ipFormat + portFormat + cPortFormat
+			if ipCanBeExtracted, _ := regexp.MatchString(addressFormat, node.Addr); ipCanBeExtracted {
+				segments := strings.FieldsFunc(node.Addr, func(r rune) bool {
+					return r == ':' || r == '@'
+				})
+				if len(segments) == 3 {
+					node.IP = segments[0]
+					node.Port = segments[1]
+				}
+			} else {
+				println("Warning, could not extract ip and port out of redis-node address")
+			}
+
+			if strings.Contains(node.Flags, "master") {
+				node.IsLeader = true
+			} else if strings.Contains(node.Flags, "slave") {
+				node.IsLeader = false
+			} else {
+				println("Warning, could not determine if redis-node is leader or follower")
+			}
+			mapById[node.ID] = node
+		}
+	}
+
+	return mapById, nil
+}
+
 // NewRedisClusterNodes is a constructor for RedisClusterNodes
 func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 	nodes := RedisClusterNodes{}

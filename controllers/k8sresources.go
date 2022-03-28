@@ -31,6 +31,7 @@ type RedisPodView struct {
 	IsLeader  bool
 	Followers []string
 	Labels    map[string]string
+	Pod       corev1.Pod
 }
 
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
@@ -289,7 +290,7 @@ func (r *RedisClusterReconciler) getPodsByLabel(key string, val string) ([]corev
 	return pods.Items, e
 }
 
-func (r *RedisClusterReconciler) getRedisPodsView() (RedisPodsView, error) {
+func (r *RedisClusterReconciler) getRedisPodsViewByIp() (RedisPodsView, error) {
 	leaderPods, e := r.getPodsByLabel("redis-node-role", "leader")
 	if e != nil {
 		return nil, e
@@ -298,10 +299,9 @@ func (r *RedisClusterReconciler) getRedisPodsView() (RedisPodsView, error) {
 	if e != nil {
 		return nil, e
 	}
-
-	v := make(map[string]*RedisPodView)
+	viewByName := make(map[string]*RedisPodView)
 	for _, p := range leaderPods {
-		v[p.Status.PodIP] = &RedisPodView{
+		viewByName[p.GetName()] = &RedisPodView{
 			Name:      p.GetName(),
 			Namespace: p.GetNamespace(),
 			IP:        p.Status.PodIP,
@@ -310,10 +310,11 @@ func (r *RedisClusterReconciler) getRedisPodsView() (RedisPodsView, error) {
 			IsLeader:  true,
 			Followers: make([]string, 0),
 			Labels:    p.GetLabels(),
+			Pod:       p,
 		}
 	}
 	for _, p := range followerPods {
-		v[p.Status.PodIP] = &RedisPodView{
+		viewByName[p.GetName()] = &RedisPodView{
 			Name:      p.GetName(),
 			Namespace: p.GetNamespace(),
 			IP:        p.Status.PodIP,
@@ -322,13 +323,17 @@ func (r *RedisClusterReconciler) getRedisPodsView() (RedisPodsView, error) {
 			IsLeader:  false,
 			Followers: make([]string, 0),
 			Labels:    p.GetLabels(),
+			Pod:       p,
 		}
 
-		leaderIP := v[p.Status.PodIP].Leader
-		v[leaderIP].Followers = append(v[leaderIP].Followers, p.GetName())
+		leaderName := viewByName[p.GetName()].Leader
+		viewByName[leaderName].Followers = append(viewByName[leaderName].Followers, p.Status.PodIP)
 	}
-
-	return v, nil
+	viewByIp := make(map[string]*RedisPodView)
+	for _, v := range viewByName {
+		viewByIp[v.IP] = v
+	}
+	return viewByIp, nil
 }
 
 func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisCluster) (*corev1.Service, error) {

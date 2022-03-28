@@ -525,7 +525,7 @@ func execClusterRebalance(testCaseId string, nodeIP string, opt ...string) {
 }
 
 func execClusterNodesTest(testCaseId string, nodeIP string, opt ...string) {
-	_, result, _ := r.ClusterNodes(nodeIP, opt...)
+	_, _, result, _ := r.ClusterNodes(nodeIP, opt...)
 	argMap := make(map[string]string)
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "nodes"}
