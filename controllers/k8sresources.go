@@ -20,18 +20,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type RedisPodsView map[string]*RedisPodView
+type RedisPodsView struct {
+	PodViewByIp    map[string]*RedisPodView
+	PodNameToPodIp map[string]string
+}
 
 type RedisPodView struct {
-	Name      string
-	Namespace string
-	IP        string
-	Phase     string
-	Leader    string
-	IsLeader  bool
-	Followers []string
-	Labels    map[string]string
-	Pod       corev1.Pod
+	Name            string
+	Namespace       string
+	IP              string
+	Phase           string
+	LeaderName      string
+	IsLeader        bool
+	FollowersByName []string
+	Labels          map[string]string
+	Pod             corev1.Pod
 }
 
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
@@ -290,7 +293,11 @@ func (r *RedisClusterReconciler) getPodsByLabel(key string, val string) ([]corev
 	return pods.Items, e
 }
 
-func (r *RedisClusterReconciler) getRedisPodsViewByIp() (RedisPodsView, error) {
+func (r *RedisClusterReconciler) getRedisPodsView() (*RedisPodsView, error) {
+	v := &RedisPodsView{
+		PodViewByIp:    make(map[string]*RedisPodView),
+		PodNameToPodIp: make(map[string]string),
+	}
 	leaderPods, e := r.getPodsByLabel("redis-node-role", "leader")
 	if e != nil {
 		return nil, e
@@ -302,38 +309,37 @@ func (r *RedisClusterReconciler) getRedisPodsViewByIp() (RedisPodsView, error) {
 	viewByName := make(map[string]*RedisPodView)
 	for _, p := range leaderPods {
 		viewByName[p.GetName()] = &RedisPodView{
-			Name:      p.GetName(),
-			Namespace: p.GetNamespace(),
-			IP:        p.Status.PodIP,
-			Phase:     string(p.Status.Phase),
-			Leader:    p.GetName(),
-			IsLeader:  true,
-			Followers: make([]string, 0),
-			Labels:    p.GetLabels(),
-			Pod:       p,
+			Name:            p.GetName(),
+			Namespace:       p.GetNamespace(),
+			IP:              p.Status.PodIP,
+			Phase:           string(p.Status.Phase),
+			LeaderName:      p.GetName(),
+			IsLeader:        true,
+			FollowersByName: make([]string, 0),
+			Labels:          p.GetLabels(),
+			Pod:             p,
 		}
 	}
 	for _, p := range followerPods {
 		viewByName[p.GetName()] = &RedisPodView{
-			Name:      p.GetName(),
-			Namespace: p.GetNamespace(),
-			IP:        p.Status.PodIP,
-			Phase:     string(p.Status.Phase),
-			Leader:    "redis-node-" + p.GetLabels()["leader-number"],
-			IsLeader:  false,
-			Followers: make([]string, 0),
-			Labels:    p.GetLabels(),
-			Pod:       p,
+			Name:            p.GetName(),
+			Namespace:       p.GetNamespace(),
+			IP:              p.Status.PodIP,
+			Phase:           string(p.Status.Phase),
+			LeaderName:      "redis-node-" + p.GetLabels()["leader-number"],
+			IsLeader:        false,
+			FollowersByName: make([]string, 0),
+			Labels:          p.GetLabels(),
+			Pod:             p,
 		}
-
-		leaderName := viewByName[p.GetName()].Leader
-		viewByName[leaderName].Followers = append(viewByName[leaderName].Followers, p.Status.PodIP)
+		leaderName := viewByName[p.GetName()].LeaderName
+		viewByName[leaderName].FollowersByName = append(viewByName[leaderName].FollowersByName, p.Name)
 	}
-	viewByIp := make(map[string]*RedisPodView)
-	for _, v := range viewByName {
-		viewByIp[v.IP] = v
+	for name, p := range viewByName {
+		v.PodViewByIp[p.IP] = p
+		v.PodNameToPodIp[name] = p.IP
 	}
-	return viewByIp, nil
+	return v, nil
 }
 
 func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisCluster) (*corev1.Service, error) {

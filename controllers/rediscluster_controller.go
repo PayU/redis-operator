@@ -198,13 +198,13 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.Log.Info(fmt.Sprintf("Updated state to: [%s]", clusterState))
 	}
 
-	v, e := r.getRedisPodsViewByIp()
+	v, e := r.getRedisPodsView()
 	if e != nil {
 		println("Error: ", e)
 	} else {
-		for key, val := range v {
-			fmt.Printf("Name: %+v\n", key)
-			fmt.Printf("Pods: %+v\n", val)
+		for ip, pod := range v.PodViewByIp {
+			fmt.Printf("Ip: %+v\n", ip)
+			fmt.Printf("Pod: %+v\n", pod)
 		}
 	}
 
