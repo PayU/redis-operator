@@ -838,6 +838,33 @@ func (r *RedisClusterReconciler) updateLeader(redisCluster *dbv1.RedisCluster, l
 	return nil
 }
 
+func (r *RedisClusterReconciler) updateFollower(redisCluster *dbv1.RedisCluster, followerIP string) error {
+	pod, err := r.getPodByIP(redisCluster.Namespace, followerIP)
+	if err != nil {
+		return err
+	}
+
+	deletedPods, err := r.deletePodsByIP(redisCluster.Namespace, followerIP)
+	if err != nil {
+		return err
+	} else {
+		if err := r.waitForPodDelete(deletedPods...); err != nil {
+			return err
+		}
+	}
+
+	if err := r.forgetLostNodes(); err != nil {
+		return err
+	}
+
+	r.Log.Info(fmt.Sprintf("Starting to add follower: (%s %s)", pod.Labels["node-number"], pod.Labels["leader-number"]))
+	if err := r.addFollowers(redisCluster, NodeNumbers{pod.Labels["node-number"], pod.Labels["leader-number"]}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) error {
 	v, e := r.NewRedisClusterView()
 	if e != nil {
@@ -854,7 +881,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 						return errors.New(fmt.Sprintf("Update cluster error: Could not determine if node up to date, pod ip: %+v error: %+v\n", follower.IP, e.Error()))
 					}
 					if !podUpToDate {
-						if e = r.updateFollower(redisCluster, follower.IP); e != nil {
+						if e = r.updateFollower(redisCluster, follower.IP); e != nil { //todo: investigate
 							return errors.New(fmt.Sprintf("Update cluster error: Could not update pod, pod ip: %+v error: %+v\n", follower.IP, e.Error()))
 						}
 					} else {
@@ -1074,7 +1101,7 @@ func (r *RedisClusterReconciler) waitForFailover(failingLeaderName string, v *Cl
 	r.Log.Info(fmt.Sprintf("Waiting for leader [%+v] failover", failingLeaderName))
 	failingLeader, exists := v.ViewByPodName[failingLeaderName]
 	if !exists {
-		return "", errors.New(fmt.Sprintf("Wait for failover error: Could not find failing leader in cluster view map. %+v\n", e.Error()))
+		return "", errors.New(fmt.Sprintf("Wait for failover error: Could not find failing leader in cluster view map. failing leader view: %+v\n", failingLeader))
 	}
 	foundHealthyFollower := false
 	for _, followerName := range failingLeader.FollowersByName {
