@@ -64,7 +64,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView() (*ClusterView, error) {
 	if e != nil {
 		return nil, e
 	}
-	//nodesView := make(map[string]*ClusterNodeView)
+
 	for ip, pod := range podsView.PodViewByIp {
 		_, nodesById, _, e := r.RedisCLI.ClusterNodes(ip)
 		if e != nil {
@@ -134,7 +134,12 @@ func (v *ClusterView) HealthyNodesIPs() []string {
 	return ips
 }
 
-type NodeNumbers [2]string // 0: node number, 1: leader number
+//type NodeNumbers [2]string // 0: node number, 1: leader number
+
+type NodeCreationData struct {
+	NodeCode   string
+	LeaderName string
+}
 
 func (r *RedisClusterReconciler) getLeaderIP(followerIP string) (string, error) {
 	info, _, err := r.RedisCLI.Info(followerIP)
@@ -150,20 +155,7 @@ func (r *RedisClusterReconciler) getRedisNodeNumbersFromIP(namespace string, pod
 	if err != nil {
 		return "", "", err
 	}
-	return pod.Labels["node-number"], pod.Labels["leader-number"], err
-}
-
-// Returns a mapping between node numbers and IPs
-func (r *RedisClusterReconciler) getNodeIPs(redisCluster *dbv1.RedisCluster) (map[string]string, error) {
-	nodeIPs := make(map[string]string)
-	pods, err := r.getRedisClusterPods(redisCluster)
-	if err != nil {
-		return nil, err
-	}
-	for _, pod := range pods {
-		nodeIPs[pod.Labels["node-number"]] = pod.Status.PodIP
-	}
-	return nodeIPs, nil
+	return pod.Labels["node-number"], pod.Labels["leader-name"], err
 }
 
 func (r *RedisClusterReconciler) createNewRedisCluster(redisCluster *dbv1.RedisCluster) error {
@@ -186,17 +178,17 @@ func (r *RedisClusterReconciler) initializeFollowers(redisCluster *dbv1.RedisClu
 	if err != nil {
 		return err
 	}
-
-	var nodeNumbers []NodeNumbers
-	nodeNumber := redisCluster.Spec.LeaderCount // first node numbers are reserved for leaders
+	var nodesData []NodeCreationData
 	for _, leaderPod := range leaderPods {
 		for i := 0; i < redisCluster.Spec.LeaderFollowersCount; i++ {
-			nodeNumbers = append(nodeNumbers, NodeNumbers{strconv.Itoa(nodeNumber), leaderPod.Labels["node-number"]})
-			nodeNumber++
+			nodesData = append(nodesData, NodeCreationData{
+				NodeCode:   strconv.Itoa(i),
+				LeaderName: leaderPod.Name,
+			})
 		}
 	}
 
-	err = r.addFollowers(redisCluster, nodeNumbers...)
+	err = r.addFollowers(redisCluster, nodesData)
 	if err != nil {
 		return err
 	}
@@ -205,6 +197,7 @@ func (r *RedisClusterReconciler) initializeFollowers(redisCluster *dbv1.RedisClu
 	return nil
 }
 
+// todo: leaders & followers flows
 func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisCluster) error {
 	var leaderNumbers []string
 	// leaders are created first to increase the chance they get scheduled on different
@@ -368,34 +361,35 @@ func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster,
 	return nil
 }
 
+// todo: part of naming change
 // Adds one or more follower pods to the cluster
-func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, nodeNumbers ...NodeNumbers) error {
-	if len(nodeNumbers) == 0 {
-		return errors.Errorf("Failed to add followers - no node numbers: (%s)", nodeNumbers)
+func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, nodesData []NodeCreationData) error {
+
+	v, e := r.NewRedisClusterView()
+	if e != nil {
+		return errors.Errorf("Add followers error: could not create cluster view: %v", e.Error())
 	}
 
-	newFollowerPods, err := r.createRedisFollowerPods(redisCluster, nodeNumbers...)
-	if err != nil {
-		return err
-	}
-
-	nodeIPs, err := r.getNodeIPs(redisCluster)
-	if err != nil {
-		return err
-	}
-
-	pods, err := r.waitForPodReady(newFollowerPods...)
-	if err != nil {
-		return err
-	}
-
-	for _, followerPod := range pods {
-		if err := r.waitForRedis(followerPod.Status.PodIP); err != nil {
+	if len(nodesData) > 0 {
+		newFollowerPods, err := r.createRedisFollowerPods(redisCluster, nodesData)
+		if err != nil {
 			return err
 		}
-		r.Log.Info(fmt.Sprintf("Replicating: %s %s", followerPod.Name, "redis-node-"+followerPod.Labels["leader-number"]))
-		if err = r.replicateLeader(followerPod.Status.PodIP, nodeIPs[followerPod.Labels["leader-number"]]); err != nil {
+
+		pods, err := r.waitForPodReady(newFollowerPods...)
+		if err != nil {
 			return err
+		}
+
+		for _, followerPod := range pods {
+			if err := r.waitForRedis(followerPod.Status.PodIP); err != nil {
+				return err
+			}
+			leaderName := followerPod.Labels["leader-name"]
+			r.Log.Info(fmt.Sprintf("Replicating: %s %s", followerPod.Name, leaderName))
+			if err = r.replicateLeader(followerPod.Status.PodIP, v.ViewByPodName[leaderName].IP); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
