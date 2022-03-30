@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,34 +18,12 @@ import (
 	clusterData "github.com/PayU/redis-operator/data"
 )
 
-var EMPTY struct{}
-
-// Representation of a cluster, each element contains information about a leader
-type RedisClusterView []LeaderNode
-
 type ClusterView struct {
 	ViewByPodName    map[string]*ClusterNodeView
 	RedisIdToPodName map[string]string
 }
 
-type LeaderNode struct {
-	Pod         *corev1.Pod
-	NodeNumber  string
-	RedisID     string
-	Failed      bool
-	Terminating bool
-	Followers   []FollowerNode
-}
-
-type FollowerNode struct {
-	Pod          *corev1.Pod
-	NodeNumber   string
-	LeaderNumber string
-	RedisID      string
-	Failed       bool
-	Terminating  bool
-}
-
+// todo: remove
 type RedisNodePodView struct {
 	RedisNodeId string
 	IP          string
@@ -76,52 +53,6 @@ type ClusterScaleView struct {
 	NewFollowersPreLeaderCount     int
 	NewPodCount                    int
 	PodIndexToPodView              map[string]*RedisNodePodView
-}
-
-// In-place sort of a cluster view - ascending alphabetical order by node number
-func (v *RedisClusterView) Sort() {
-	sort.Slice(*v, func(i, j int) bool {
-		return (*v)[i].NodeNumber < (*v)[j].NodeNumber
-	})
-	for _, leader := range *v {
-		sort.Slice(leader.Followers, func(i, j int) bool {
-			return leader.Followers[i].NodeNumber < leader.Followers[j].NodeNumber
-		})
-	}
-}
-
-func (v *RedisClusterView) String() string {
-	result := ""
-	for _, leader := range *v {
-		leaderStatus := "ok"
-		leaderPodStatus := "up"
-		if leader.Pod == nil {
-			leaderPodStatus = "down"
-		} else if leader.Terminating {
-			leaderPodStatus = "terminating"
-		}
-		if leader.Failed {
-			leaderStatus = "fail"
-		}
-		result = result + fmt.Sprintf("Leader: %s(%s,%s)-[", leader.NodeNumber, leaderPodStatus, leaderStatus)
-		if leader.Followers != nil && len(leader.Followers) > 0 {
-			for _, follower := range leader.Followers {
-				status := "ok"
-				podStatus := "up"
-				if follower.Pod == nil {
-					podStatus = "down"
-				} else if follower.Terminating {
-					podStatus = "terminating"
-				}
-				if follower.Failed {
-					status = "fail"
-				}
-				result = result + fmt.Sprintf("%s(%s,%s)", follower.NodeNumber, podStatus, status)
-			}
-		}
-		result += "]"
-	}
-	return result
 }
 
 func (r *RedisClusterReconciler) NewRedisClusterView() (*ClusterView, error) {
@@ -191,104 +122,6 @@ func (r *RedisClusterReconciler) NewRedisClusterView() (*ClusterView, error) {
 		}
 	}
 	return v, nil
-}
-
-func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCluster) (*RedisClusterView, error) {
-	var cv RedisClusterView
-
-	pods, err := r.getRedisClusterPods(redisCluster)
-	if err != nil {
-		return nil, err
-	}
-
-	followerCounter := redisCluster.Spec.LeaderCount
-	for i := 0; i < redisCluster.Spec.LeaderCount; i++ {
-		leader := LeaderNode{Pod: nil, NodeNumber: strconv.Itoa(i), RedisID: "", Failed: true, Terminating: false, Followers: nil}
-		for j := 0; j < redisCluster.Spec.LeaderFollowersCount; j++ {
-			follower := FollowerNode{Pod: nil, NodeNumber: strconv.Itoa(followerCounter), LeaderNumber: strconv.Itoa(i), RedisID: "", Failed: true, Terminating: false}
-			leader.Followers = append(leader.Followers, follower)
-			followerCounter++
-		}
-		cv = append(cv, leader)
-	}
-
-	for i, pod := range pods {
-		nn, err := strconv.Atoi(pod.Labels["node-number"])
-		if err != nil {
-			return nil, errors.Errorf("Failed to parse node-number label: %s (%s)", pod.Labels["node-number"], pod.Name)
-		}
-		ln, err := strconv.Atoi(pod.Labels["leader-number"])
-		if err != nil {
-			return nil, errors.Errorf("Failed to parse leader-number label: %s (%s)", pod.Labels["leader-number"], pod.Name)
-		}
-		if nn == ln {
-			cv[ln].Pod = &pods[i]
-			cv[ln].NodeNumber = pod.Labels["node-number"]
-			if pod.ObjectMeta.DeletionTimestamp != nil {
-				cv[ln].Terminating = true
-			} else {
-				if pod.Status.PodIP != "" {
-					clusterInfo, _, err := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
-					if err == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] == "ok" {
-						cv[ln].Failed = false
-					}
-				}
-			}
-		} else {
-			index := (nn - redisCluster.Spec.LeaderCount) % redisCluster.Spec.LeaderFollowersCount
-			cv[ln].Followers[index].Pod = &pods[i]
-			cv[ln].Followers[index].NodeNumber = pod.Labels["node-number"]
-			cv[ln].Followers[index].LeaderNumber = pod.Labels["leader-number"]
-			if pod.ObjectMeta.DeletionTimestamp != nil {
-				cv[ln].Followers[index].Terminating = true
-			} else {
-				if pod.Status.PodIP != "" {
-					clusterInfo, _, err := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
-					if err == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] == "ok" {
-						cv[ln].Followers[index].Failed = false
-					}
-				}
-			}
-		}
-	}
-	return &cv, nil
-}
-
-// Returns a list with all the IPs of the Redis nodes
-func (v *RedisClusterView) IPs() []string {
-	var ips []string
-	for _, leader := range *v {
-		if leader.Pod != nil {
-			ips = append(ips, leader.Pod.Status.PodIP)
-		}
-		if leader.Followers != nil && len(leader.Followers) > 0 {
-			for _, follower := range leader.Followers {
-				if follower.Pod != nil {
-					ips = append(ips, follower.Pod.Status.PodIP)
-				}
-			}
-		}
-	}
-	return ips
-}
-
-// Returns a list with all the IPs of the Redis nodes that are healthy
-// A nod eis healthy if Redis can be reached and is in cluster mode
-func (r *RedisClusterView) HealthyNodeIPs() []string {
-	var ips []string
-	for _, leader := range *r {
-		if leader.Pod != nil && !(leader.Failed || leader.Terminating) {
-			ips = append(ips, leader.Pod.Status.PodIP)
-		}
-		if leader.Followers != nil && len(leader.Followers) > 0 {
-			for _, follower := range leader.Followers {
-				if follower.Pod != nil && !(follower.Failed || follower.Terminating) {
-					ips = append(ips, follower.Pod.Status.PodIP)
-				}
-			}
-		}
-	}
-	return ips
 }
 
 func (v *ClusterView) HealthyNodesIPs() []string {
@@ -1097,6 +930,8 @@ func (r *RedisClusterReconciler) waitForManualFailover(podIP string) error {
 	})
 }
 
+// Waits for Redis to pick a new leader
+// Returns the IP of the promoted follower
 func (r *RedisClusterReconciler) waitForFailover(failingLeaderName string, v *ClusterView) (string, error) {
 	r.Log.Info(fmt.Sprintf("Waiting for leader [%+v] failover", failingLeaderName))
 	failingLeader, exists := v.ViewByPodName[failingLeaderName]
@@ -1133,47 +968,6 @@ func (r *RedisClusterReconciler) waitForFailover(failingLeaderName string, v *Cl
 	})
 
 	return "", nil
-}
-
-// Waits for Redis to pick a new leader
-// Returns the IP of the promoted follower
-func (r *RedisClusterReconciler) waitForFailover2(redisCluster *dbv1.RedisCluster, leader *LeaderNode) (string, error) {
-	r.Log.Info(fmt.Sprintf("Waiting for leader [%s] failover", leader.NodeNumber))
-	failedFollowers := 0
-	var promotedFollowerIP string
-
-	if leader.Followers != nil && len(leader.Followers) > 0 {
-		for _, follower := range leader.Followers {
-			if follower.Failed {
-				failedFollowers++
-			}
-		}
-	}
-
-	if failedFollowers == redisCluster.Spec.LeaderFollowersCount {
-		return "", errors.Errorf("Failing leader [%s] lost all followers. Recovery unsupported.", leader.NodeNumber)
-	}
-
-	return promotedFollowerIP, wait.PollImmediate(3*r.Config.Times.RedisAutoFailoverCheckInterval, 5*r.Config.Times.RedisAutoFailoverCheckTimeout, func() (bool, error) {
-		if leader.Followers != nil && len(leader.Followers) > 0 {
-			for _, follower := range leader.Followers {
-				if follower.Failed {
-					continue
-				}
-
-				info, _, err := r.RedisCLI.Info(follower.Pod.Status.PodIP)
-				if err != nil {
-					continue
-				}
-
-				if info.Replication["role"] == "master" {
-					promotedFollowerIP = follower.Pod.Status.PodIP
-					return true, nil
-				}
-			}
-		}
-		return false, nil
-	})
 }
 
 func (r *RedisClusterReconciler) isPodUpToDate(redisCluster *dbv1.RedisCluster, pod *corev1.Pod) (bool, error) {
