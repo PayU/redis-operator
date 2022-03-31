@@ -222,8 +222,10 @@ func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.Redi
 }
 
 func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, nodeNumber string) (corev1.Pod, error) {
+	role := "leader"
+	leaderName := "node-" + nodeNumber
 	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
-	pod := r.makeRedisPod(redisCluster, "leader", "node-"+nodeNumber, nodeNumber, preferredLabelSelectorRequirement, true)
+	pod := r.makeRedisPod(redisCluster, role, leaderName, nodeNumber, preferredLabelSelectorRequirement, true)
 
 	if err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme); err != nil {
 		return pod, err
@@ -233,36 +235,34 @@ func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, 
 
 // Creates one or more leader pods; waits for available IP before returning
 func (r *RedisClusterReconciler) CreateRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNumbers ...string) ([]corev1.Pod, error) {
-
-	if len(nodeNumbers) == 0 {
-		return nil, errors.New("Failed to create leader pods - no node numbers")
-	}
-
+	var e error
 	var leaderPods []corev1.Pod
-	for _, nodeNumber := range nodeNumbers {
-		pod, err := r.makeLeaderPod(redisCluster, nodeNumber)
-		if err != nil {
-			return nil, err
+	if len(nodeNumbers) > 0 {
+		for _, nodeNumber := range nodeNumbers {
+			pod, e := r.makeLeaderPod(redisCluster, nodeNumber)
+			if e != nil {
+				return nil, errors.Errorf("Create redis leader pods error: Could not create pod %+v. %+v", nodeNumber, e.Error())
+			}
+			leaderPods = append(leaderPods, pod)
 		}
-		leaderPods = append(leaderPods, pod)
-	}
 
-	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
+		applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
-	for i := range leaderPods {
-		err := r.Create(context.Background(), &leaderPods[i], applyOpts...)
-		if err != nil && !apierrors.IsAlreadyExists(err) && !apierrors.IsConflict(err) {
-			return nil, err
+		for i, pod := range leaderPods {
+			e := r.Create(context.Background(), &leaderPods[i], applyOpts...)
+			if e != nil && !apierrors.IsAlreadyExists(e) && !apierrors.IsConflict(e) {
+				return nil, errors.Errorf("Create redis leader pods error: Could not validate pod creation %+v. %+v", pod.Name, e.Error())
+			}
 		}
-	}
 
-	leaderPods, err := r.waitForPodNetworkInterface(leaderPods...)
-	if err != nil {
-		return nil, err
-	}
+		leaderPods, e = r.waitForPodNetworkInterface(leaderPods...)
+		if e != nil {
+			return nil, errors.Errorf("Create redis leader pods error: Could not wait for pod creation %+v. %+v", leaderPods, e.Error())
+		}
 
-	r.Log.Info(fmt.Sprintf("New leader pods created: %v ", nodeNumbers))
-	return leaderPods, nil
+		r.Log.Info(fmt.Sprintf("New leader pods created: %v ", nodeNumbers))
+	}
+	return leaderPods, e
 }
 
 func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (corev1.Service, error) {
@@ -329,7 +329,7 @@ func (r *RedisClusterReconciler) getRedisPodsView() (*RedisPodsView, error) {
 			Namespace:       p.GetNamespace(),
 			IP:              p.Status.PodIP,
 			Phase:           string(p.Status.Phase),
-			LeaderName:      "redis-node-" + p.GetLabels()["leader-number"],
+			LeaderName:      p.GetLabels()["leader-name"],
 			IsLeader:        false,
 			FollowersByName: make([]string, 0),
 			Labels:          p.GetLabels(),

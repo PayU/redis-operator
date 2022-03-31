@@ -386,7 +386,7 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 				return err
 			}
 			leaderName := followerPod.Labels["leader-name"]
-			r.Log.Info(fmt.Sprintf("Replicating: %s %s", followerPod.Name, leaderName))
+			r.Log.Info(fmt.Sprintf("Replicating: follower %s leader %s", followerPod.Name, leaderName))
 			if err = r.replicateLeader(followerPod.Status.PodIP, v.ViewByPodName[leaderName].IP); err != nil {
 				return err
 			}
@@ -598,7 +598,7 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 
 	for _, node := range v.ViewByPodName {
 		if node.IsLeader {
-			var lostFollowers []*ClusterNodeView
+			var lostFollowers []NodeCreationData
 			var failingFollowersIps []string
 			var terminatingFollowersPods []corev1.Pod
 
@@ -609,7 +609,10 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 				} else if follower.Status == "Failing" {
 					failingFollowersIps = append(failingFollowersIps, follower.IP)
 				} else if !follower.IsReachable {
-					lostFollowers = append(lostFollowers, follower)
+					lostFollowers = append(lostFollowers, NodeCreationData{
+						NodeCode:   strings.Split(followerName, "-")[2],
+						LeaderName: node.Name,
+					})
 				}
 			}
 
@@ -624,7 +627,7 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 				if err := r.forgetLostNodes(); err != nil {
 					return err
 				}
-				if err := r.addFollowers(redisCluster); err != nil { // todo: understand what happens here, decouple dependency
+				if err := r.addFollowers(redisCluster, lostFollowers); err != nil {
 					return err
 				}
 			}
@@ -684,8 +687,12 @@ func (r *RedisClusterReconciler) updateFollower(redisCluster *dbv1.RedisCluster,
 		return err
 	}
 
-	r.Log.Info(fmt.Sprintf("Starting to add follower: (%s %s)", pod.Labels["node-number"], pod.Labels["leader-number"]))
-	if err := r.addFollowers(redisCluster, NodeNumbers{pod.Labels["node-number"], pod.Labels["leader-number"]}); err != nil {
+	r.Log.Info(fmt.Sprintf("Starting to add follower: (%s-%s)", pod.Labels["leader-name"], pod.Labels["node-number"]))
+	nodeData := []NodeCreationData{NodeCreationData{
+		NodeCode:   pod.Labels["node-number"],
+		LeaderName: pod.Labels["leader-name"],
+	}}
+	if err := r.addFollowers(redisCluster, nodeData); err != nil {
 		return err
 	}
 
