@@ -159,6 +159,7 @@ func (r *RedisClusterReconciler) initializeFollowers(redisCluster *dbv1.RedisClu
 	if err != nil {
 		return err
 	}
+	fmt.Println("Got leaders list")
 	var nodesData []NodeCreationData
 	for _, leaderPod := range leaderPods {
 		for i := 1; i <= redisCluster.Spec.LeaderFollowersCount; i++ {
@@ -168,7 +169,7 @@ func (r *RedisClusterReconciler) initializeFollowers(redisCluster *dbv1.RedisClu
 			})
 		}
 	}
-
+	fmt.Println("Nodes data: %+v\n", nodesData)
 	err = r.addFollowers(redisCluster, nodesData)
 	if err != nil {
 		return err
@@ -349,24 +350,28 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 	}
 
 	if len(nodesData) > 0 {
-		newFollowerPods, err := r.createRedisFollowerPods(redisCluster, nodesData)
-		if err != nil {
-			return err
-		}
+		for _, nodeData := range nodesData {
+			if _, exists := v.ViewByPodName[nodeData.NodeName]; !exists {
+				newFollowerPods, err := r.createRedisFollowerPods(redisCluster, nodesData)
+				if err != nil {
+					return err
+				}
 
-		pods, err := r.waitForPodReady(newFollowerPods...)
-		if err != nil {
-			return err
-		}
+				pods, err := r.waitForPodReady(newFollowerPods...)
+				if err != nil {
+					return err
+				}
 
-		for _, followerPod := range pods {
-			if err := r.waitForRedis(followerPod.Status.PodIP); err != nil {
-				return err
-			}
-			leaderName := followerPod.Labels["leader-name"]
-			r.Log.Info(fmt.Sprintf("Replicating: follower %s leader %s", followerPod.Name, leaderName))
-			if err = r.replicateLeader(followerPod.Status.PodIP, v.ViewByPodName[leaderName].IP); err != nil {
-				return err
+				for _, followerPod := range pods {
+					if err := r.waitForRedis(followerPod.Status.PodIP); err != nil {
+						return err
+					}
+					leaderName := followerPod.Labels["leader-name"]
+					r.Log.Info(fmt.Sprintf("Replicating: follower %s leader %s", followerPod.Name, leaderName))
+					if err = r.replicateLeader(followerPod.Status.PodIP, v.ViewByPodName[leaderName].IP); err != nil {
+						return err
+					}
+				}
 			}
 		}
 	}
@@ -694,7 +699,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	if e != nil {
 		return errors.New(fmt.Sprintf("Update cluster error: Could not get cluster view, %+v\n", e.Error()))
 	}
-	r.Log.Info(fmt.Sprintf("Cluster view: %+v\n", v))
+	r.Log.Info(fmt.Sprintf("Cluster view: %+v\n", v.ToPrintableFormat()))
 	r.Log.Info("Updating...")
 	for _, node := range v.ViewByPodName {
 		if node.IsReachable && node.IsLeader {
