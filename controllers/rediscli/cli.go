@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	defaultRedisCliTimeout        = 20 * time.Second
-	REDIS_DEFAULT_PORT     string = "6379"
+	defaultRedisCliTimeout           = 20 * time.Second
+	REDIS_DEFAULT_PORT        string = "6379"
+	REDIS_DEFAULT_PORT_AS_INT int    = 6379
 )
 
 type RedisAuth struct {
@@ -31,18 +32,20 @@ type CommandHandler interface {
 type RunTimeCommandHandler struct{}
 
 type RedisCLI struct {
-	Log     logr.Logger
-	Auth    *RedisAuth
-	Port    string
-	Handler CommandHandler
+	Log       logr.Logger
+	Auth      *RedisAuth
+	Port      string
+	PortAsInt int
+	Handler   CommandHandler
 }
 
 func NewRedisCLI(log *logr.Logger) *RedisCLI {
 	return &RedisCLI{
-		Log:     *log,
-		Auth:    nil,
-		Port:    REDIS_DEFAULT_PORT,
-		Handler: &RunTimeCommandHandler{},
+		Log:       *log,
+		Auth:      nil,
+		Port:      REDIS_DEFAULT_PORT,
+		PortAsInt: REDIS_DEFAULT_PORT_AS_INT,
+		Handler:   &RunTimeCommandHandler{},
 	}
 }
 

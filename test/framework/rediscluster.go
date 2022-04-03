@@ -138,7 +138,7 @@ func (f *Framework) PopulateDatabase(keyCount int, keyName string, keySize int) 
 				}
 			}(strconv.Itoa(keyCount), keyName, strconv.Itoa(keySize), leaderPods.Items[i], &wg)
 		} else {
-			fmt.Printf("Node %s had no IP\n", leaderPod.Labels["node-number"])
+			fmt.Printf("Node %s had no IP\n", leaderPod.Labels["node-name"])
 		}
 	}
 

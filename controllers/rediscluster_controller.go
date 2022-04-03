@@ -98,8 +98,7 @@ func (r *RedisClusterReconciler) handleInitializingFollowers(redisCluster *dbv1.
 func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluster) error {
 	complete, err := r.isClusterComplete(redisCluster)
 	if err != nil {
-		r.Log.Info("Could not check if cluster is complete")
-		return err
+		r.Log.Info("Error occurred during check if cluster complete, setting status as recovering")
 	}
 	if !complete {
 		redisCluster.Status.ClusterState = string(Recovering)
@@ -204,7 +203,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	} else {
 		for ip, pod := range v.PodViewByIp {
 			fmt.Printf("Ip: %+v\n", ip)
-			fmt.Printf("Pod: %+v\n", pod)
+			fmt.Printf("Pod: %+v\n", pod.Name)
 		}
 	}
 

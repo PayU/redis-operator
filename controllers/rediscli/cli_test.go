@@ -61,7 +61,7 @@ var t *testing.T
 
 func TestRedisCLI(test *testing.T) {
 	auth := &RedisAuth{"test_user"}
-	r = &RedisCLI{nil, auth, "6380", nil}
+	r = &RedisCLI{nil, auth, "6380", 6380, nil}
 	r.Handler = &TestCommandHandler{}
 	t = test
 
