@@ -20,6 +20,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// func exponentialRetry(attempts int, sleep time.Duration, fn func() error) error {
+// 	if e := fn(); e != nil {
+// 		if stop, ok := e.(error); ok {
+// 			return stop
+// 		}
+// 		if attempts--; attempts > 0 {
+// 			time.Sleep(sleep)
+// 			return exponentialRetry(attempts, 2*sleep, fn)
+// 		}
+// 		return e
+// 	}
+// 	return nil
+// }
+
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
 	matchingLabels := redisCluster.Spec.PodLabelSelector
@@ -126,7 +140,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 				affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution, requiredPodAffinityTerm)
 		}
 
-		prefferedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
+		preferredPodAffinityTerm := corev1.WeightedPodAffinityTerm{
 			Weight: 100,
 			PodAffinityTerm: corev1.PodAffinityTerm{
 				LabelSelector: &metav1.LabelSelector{
@@ -137,10 +151,10 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 		}
 
 		if affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
-			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{prefferedPodAffinityTerm}
+			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{preferredPodAffinityTerm}
 		} else {
 			affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
-				affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, prefferedPodAffinityTerm)
+				affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, preferredPodAffinityTerm)
 		}
 	}
 
@@ -211,7 +225,7 @@ func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, 
 	return pod, nil
 }
 
-// Creates one or more leader pods; waits for available IP before returing
+// Creates one or more leader pods; waits for available IP before returning
 func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNumbers ...string) ([]corev1.Pod, error) {
 
 	if len(nodeNumbers) == 0 {
@@ -290,7 +304,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 			return nil, err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
-		if pollErr := wait.PollImmediate(r.Config.Times.PodReadyCheckInterval, r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(5*r.Config.Times.PodReadyCheckInterval, 5*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return false, err
@@ -318,7 +332,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(r.Config.Times.PodNetworkCheckInterval, r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(5*r.Config.Times.PodNetworkCheckInterval, 5*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil
@@ -345,7 +359,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 			return err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
-		if pollErr := wait.Poll(r.Config.Times.PodDeleteCheckInterval, r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
+		if pollErr := wait.Poll(5*r.Config.Times.PodDeleteCheckInterval, 5*r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &p)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
