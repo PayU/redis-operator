@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
@@ -50,12 +49,7 @@ func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisClu
 		return nil, err
 	}
 
-	sortedPods := pods.Items
-	sort.Slice(sortedPods, func(i, j int) bool {
-		return pods.Items[i].Labels["node-number"] < pods.Items[j].Labels["node-number"]
-	})
-
-	return sortedPods, nil
+	return pods.Items, nil
 }
 
 func (r *RedisClusterReconciler) getPodByIP(namespace string, podIP string) (corev1.Pod, error) {
