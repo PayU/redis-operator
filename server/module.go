@@ -17,18 +17,18 @@ type ResponseRedisClusterView struct {
 
 type ResponseLeaderNode struct {
 	PodIp       string
-	NodeNumber  string
+	NodeName    string
 	Failed      bool
 	Terminating bool
 	Followers   []ResponseFollowerNode
 }
 
 type ResponseFollowerNode struct {
-	PodIp        string
-	NodeNumber   string
-	LeaderNumber string
-	Failed       bool
-	Terminating  bool
+	PodIp       string
+	NodeName    string
+	LeaderName  string
+	Failed      bool
+	Terminating bool
 }
 
 func clusterInfo(c echo.Context) error {
@@ -52,18 +52,18 @@ func clusterInfo(c echo.Context) error {
 		ResponseRedisClusterView.Nodes[i] = ResponseLeaderNode{
 			Followers:   make([]ResponseFollowerNode, len(leaderNode.Followers)),
 			PodIp:       ip,
-			NodeNumber:  leaderNode.NodeNumber,
+			NodeName:    leaderNode.NodeName,
 			Failed:      leaderNode.Failed,
 			Terminating: leaderNode.Terminating,
 		}
 		for j, follower := range leaderNode.Followers {
 			followerIp := getIP(follower.Pod)
 			ResponseRedisClusterView.Nodes[i].Followers[j] = ResponseFollowerNode{
-				PodIp:        followerIp,
-				NodeNumber:   follower.NodeNumber,
-				LeaderNumber: follower.LeaderNumber,
-				Failed:       follower.Failed,
-				Terminating:  leaderNode.Terminating,
+				PodIp:       followerIp,
+				NodeName:    follower.NodeName,
+				LeaderName:  follower.LeaderName,
+				Failed:      follower.Failed,
+				Terminating: leaderNode.Terminating,
 			}
 		}
 	}

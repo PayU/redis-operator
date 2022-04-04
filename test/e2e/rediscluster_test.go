@@ -1,3 +1,4 @@
+//go:build e2e_redis_op
 // +build e2e_redis_op
 
 package e2e
@@ -117,23 +118,23 @@ func makeAZMap(ctx *framework.TestCtx, t *testing.T, config TestConfig) map[stri
 		}
 
 		for _, pod := range leaders.Items {
-			group, found := az[pod.Labels["leader-number"]]
+			group, found := az[pod.Labels["leader-name"]]
 			if !found {
 				group = []*corev1.Pod{&pod}
 			} else {
 				group = append(group, &pod)
 			}
-			az[pod.Labels["leader-number"]] = group
+			az[pod.Labels["leader-name"]] = group
 		}
 
 		for _, pod := range followers.Items {
-			group, found := az[pod.Labels["leader-number"]]
+			group, found := az[pod.Labels["leader-name"]]
 			if !found {
 				group = []*corev1.Pod{&pod}
 			} else {
 				group = append(group, &pod)
 			}
-			az[pod.Labels["leader-number"]] = group
+			az[pod.Labels["leader-name"]] = group
 		}
 
 		azMap[node.Labels[zoneLabel]] = az
