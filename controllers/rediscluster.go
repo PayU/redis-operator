@@ -413,7 +413,7 @@ func (r *RedisClusterReconciler) forgetLostNodes() error {
 		e = r.forgetNode(reachableNodesIPs, node.ID)
 	}
 
-	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "")
+	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "\n")
 	clusterData.SaveRedisClusterView(data)
 	return e
 }
@@ -633,7 +633,7 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 	if err != nil || !complete {
 		return errors.Errorf("Cluster recovery not complete")
 	}
-	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "")
+	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "\n")
 	clusterData.SaveRedisClusterView(data)
 	return nil
 }
@@ -744,7 +744,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	if e = r.cleanupNodeList(v.HealthyNodesIPs()); e != nil {
 		return errors.New(fmt.Sprintf("Update cluster error: Could not get healthy nodes ips, error: %+v\n", e.Error()))
 	}
-	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "")
+	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "\n")
 	clusterData.SaveRedisClusterView(data)
 	return nil
 }
@@ -999,6 +999,8 @@ func (r *RedisClusterReconciler) isClusterUpToDate(redisCluster *dbv1.RedisClust
 
 func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisCluster) (bool, error) {
 	v, e := r.NewRedisClusterView()
+	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "\n")
+	clusterData.SaveRedisClusterView(data)
 	if e != nil {
 		return false, errors.New(fmt.Sprintf("Is cluster complete error: Could not get cluster view, %+v\n", e.Error()))
 	}
@@ -1008,10 +1010,6 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 			return false, nil
 		}
 	}
-
-	data, _ := json.MarshalIndent(v.ToPrintableFormat(), "", "")
-	clusterData.SaveRedisClusterView(data)
-
 	return true, nil
 }
 

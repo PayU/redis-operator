@@ -291,10 +291,12 @@ func (r *RedisClusterReconciler) getRedisPodsView() (*RedisPodsView, error) {
 	if e != nil {
 		return nil, e
 	}
+	println("Got leaders")
 	followerPods, e := r.getPodsByLabel("redis-node-role", "follower")
 	if e != nil {
 		return nil, e
 	}
+	println("Got followers")
 	viewByName := make(map[string]*RedisPodView)
 	for _, p := range leaderPods {
 		viewByName[p.GetName()] = &RedisPodView{
@@ -309,6 +311,7 @@ func (r *RedisClusterReconciler) getRedisPodsView() (*RedisPodsView, error) {
 			Pod:             p,
 		}
 	}
+	println("Filled leaders")
 	for _, p := range followerPods {
 		viewByName[p.GetName()] = &RedisPodView{
 			Name:            p.GetName(),
@@ -324,10 +327,12 @@ func (r *RedisClusterReconciler) getRedisPodsView() (*RedisPodsView, error) {
 		leaderName := viewByName[p.GetName()].LeaderName
 		viewByName[leaderName].FollowersByName = append(viewByName[leaderName].FollowersByName, p.Name)
 	}
+	println("Filled followers")
 	for name, p := range viewByName {
 		v.PodViewByIp[p.IP] = p
 		v.PodNameToPodIp[name] = p.IP
 	}
+	println("Linked followers to leaders lists")
 	return v, nil
 }
 
