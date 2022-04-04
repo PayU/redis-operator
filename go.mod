@@ -1,6 +1,6 @@
 module github.com/PayU/redis-operator
 
-go 1.16
+go 1.15
 
 require (
 	github.com/go-logr/logr v0.1.0

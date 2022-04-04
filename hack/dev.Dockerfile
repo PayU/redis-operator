@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.16 as builder
+FROM golang:1.15 as builder
 
 # Package used to track changes to the source code and autocompile
 RUN go get github.com/githubnemo/CompileDaemon
