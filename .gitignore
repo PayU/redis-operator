@@ -25,6 +25,7 @@ bin
 *.swp
 *.swo
 *~
+.metals*
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
