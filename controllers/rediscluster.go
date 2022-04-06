@@ -15,6 +15,7 @@ import (
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
 	rediscli "github.com/PayU/redis-operator/controllers/rediscli"
+	"github.com/PayU/redis-operator/controllers/view"
 	clusterData "github.com/PayU/redis-operator/data"
 )
 
@@ -71,6 +72,56 @@ func (v *RedisClusterView) String() string {
 		result += "]"
 	}
 	return result
+}
+
+func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCluster) (*view.RedisClusterView, error) {
+	v := &view.RedisClusterView{
+		PodsViewByName:  make(map[string]*view.PodView),
+		NodeIdToPodName: make(map[string]string),
+	}
+	pods, e := r.getRedisClusterPods(redisCluster)
+	if e != nil {
+		// wait & retry
+	}
+	for _, pod := range pods {
+		node := &view.PodView{
+			Name:              pod.Name,
+			NodeId:            "",
+			Namespace:         pod.Namespace,
+			Ip:                pod.Status.PodIP,
+			LeaderName:        pod.Labels["leader-name"],
+			IsLeader:          pod.Labels["redis-node-role"] == "leader",
+			IsReachable:       false,
+			ClusterNodesTable: make(map[string]*view.TableNodeView),
+			FollowersByName:   make([]string, 0),
+			Pod:               pod,
+		}
+		v.PodsViewByName[node.Name] = node
+		if node.NodeId, e = r.RedisCLI.MyClusterID(node.Ip); e != nil {
+			continue
+		}
+		node.IsReachable = true
+		v.NodeIdToPodName[node.NodeId] = node.Name
+		clusterNodes, _, e := r.RedisCLI.ClusterNodes(node.Ip)
+		if e != nil {
+			node.IsReachable = false
+			continue
+		}
+		for _, clusterNode := range *clusterNodes {
+			tableNode := &view.TableNodeView{
+				Id:          clusterNode.ID,
+				LeaderId:    clusterNode.Leader,
+				IsLeader:    strings.Contains(clusterNode.Flags, "master"),
+				IsReachable: true,
+			}
+			node.ClusterNodesTable[clusterNode.ID] = tableNode
+			ip := strings.Split(clusterNode.Addr, ":")[0]
+			if _, e = r.RedisCLI.MyClusterID(ip); e != nil {
+				tableNode.IsReachable = false
+			}
+		}
+	}
+	return v, nil
 }
 
 func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisCluster) (*RedisClusterView, error) {
@@ -239,14 +290,14 @@ func (r *RedisClusterReconciler) initializeFollowers(redisCluster *dbv1.RedisClu
 }
 
 func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisCluster) error {
-	var leaderNumbers []string
+	var leaderNames []string
 	// leaders are created first to increase the chance they get scheduled on different
 	// AZs when using soft affinity rules
 	for leaderNumber := 0; leaderNumber < redisCluster.Spec.LeaderCount; leaderNumber++ {
-		leaderNumbers = append(leaderNumbers, strconv.Itoa(leaderNumber))
+		leaderNames = append(leaderNames, "redis-node-"+strconv.Itoa(leaderNumber))
 	}
 
-	newLeaderPods, err := r.createRedisLeaderPods(redisCluster, leaderNumbers...)
+	newLeaderPods, err := r.createRedisLeaderPods(redisCluster, leaderNames...)
 	if err != nil {
 		return err
 	}
@@ -443,6 +494,41 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		return err
 	}
 
+	// Getting new cluster view
+	clusterView2, e := r.NewRedisClusterView2(redisCluster)
+	if e != nil {
+		println("Cloud not retrieve new cluster view")
+		return e
+	}
+
+	healthyNodesIps2 := make(map[string]string, 0)
+	lostNodesIds2 := make(map[string]string, 0)
+	for _, node := range clusterView2.PodsViewByName {
+		if !node.IsReachable {
+			lostNodesIds2[node.NodeId] = ""
+			continue
+		}
+		for _, tableNode := range node.ClusterNodesTable {
+			// If the tableNode is non existing pod or is non reachable pod it need to be forgotten
+			id := clusterView2.NodeIdToPodName[tableNode.Id]
+			if _, existsInMap := clusterView2.PodsViewByName[id]; !existsInMap && !tableNode.IsReachable {
+				lostNodesIds2[tableNode.Id] = ""
+				continue
+			}
+			// If the current node recognize tableNode that doesn't recognize back, than this current node (table owner) need to be forgotten
+			recognizedNode := clusterView2.PodsViewByName[id]
+			if _, recognizeBack := recognizedNode.ClusterNodesTable[node.NodeId]; !recognizeBack {
+				lostNodesIds2[node.NodeId] = ""
+				break
+			}
+		}
+	}
+	for _, pod := range clusterView2.PodsViewByName {
+		if _, lost := lostNodesIds2[pod.NodeId]; !lost {
+			healthyNodesIps2[pod.Ip] = ""
+		}
+	}
+
 	lostNodeIDSet := make(map[string]struct{})
 	nodeMap := make(map[string]string)
 
@@ -477,6 +563,18 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 			}
 		}
 	}
+
+	println("New cluster view: %+v\n", clusterView2.ToPrintableForm())
+
+	println("Old cluster view: %+v\n", clusterView)
+
+	println("New view list of lost nodes: %+v\n", lostNodesIds2)
+
+	println("New view list of lost nodes: %+v\n", lostNodeIDSet)
+
+	println("New view list of healthy nodes: %+v\n", healthyNodesIps2)
+
+	println("New view list of healthy nodes: %+v\n", healthyNodeIPs)
 
 	for id := range lostNodeIDSet {
 		r.forgetNode(healthyNodeIPs, id)
