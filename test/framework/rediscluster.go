@@ -83,7 +83,7 @@ func (f *Framework) WaitForState(redisCluster *dbv1.RedisCluster, state string, 
 	if len(timeout) > 0 {
 		t = timeout[0]
 	}
-	return wait.PollImmediate(5*time.Second, 5*t, func() (bool, error) {
+	return wait.PollImmediate(2*time.Second, 5*t, func() (bool, error) {
 		key, err := client.ObjectKeyFromObject(redisCluster)
 		if err != nil {
 			return false, err

@@ -999,7 +999,7 @@ func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 		r.Log.Info(fmt.Sprintf("[WARN] Timeout waiting for SYNC process to start on %s", nodeIP))
 	}
 
-	return wait.PollImmediate(5*r.Config.Times.SyncCheckInterval, 5*r.Config.Times.SyncCheckTimeout, func() (bool, error) {
+	return wait.PollImmediate(2*r.Config.Times.SyncCheckInterval, 5*r.Config.Times.SyncCheckTimeout, func() (bool, error) {
 		redisInfo, _, err := r.RedisCLI.Info(nodeIP)
 		if err != nil {
 			return false, err
@@ -1044,7 +1044,7 @@ func (r *RedisClusterReconciler) waitForRedisLoad(nodeIP string) error {
 	}
 
 	// waiting for loading process to finish
-	return wait.PollImmediate(5*r.Config.Times.LoadCheckInterval, 5*r.Config.Times.LoadCheckTimeout, func() (bool, error) {
+	return wait.PollImmediate(2*r.Config.Times.LoadCheckInterval, 5*r.Config.Times.LoadCheckTimeout, func() (bool, error) {
 		redisInfo, _, err := r.RedisCLI.Info(nodeIP)
 		if err != nil {
 			return false, err

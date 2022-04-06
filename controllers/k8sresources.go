@@ -298,7 +298,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 			return nil, err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
-		if pollErr := wait.PollImmediate(5*r.Config.Times.PodReadyCheckInterval, 5*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(2*r.Config.Times.PodReadyCheckInterval, 5*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return false, err

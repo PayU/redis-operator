@@ -67,7 +67,7 @@ func (f *Framework) CreateResources(ctx *TestCtx, timeout time.Duration, objs ..
 		}
 
 		fmt.Printf("Waiting on resource %v...\n", key)
-		err = wait.PollImmediate(5*time.Second, 5*timeout, func() (bool, error) {
+		err = wait.PollImmediate(2*time.Second, 5*timeout, func() (bool, error) {
 			if err = f.RuntimeClient.Get(context.TODO(), key, existingResource); err != nil {
 				return false, err
 			}
@@ -115,7 +115,7 @@ func (f *Framework) DeleteResource(obj runtime.Object, timeout time.Duration) er
 		return errors.Wrap(err, "Could not check delete resource - object key error")
 	}
 
-	if pollErr := wait.PollImmediate(5*time.Second, 5*timeout, func() (bool, error) {
+	if pollErr := wait.PollImmediate(2*time.Second, 5*timeout, func() (bool, error) {
 		err = f.RuntimeClient.Get(context.TODO(), key, obj)
 		switch {
 		case apierrors.IsNotFound(err):
@@ -223,7 +223,7 @@ func (f *Framework) CordonNode(nodeName string, unschedule bool, timeout time.Du
 		fmt.Printf("Failed to cordon/uncordon: %v\n", err)
 		return err
 	}
-	if pollErr := wait.PollImmediate(5*time.Second, 5*timeout, func() (bool, error) {
+	if pollErr := wait.PollImmediate(2*time.Second, 5*timeout, func() (bool, error) {
 		node, err := f.KubeClient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
