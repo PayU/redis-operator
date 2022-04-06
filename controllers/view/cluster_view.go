@@ -21,6 +21,7 @@ type PodView struct {
 	LeaderName        string
 	IsLeader          bool
 	IsReachable       bool
+	IsTerminating     bool
 	ClusterNodesTable map[string]*TableNodeView
 	FollowersByName   []string
 	Pod               corev1.Pod
@@ -39,10 +40,9 @@ type PrintablePodView struct {
 }
 
 type TableNodeView struct {
-	Id          string
-	LeaderId    string
-	IsLeader    bool
-	IsReachable bool
+	Id       string
+	LeaderId string
+	IsLeader bool
 }
 
 func (v *RedisClusterView) ToPrintableForm() *PrintableRedisClusterView {

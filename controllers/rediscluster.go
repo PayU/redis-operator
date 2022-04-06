@@ -93,6 +93,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCl
 			LeaderName:        pod.Labels["leader-name"],
 			IsLeader:          pod.Labels["redis-node-role"] == "leader",
 			IsReachable:       false,
+			IsTerminating:     false,
 			ClusterNodesTable: make(map[string]*view.TableNodeView),
 			FollowersByName:   make([]string, 0),
 			Pod:               pod,
@@ -102,9 +103,10 @@ func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCl
 			continue
 		}
 		if pod.ObjectMeta.DeletionTimestamp != nil {
+			node.IsTerminating = true
 			continue
 		}
-		if pod.Status.PodIP != "" {
+		if pod.Status.PodIP == "" {
 			clusterInfo, _, err := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
 			if err == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] != "ok" {
 				continue
@@ -118,16 +120,11 @@ func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCl
 		node.IsReachable = true
 		for _, clusterNode := range *clusterNodes {
 			tableNode := &view.TableNodeView{
-				Id:          clusterNode.ID,
-				LeaderId:    clusterNode.Leader,
-				IsLeader:    strings.Contains(clusterNode.Flags, "master"),
-				IsReachable: true,
+				Id:       clusterNode.ID,
+				LeaderId: clusterNode.Leader,
+				IsLeader: strings.Contains(clusterNode.Flags, "master"),
 			}
 			node.ClusterNodesTable[clusterNode.ID] = tableNode
-			ip := strings.Split(clusterNode.Addr, ":")[0]
-			if _, e = r.RedisCLI.MyClusterID(ip); e != nil {
-				tableNode.IsReachable = false
-			}
 		}
 	}
 	return v, nil
@@ -482,14 +479,23 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 		return err
 	}
 
+	recover := false
 	for _, followerPod := range pods {
 		if err := r.waitForRedis(followerPod.Status.PodIP); err != nil {
 			return err
 		}
-		r.Log.Info(fmt.Sprintf("Replicating: %s %s", followerPod.Name, followerPod.Labels["leader-name"]))
-		if err = r.replicateLeader(followerPod.Status.PodIP, nodeIPs[followerPod.Labels["leader-name"]]); err != nil {
-			return err
+		if len(nodeIPs[followerPod.Labels["leader-name"]]) > 0 {
+			r.Log.Info(fmt.Sprintf("Replicating: %s %s", followerPod.Name, followerPod.Labels["leader-name"]))
+			if err = r.replicateLeader(followerPod.Status.PodIP, nodeIPs[followerPod.Labels["leader-name"]]); err != nil {
+				return err
+			}
+		} else {
+			recover = true
 		}
+	}
+	if recover {
+		r.Log.Info("Triggeting recovery process, lost leader/s detected\n")
+		redisCluster.Status.ClusterState = string(Recovering)
 	}
 	return nil
 }
@@ -510,6 +516,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		return e
 	}
 
+	//healthyNodesIpList := make([]string, 0)
 	healthyNodesIps2 := make(map[string]string, 0)
 	lostNodesIds2 := make(map[string]string, 0)
 	for _, node := range clusterView2.PodsViewByName {
@@ -520,7 +527,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		for _, tableNode := range node.ClusterNodesTable {
 			// If the tableNode is non existing pod or is non reachable pod it need to be forgotten
 			id := clusterView2.NodeIdToPodName[tableNode.Id]
-			if _, existsInMap := clusterView2.PodsViewByName[id]; !existsInMap && !tableNode.IsReachable {
+			if _, existsInMap := clusterView2.PodsViewByName[id]; !existsInMap {
 				lostNodesIds2[tableNode.Id] = ""
 				continue
 			}
@@ -585,7 +592,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 
 	fmt.Printf("Old view list of healthy nodes: %v\n", healthyNodeIPs)
 
-	for id, _ := range lostNodesIds2 {
+	for id, _ := range lostNodeIDSet {
 		r.forgetNode(healthyNodeIPs, id)
 	}
 	data, _ := json.MarshalIndent(clusterView, "", "")
@@ -727,6 +734,8 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 		return err
 	}
 
+	fmt.Printf("Old cluster view: %+v\n", clusterView.String())
+
 	clusterView2, e := r.NewRedisClusterView2(redisCluster)
 	if e != nil {
 		println("Cloud not retrieve new cluster view")
@@ -734,8 +743,6 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 	}
 
 	fmt.Printf("New cluster view: %+v\n", clusterView2.ToPrintableForm())
-
-	fmt.Printf("Old cluster view: %+v\n", clusterView.String())
 
 	r.Log.Info(clusterView.String())
 	for i, leader := range *clusterView {
