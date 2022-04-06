@@ -46,7 +46,9 @@ type TableNodeView struct {
 }
 
 func (v *RedisClusterView) ToPrintableForm() *PrintableRedisClusterView {
-	printableView := &PrintableRedisClusterView{}
+	printableView := &PrintableRedisClusterView{
+		PrintablePodsView: make(map[string]*PrintablePodView),
+	}
 	for _, podView := range v.PodsViewByName {
 		printableView.PrintablePodsView[podView.Name] = &PrintablePodView{
 			Name:              podView.Name,

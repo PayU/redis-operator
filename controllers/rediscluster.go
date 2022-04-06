@@ -81,7 +81,8 @@ func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCl
 	}
 	pods, e := r.getRedisClusterPods(redisCluster)
 	if e != nil {
-		// wait & retry
+		fmt.Printf("Error fetching pods viw %+v\n", e.Error())
+		return v, e
 	}
 	for _, pod := range pods {
 		node := &view.PodView{
@@ -100,13 +101,21 @@ func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCl
 		if node.NodeId, e = r.RedisCLI.MyClusterID(node.Ip); e != nil {
 			continue
 		}
-		node.IsReachable = true
+		if pod.ObjectMeta.DeletionTimestamp != nil {
+			continue
+		}
+		if pod.Status.PodIP != "" {
+			clusterInfo, _, err := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
+			if err == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] != "ok" {
+				continue
+			}
+		}
 		v.NodeIdToPodName[node.NodeId] = node.Name
 		clusterNodes, _, e := r.RedisCLI.ClusterNodes(node.Ip)
 		if e != nil {
-			node.IsReachable = false
 			continue
 		}
+		node.IsReachable = true
 		for _, clusterNode := range *clusterNodes {
 			tableNode := &view.TableNodeView{
 				Id:          clusterNode.ID,
@@ -143,7 +152,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisClu
 		cv = append(cv, leader)
 	}
 	//todo
-	for i, pod := range pods {
+	for _, pod := range pods {
 		nn, err := strconv.Atoi(strings.Split(pod.Labels["node-name"], "-")[2])
 		if err != nil {
 			return nil, errors.Errorf("Failed to parse node-name label: %s (%s)", pod.Labels["node-name"], pod.Name)
@@ -153,7 +162,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisClu
 			return nil, errors.Errorf("Failed to parse leader-name label: %s (%s)", pod.Labels["leader-name"], pod.Name)
 		}
 		if nn == ln {
-			cv[ln].Pod = &pods[i]
+			cv[ln].Pod = &pod
 			cv[ln].NodeName = pod.Labels["node-name"]
 			if pod.ObjectMeta.DeletionTimestamp != nil {
 				cv[ln].Terminating = true
@@ -167,7 +176,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisClu
 			}
 		} else {
 			index := (nn - redisCluster.Spec.LeaderCount) % redisCluster.Spec.LeaderFollowersCount
-			cv[ln].Followers[index].Pod = &pods[i]
+			cv[ln].Followers[index].Pod = &pod
 			cv[ln].Followers[index].NodeName = pod.Labels["node-name"]
 			cv[ln].Followers[index].LeaderName = pod.Labels["leader-name"]
 			if pod.ObjectMeta.DeletionTimestamp != nil {
@@ -564,19 +573,19 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		}
 	}
 
-	println("New cluster view: %+v\n", clusterView2.ToPrintableForm())
+	fmt.Printf("New cluster view: %v\n", clusterView2.ToPrintableForm())
 
-	println("Old cluster view: %+v\n", clusterView)
+	fmt.Printf("Old cluster view: %v\n", clusterView.String())
 
-	println("New view list of lost nodes: %+v\n", lostNodesIds2)
+	fmt.Printf("New view list of lost nodes: %v\n", lostNodesIds2)
 
-	println("New view list of lost nodes: %+v\n", lostNodeIDSet)
+	fmt.Printf("Old view list of lost nodes: %v\n", lostNodeIDSet)
 
-	println("New view list of healthy nodes: %+v\n", healthyNodesIps2)
+	fmt.Printf("New view list of healthy nodes: %v\n", healthyNodesIps2)
 
-	println("New view list of healthy nodes: %+v\n", healthyNodeIPs)
+	fmt.Printf("Old view list of healthy nodes: %v\n", healthyNodeIPs)
 
-	for id := range lostNodeIDSet {
+	for id, _ := range lostNodesIds2 {
 		r.forgetNode(healthyNodeIPs, id)
 	}
 	data, _ := json.MarshalIndent(clusterView, "", "")
@@ -717,6 +726,16 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 	if err != nil {
 		return err
 	}
+
+	clusterView2, e := r.NewRedisClusterView2(redisCluster)
+	if e != nil {
+		println("Cloud not retrieve new cluster view")
+		return e
+	}
+
+	fmt.Printf("New cluster view: %+v\n", clusterView2.ToPrintableForm())
+
+	fmt.Printf("Old cluster view: %+v\n", clusterView.String())
 
 	r.Log.Info(clusterView.String())
 	for i, leader := range *clusterView {
@@ -919,7 +938,7 @@ func (r *RedisClusterReconciler) waitForRedis(nodeIPs ...string) error {
 		if nodeIP == "" {
 			return errors.Errorf("Missing IP")
 		}
-		if pollErr := wait.PollImmediate(5*r.Config.Times.RedisPingCheckInterval, 5*r.Config.Times.RedisPingCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(2*r.Config.Times.RedisPingCheckInterval, 5*r.Config.Times.RedisPingCheckTimeout, func() (bool, error) {
 			reply, err := r.RedisCLI.Ping(nodeIP)
 			if err != nil {
 				return false, err
@@ -937,7 +956,7 @@ func (r *RedisClusterReconciler) waitForRedis(nodeIPs ...string) error {
 
 func (r *RedisClusterReconciler) waitForClusterCreate(leaderIPs []string) error {
 	r.Log.Info("Waiting for cluster create execution to complete...")
-	return wait.Poll(5*r.Config.Times.ClusterCreateInterval, 5*r.Config.Times.ClusterCreateTimeout, func() (bool, error) {
+	return wait.Poll(2*r.Config.Times.ClusterCreateInterval, 5*r.Config.Times.ClusterCreateTimeout, func() (bool, error) {
 		for _, leaderIP := range leaderIPs {
 			clusterInfo, _, err := r.RedisCLI.ClusterInfo(leaderIP)
 			if err != nil {
@@ -961,7 +980,7 @@ func (r *RedisClusterReconciler) waitForClusterCreate(leaderIPs []string) error 
 // Safe to be called with both followers and leaders, the call on a leader will be ignored
 func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 	r.Log.Info("Waiting for SYNC to start on " + nodeIP)
-	if err := wait.PollImmediate(5*r.Config.Times.SyncStartCheckInterval, 5*r.Config.Times.SyncStartCheckTimeout, func() (bool, error) {
+	if err := wait.PollImmediate(2*r.Config.Times.SyncStartCheckInterval, 5*r.Config.Times.SyncStartCheckTimeout, func() (bool, error) {
 		redisInfo, _, err := r.RedisCLI.Info(nodeIP)
 		if err != nil {
 			return false, err
@@ -1004,7 +1023,7 @@ func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 
 func (r *RedisClusterReconciler) waitForRedisLoad(nodeIP string) error {
 	r.Log.Info(fmt.Sprintf("Waiting for node %s to start LOADING", nodeIP))
-	if err := wait.PollImmediate(5*r.Config.Times.LoadStartCheckInterval, 5*r.Config.Times.LoadStartCheckTimeout, func() (bool, error) {
+	if err := wait.PollImmediate(2*r.Config.Times.LoadStartCheckInterval, 5*r.Config.Times.LoadStartCheckTimeout, func() (bool, error) {
 		redisInfo, _, err := r.RedisCLI.Info(nodeIP)
 		if err != nil {
 			return false, err
@@ -1044,7 +1063,7 @@ func (r *RedisClusterReconciler) waitForRedisLoad(nodeIP string) error {
 
 func (r *RedisClusterReconciler) waitForRedisReplication(leaderIP string, leaderID string, followerID string) error {
 	r.Log.Info(fmt.Sprintf("Waiting for CLUSTER REPLICATION (%s, %s)", leaderIP, followerID))
-	return wait.PollImmediate(5*r.Config.Times.RedisClusterReplicationCheckInterval, 5*r.Config.Times.RedisClusterReplicationCheckTimeout, func() (bool, error) {
+	return wait.PollImmediate(2*r.Config.Times.RedisClusterReplicationCheckInterval, 5*r.Config.Times.RedisClusterReplicationCheckTimeout, func() (bool, error) {
 		replicas, _, err := r.RedisCLI.ClusterReplicas(leaderIP, leaderID)
 		if err != nil {
 			return false, err
@@ -1060,7 +1079,7 @@ func (r *RedisClusterReconciler) waitForRedisReplication(leaderIP string, leader
 
 func (r *RedisClusterReconciler) waitForRedisMeet(nodeIP string, newNodeIP string) error {
 	r.Log.Info(fmt.Sprintf("Waiting for CLUSTER MEET (%s, %s)", nodeIP, newNodeIP))
-	return wait.PollImmediate(5*r.Config.Times.RedisClusterMeetCheckInterval, 5*r.Config.Times.RedisClusterMeetCheckTimeout, func() (bool, error) {
+	return wait.PollImmediate(2*r.Config.Times.RedisClusterMeetCheckInterval, 5*r.Config.Times.RedisClusterMeetCheckTimeout, func() (bool, error) {
 		clusterNodes, _, err := r.RedisCLI.ClusterNodes(nodeIP)
 		if err != nil {
 			return false, err
@@ -1077,7 +1096,7 @@ func (r *RedisClusterReconciler) waitForRedisMeet(nodeIP string, newNodeIP strin
 // Waits for a specified pod to be marked as master
 func (r *RedisClusterReconciler) waitForManualFailover(podIP string) error {
 	r.Log.Info(fmt.Sprintf("Waiting for [%s] to become leader", podIP))
-	return wait.PollImmediate(5*r.Config.Times.RedisManualFailoverCheckInterval, 5*r.Config.Times.RedisManualFailoverCheckTimeout, func() (bool, error) {
+	return wait.PollImmediate(2*r.Config.Times.RedisManualFailoverCheckInterval, 5*r.Config.Times.RedisManualFailoverCheckTimeout, func() (bool, error) {
 		info, _, err := r.RedisCLI.Info(podIP)
 		if err != nil {
 			return false, err
@@ -1106,7 +1125,7 @@ func (r *RedisClusterReconciler) waitForFailover(redisCluster *dbv1.RedisCluster
 		return "", errors.Errorf("Failing leader [%s] lost all followers. Recovery unsupported.", leader.NodeName)
 	}
 
-	return promotedFollowerIP, wait.PollImmediate(5*r.Config.Times.RedisAutoFailoverCheckInterval, 5*r.Config.Times.RedisAutoFailoverCheckTimeout, func() (bool, error) {
+	return promotedFollowerIP, wait.PollImmediate(2*r.Config.Times.RedisAutoFailoverCheckInterval, 5*r.Config.Times.RedisAutoFailoverCheckTimeout, func() (bool, error) {
 		for _, follower := range leader.Followers {
 			if follower.Failed {
 				continue

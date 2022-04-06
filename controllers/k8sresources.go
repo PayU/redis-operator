@@ -326,7 +326,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(5*r.Config.Times.PodNetworkCheckInterval, 5*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(2*r.Config.Times.PodNetworkCheckInterval, 5*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil
@@ -353,7 +353,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 			return err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
-		if pollErr := wait.Poll(5*r.Config.Times.PodDeleteCheckInterval, 5*r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
+		if pollErr := wait.Poll(2*r.Config.Times.PodDeleteCheckInterval, 5*r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &p)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
