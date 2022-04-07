@@ -126,7 +126,7 @@ func (f *Framework) PopulateDatabase(keyCount int, keyName string, keySize int) 
 
 	errs := make(chan error, len(leaderPods.Items))
 
-	for i, leaderPod := range leaderPods.Items {
+	for _, leaderPod := range leaderPods.Items {
 		if leaderPod.Status.PodIP != "" {
 			wg.Add(1)
 			go func(keyCount string, keyName string, keySize string, pod corev1.Pod, wg *sync.WaitGroup) {
@@ -136,7 +136,7 @@ func (f *Framework) PopulateDatabase(keyCount int, keyName string, keySize int) 
 					fmt.Printf("Failed to run container shell: %s | %s\n", stdout, stderr)
 					errs <- err
 				}
-			}(strconv.Itoa(keyCount), keyName, strconv.Itoa(keySize), leaderPods.Items[i], &wg)
+			}(strconv.Itoa(keyCount), keyName, strconv.Itoa(keySize), leaderPod, &wg)
 		} else {
 			fmt.Printf("Node %s had no IP\n", leaderPod.Labels["node-name"])
 		}

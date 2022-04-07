@@ -23,7 +23,8 @@ type PodView struct {
 	IsLeader          bool
 	IsReachable       bool
 	IsTerminating     bool
-	ClusterNodesTable map[string]TableNodeView
+	Exists            bool
+	ClusterNodesTable map[string]*TableNodeView
 	FollowersByName   []string
 	Pod               corev1.Pod
 }
@@ -36,6 +37,7 @@ type PrintablePodView struct {
 	LeaderName  string
 	IsLeader    bool
 	IsReachable bool
+	Exists      bool
 	//ClusterNodesTable map[string]TableNodeView
 	FollowersByName []string
 }
@@ -58,7 +60,9 @@ func (v *RedisClusterView) ToPrintableForm() PrintableRedisClusterView {
 			LeaderName:  podView.LeaderName,
 			IsLeader:    podView.IsLeader,
 			IsReachable: podView.IsReachable,
+			Exists:      podView.Exists,
 			//ClusterNodesTable: podView.ClusterNodesTable,
+			FollowersByName: podView.FollowersByName,
 		}
 	}
 	return printableView
@@ -80,26 +84,44 @@ func (v *RedisClusterView) analyzePods(pods []corev1.Pod, redisCli *rediscli.Red
 			IsLeader:          pod.Labels["redis-node-role"] == "leader",
 			IsReachable:       false,
 			IsTerminating:     false,
-			ClusterNodesTable: make(map[string]TableNodeView),
+			Exists:            true,
+			ClusterNodesTable: make(map[string]*TableNodeView),
 			FollowersByName:   make([]string, 0),
 			Pod:               pod,
 		}
 		v.PodsViewByName[node.Name] = node
-		v.NodeIdToPodName[node.NodeId] = node.Name
 		node.validatePodIsReachable(redisCli)
+		v.NodeIdToPodName[node.NodeId] = node.Name
 	}
 }
 
 func (v *RedisClusterView) linkLedersToFollowers() {
 	for _, node := range v.PodsViewByName {
-		if node.IsReachable && !node.IsLeader {
-			if leader, exists := v.PodsViewByName[node.LeaderName]; exists {
-				leader.FollowersByName = append(leader.FollowersByName, node.Name)
+		if node.IsReachable {
+			if !node.IsLeader {
+				if _, exists := v.PodsViewByName[node.LeaderName]; exists {
+					v.PodsViewByName[node.LeaderName].FollowersByName = append(v.PodsViewByName[node.LeaderName].FollowersByName, node.Name)
+				} else {
+					v.PodsViewByName[node.LeaderName] = &PodView{
+						Name:              node.LeaderName,
+						NodeId:            "",
+						Namespace:         node.Namespace,
+						Ip:                "",
+						LeaderName:        node.LeaderName,
+						IsLeader:          true,
+						IsReachable:       false,
+						IsTerminating:     false,
+						Exists:            false,
+						ClusterNodesTable: make(map[string]*TableNodeView),
+						FollowersByName:   []string{node.Name},
+						Pod:               corev1.Pod{},
+					}
+				}
 			}
-		}
-		for _, tableNode := range node.ClusterNodesTable {
-			if _, exists := v.NodeIdToPodName[tableNode.Id]; exists {
-				tableNode.IsReachable = true
+			for _, tableNode := range node.ClusterNodesTable {
+				if _, exists := v.NodeIdToPodName[tableNode.Id]; exists {
+					tableNode.IsReachable = true
+				}
 			}
 		}
 	}
@@ -128,11 +150,11 @@ func (p *PodView) validatePodIsReachable(redisCli *rediscli.RedisCLI) bool {
 
 func (p *PodView) fillClusterTable(clusterNodes *rediscli.RedisClusterNodes) {
 	for _, clusterNode := range *clusterNodes {
-		p.ClusterNodesTable[clusterNode.ID] = TableNodeView{
+		p.ClusterNodesTable[clusterNode.ID] = &TableNodeView{
 			Id:          clusterNode.ID,
 			LeaderId:    clusterNode.Leader,
 			IsLeader:    strings.Contains(clusterNode.Flags, "master"),
-			IsReachable: false,
+			IsReachable: strings.Contains(clusterNode.Flags, "fail"),
 		}
 	}
 }

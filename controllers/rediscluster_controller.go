@@ -173,14 +173,14 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 				}
 			}
 			if e := r.handleInitializingCluster(&redisCluster); e == nil {
-				ResetCluster = false
-				redisCluster.Status.ClusterState = string(Ready)
+				if err = r.handleInitializingFollowers(&redisCluster); e == nil {
+					ResetCluster = false
+				}
 			}
 		}
 		println("Done resetting cluster...")
-	}
-
-	if OnStart {
+		r.State = Ready
+	} else if OnStart {
 		println("Starting cluster...")
 		redisCluster.Status.ClusterState = string("Resetting cluster")
 		v, e := r.NewRedisClusterView2(&redisCluster)
@@ -194,12 +194,14 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 				}
 			}
 			if e := r.handleInitializingCluster(&redisCluster); e == nil {
-				ResetCluster = false
-				redisCluster.Status.ClusterState = string(Ready)
+				if err = r.handleInitializingFollowers(&redisCluster); e == nil {
+					ResetCluster = false
+				}
 			}
 		}
 		println("Done starting cluster...")
 		OnStart = false
+		r.State = Ready
 	}
 
 	switch r.State {

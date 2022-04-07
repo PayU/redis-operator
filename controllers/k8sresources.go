@@ -237,8 +237,8 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 
 	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
-	for i := range leaderPods {
-		err := r.Create(context.Background(), &leaderPods[i], applyOpts...)
+	for _, pod := range leaderPods {
+		err := r.Create(context.Background(), &pod, applyOpts...)
 		if err != nil && !apierrors.IsAlreadyExists(err) && !apierrors.IsConflict(err) {
 			return nil, err
 		}
@@ -382,8 +382,8 @@ func (r *K8sManager) WritePodAnnotations(annotations map[string]string, pods ...
 		annotationsString = fmt.Sprintf("\"%s\": \"%s\",%s", key, val, annotationsString)
 	}
 	patch := []byte(fmt.Sprintf(`{"metadata":{"annotations":{%s}}}`, annotationsString[:len(annotationsString)-1]))
-	for i, pod := range pods {
-		if err := r.Patch(context.Background(), &pods[i], client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
+	for _, pod := range pods {
+		if err := r.Patch(context.Background(), &pod, client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
 			r.Log.Error(err, fmt.Sprintf("Failed to patch the annotations on pod %s (%s)", pod.Name, pod.Status.PodIP))
 		}
 	}
