@@ -84,49 +84,7 @@ func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCl
 		fmt.Printf("Error fetching pods viw %+v\n", e.Error())
 		return v, e
 	}
-	for _, pod := range pods {
-		node := &view.PodView{
-			Name:              pod.Name,
-			NodeId:            "",
-			Namespace:         pod.Namespace,
-			Ip:                pod.Status.PodIP,
-			LeaderName:        pod.Labels["leader-name"],
-			IsLeader:          pod.Labels["redis-node-role"] == "leader",
-			IsReachable:       false,
-			IsTerminating:     false,
-			ClusterNodesTable: make(map[string]*view.TableNodeView),
-			FollowersByName:   make([]string, 0),
-			Pod:               pod,
-		}
-		v.PodsViewByName[node.Name] = node
-		if node.NodeId, e = r.RedisCLI.MyClusterID(node.Ip); e != nil {
-			continue
-		}
-		if pod.ObjectMeta.DeletionTimestamp != nil {
-			node.IsTerminating = true
-			continue
-		}
-		if pod.Status.PodIP == "" {
-			clusterInfo, _, err := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
-			if err == nil && clusterInfo != nil && (*clusterInfo)["cluster_state"] != "ok" {
-				continue
-			}
-		}
-		v.NodeIdToPodName[node.NodeId] = node.Name
-		clusterNodes, _, e := r.RedisCLI.ClusterNodes(node.Ip)
-		if e != nil {
-			continue
-		}
-		node.IsReachable = true
-		for _, clusterNode := range *clusterNodes {
-			tableNode := &view.TableNodeView{
-				Id:       clusterNode.ID,
-				LeaderId: clusterNode.Leader,
-				IsLeader: strings.Contains(clusterNode.Flags, "master"),
-			}
-			node.ClusterNodesTable[clusterNode.ID] = tableNode
-		}
-	}
+	v.CreateView(pods, r.RedisCLI)
 	return v, nil
 }
 
@@ -516,32 +474,42 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		return e
 	}
 
-	//healthyNodesIpList := make([]string, 0)
-	healthyNodesIps2 := make(map[string]string, 0)
-	lostNodesIds2 := make(map[string]string, 0)
+	healthyIps := make([]string, 0)
+	lostIds := make([]string, 0)
+	visitedById := make(map[string]bool)
 	for _, node := range clusterView2.PodsViewByName {
 		if !node.IsReachable {
-			lostNodesIds2[node.NodeId] = ""
+			fmt.Printf("Node %+v tagged as not reachable\n", node.Name)
+			visitedById[node.NodeId] = true
+			lostIds = append(lostIds, node.NodeId)
 			continue
 		}
 		for _, tableNode := range node.ClusterNodesTable {
-			// If the tableNode is non existing pod or is non reachable pod it need to be forgotten
-			id := clusterView2.NodeIdToPodName[tableNode.Id]
-			if _, existsInMap := clusterView2.PodsViewByName[id]; !existsInMap {
-				lostNodesIds2[tableNode.Id] = ""
+			// If the *tableNode* is non existing pod or is non reachable pod it need to be forgotten
+			tableNodeName, exists := clusterView2.NodeIdToPodName[tableNode.Id]
+			if !exists {
+				if _, definedAsLost := visitedById[tableNode.Id]; !definedAsLost {
+					fmt.Printf("In table of node %+v, detected node with id %+v that not exists in view map, tagged as lost\n", node.Name, tableNode.Id)
+					visitedById[tableNode.Id] = true
+					lostIds = append(lostIds, tableNode.Id)
+				}
 				continue
 			}
-			// If the current node recognize tableNode that doesn't recognize back, than this current node (table owner) need to be forgotten
-			recognizedNode := clusterView2.PodsViewByName[id]
+			// If the current node recognize tableNode that doesn't recognize back, then this *current node* (table owner) need to be forgotten
+			recognizedNode := clusterView2.PodsViewByName[tableNodeName]
 			if _, recognizeBack := recognizedNode.ClusterNodesTable[node.NodeId]; !recognizeBack {
-				lostNodesIds2[node.NodeId] = ""
+				if _, definedAsLost := visitedById[node.NodeId]; !definedAsLost {
+					fmt.Printf("Node %+v recognizing node %+v that doesn't recognize back, tagged as lost", node.Name, recognizedNode.Name)
+					visitedById[node.NodeId] = true
+					lostIds = append(lostIds, node.NodeId)
+				}
 				break
 			}
 		}
 	}
-	for _, pod := range clusterView2.PodsViewByName {
-		if _, lost := lostNodesIds2[pod.NodeId]; !lost {
-			healthyNodesIps2[pod.Ip] = ""
+	for _, node := range clusterView2.PodsViewByName {
+		if _, lost := visitedById[node.NodeId]; !lost {
+			healthyIps = append(healthyIps, node.Ip)
 		}
 	}
 
@@ -580,17 +548,17 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		}
 	}
 
-	fmt.Printf("New cluster view: %v\n", clusterView2.ToPrintableForm())
+	fmt.Printf("New cluster view: %+v\n", clusterView2.ToPrintableForm())
 
-	fmt.Printf("Old cluster view: %v\n", clusterView.String())
+	fmt.Printf("Old cluster view: %+v\n", clusterView.String())
 
-	fmt.Printf("New view list of lost nodes: %v\n", lostNodesIds2)
+	fmt.Printf("New view list of lost nodes: %+v\n", lostIds)
 
-	fmt.Printf("Old view list of lost nodes: %v\n", lostNodeIDSet)
+	fmt.Printf("Old view list of lost nodes: %+v\n", lostNodeIDSet)
 
-	fmt.Printf("New view list of healthy nodes: %v\n", healthyNodesIps2)
+	fmt.Printf("New view list of healthy nodes: %+v\n", healthyIps)
 
-	fmt.Printf("Old view list of healthy nodes: %v\n", healthyNodeIPs)
+	fmt.Printf("Old view list of healthy nodes: %+v\n", healthyNodeIPs)
 
 	for id, _ := range lostNodeIDSet {
 		r.forgetNode(healthyNodeIPs, id)
@@ -750,6 +718,7 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 			runLeaderRecover = true
 
 			if leader.Terminating {
+				println("here1")
 				if err = r.waitForPodDelete(*leader.Pod); err != nil {
 					return errors.Errorf("Failed to wait for leader pod to be deleted %s: %v", leader.NodeName, err)
 				}
@@ -765,6 +734,7 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 				if err != nil {
 					return err
 				}
+				println("here2")
 				if err = r.waitForPodDelete(*leader.Pod); err != nil {
 					return err
 				}
@@ -813,7 +783,9 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 		if err != nil {
 			return err
 		}
-		if err = r.waitForPodDelete(append(terminatingFollowerPods, deletedPods...)...); err != nil {
+		println("here3")
+		podsToWaitFor := append(terminatingFollowerPods, deletedPods...)
+		if err = r.waitForPodDelete(podsToWaitFor...); err != nil {
 			return err
 		}
 
@@ -846,6 +818,7 @@ func (r *RedisClusterReconciler) updateFollower(redisCluster *dbv1.RedisCluster,
 	if err != nil {
 		return err
 	} else {
+		println("here4")
 		if err := r.waitForPodDelete(deletedPods...); err != nil {
 			return err
 		}
@@ -873,6 +846,7 @@ func (r *RedisClusterReconciler) updateLeader(redisCluster *dbv1.RedisCluster, l
 	if deletedPods, err := r.deletePodsByIP(redisCluster.Namespace, leaderIP); err != nil {
 		return err
 	} else {
+		println("here5")
 		if err := r.waitForPodDelete(deletedPods...); err != nil {
 			return err
 		}

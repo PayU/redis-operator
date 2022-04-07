@@ -61,7 +61,7 @@ redisCluster:
   name: dev-rdc
   namespace: default
   leaderCount: 5
-  leaderFollowersCount: 2
+  leaderFollowersCount: 1
   enableDefaultAffinity: true
   podLabelSelector:
     app: redis-cluster-pod

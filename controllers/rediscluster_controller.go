@@ -19,8 +19,10 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/go-logr/logr"
+	"github.com/labstack/echo/v4"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,6 +56,9 @@ const (
 	// Updating: the cluster is in the middle of a rolling update
 	Updating RedisClusterState = "Updating"
 )
+
+var ResetCluster bool = false
+var OnStart = true
 
 type RedisClusterState string
 
@@ -154,6 +159,49 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	r.State = getCurrentClusterState(&redisCluster)
 
+	if ResetCluster {
+		println("Resetting cluster...")
+		redisCluster.Status.ClusterState = string("Resetting cluster")
+		v, e := r.NewRedisClusterView2(&redisCluster)
+		if e == nil {
+			for _, node := range v.PodsViewByName {
+				deletedPods, e := r.deletePodsByIP(node.Namespace, node.Ip)
+				if e == nil {
+					for _, deletePod := range deletedPods {
+						r.waitForPodDelete(deletePod)
+					}
+				}
+			}
+			if e := r.handleInitializingCluster(&redisCluster); e == nil {
+				ResetCluster = false
+				redisCluster.Status.ClusterState = string(Ready)
+			}
+		}
+		println("Done resetting cluster...")
+	}
+
+	if OnStart {
+		println("Starting cluster...")
+		redisCluster.Status.ClusterState = string("Resetting cluster")
+		v, e := r.NewRedisClusterView2(&redisCluster)
+		if e == nil {
+			for _, node := range v.PodsViewByName {
+				deletedPods, e := r.deletePodsByIP(node.Namespace, node.Ip)
+				if e == nil {
+					for _, deletePod := range deletedPods {
+						r.waitForPodDelete(deletePod)
+					}
+				}
+			}
+			if e := r.handleInitializingCluster(&redisCluster); e == nil {
+				ResetCluster = false
+				redisCluster.Status.ClusterState = string(Ready)
+			}
+		}
+		println("Done starting cluster...")
+		OnStart = false
+	}
+
 	switch r.State {
 	case NotExists:
 		redisCluster.Status.ClusterState = string(InitializingCluster)
@@ -213,4 +261,13 @@ func (r *RedisClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Pod{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
+}
+
+func SayHello(c echo.Context) error {
+	return c.String(http.StatusOK, "Hello!")
+}
+
+func DoResetCluster(c echo.Context) error {
+	ResetCluster = true
+	return c.String(http.StatusOK, "Cluster is resetting")
 }
