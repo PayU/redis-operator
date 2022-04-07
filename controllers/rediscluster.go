@@ -437,7 +437,6 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 		return err
 	}
 
-	recover := false
 	for _, followerPod := range pods {
 		if err := r.waitForRedis(followerPod.Status.PodIP); err != nil {
 			return err
@@ -447,13 +446,7 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 			if err = r.replicateLeader(followerPod.Status.PodIP, nodeIPs[followerPod.Labels["leader-name"]]); err != nil {
 				return err
 			}
-		} else {
-			recover = true
 		}
-	}
-	if recover {
-		r.Log.Info("Triggeting recovery process, lost leader/s detected\n")
-		redisCluster.Status.ClusterState = string(Recovering)
 	}
 	return nil
 }
