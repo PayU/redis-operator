@@ -29,35 +29,36 @@ type PodView struct {
 }
 
 type PrintablePodView struct {
-	Name              string
-	NodeId            string
-	Namespace         string
-	Ip                string
-	LeaderName        string
-	IsLeader          bool
-	IsReachable       bool
-	ClusterNodesTable map[string]TableNodeView
-	FollowersByName   []string
+	Name        string
+	NodeId      string
+	Namespace   string
+	Ip          string
+	LeaderName  string
+	IsLeader    bool
+	IsReachable bool
+	//ClusterNodesTable map[string]TableNodeView
+	FollowersByName []string
 }
 
 type TableNodeView struct {
-	Id       string
-	LeaderId string
-	IsLeader bool
+	Id          string
+	LeaderId    string
+	IsLeader    bool
+	IsReachable bool
 }
 
 func (v *RedisClusterView) ToPrintableForm() PrintableRedisClusterView {
 	printableView := make(map[string]PrintablePodView)
 	for _, podView := range v.PodsViewByName {
 		printableView[podView.Name] = PrintablePodView{
-			Name:              podView.Name,
-			NodeId:            podView.NodeId,
-			Namespace:         podView.Namespace,
-			Ip:                podView.Ip,
-			LeaderName:        podView.LeaderName,
-			IsLeader:          podView.IsLeader,
-			IsReachable:       podView.IsReachable,
-			ClusterNodesTable: podView.ClusterNodesTable,
+			Name:        podView.Name,
+			NodeId:      podView.NodeId,
+			Namespace:   podView.Namespace,
+			Ip:          podView.Ip,
+			LeaderName:  podView.LeaderName,
+			IsLeader:    podView.IsLeader,
+			IsReachable: podView.IsReachable,
+			//ClusterNodesTable: podView.ClusterNodesTable,
 		}
 	}
 	return printableView
@@ -96,6 +97,11 @@ func (v *RedisClusterView) linkLedersToFollowers() {
 				leader.FollowersByName = append(leader.FollowersByName, node.Name)
 			}
 		}
+		for _, tableNode := range node.ClusterNodesTable {
+			if _, exists := v.NodeIdToPodName[tableNode.Id]; exists {
+				tableNode.IsReachable = true
+			}
+		}
 	}
 }
 
@@ -123,9 +129,10 @@ func (p *PodView) validatePodIsReachable(redisCli *rediscli.RedisCLI) bool {
 func (p *PodView) fillClusterTable(clusterNodes *rediscli.RedisClusterNodes) {
 	for _, clusterNode := range *clusterNodes {
 		p.ClusterNodesTable[clusterNode.ID] = TableNodeView{
-			Id:       clusterNode.ID,
-			LeaderId: clusterNode.Leader,
-			IsLeader: strings.Contains(clusterNode.Flags, "master"),
+			Id:          clusterNode.ID,
+			LeaderId:    clusterNode.Leader,
+			IsLeader:    strings.Contains(clusterNode.Flags, "master"),
+			IsReachable: false,
 		}
 	}
 }

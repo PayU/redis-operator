@@ -479,37 +479,19 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 	visitedById := make(map[string]bool)
 	for _, node := range clusterView2.PodsViewByName {
 		if !node.IsReachable {
-			fmt.Printf("Node %+v tagged as not reachable\n", node.Name)
-			visitedById[node.NodeId] = true
-			lostIds = append(lostIds, node.NodeId)
+			if _, declaredAsLost := visitedById[node.NodeId]; !declaredAsLost {
+				visitedById[node.NodeId] = true
+				lostIds = append(lostIds, node.NodeId)
+			}
 			continue
+		} else {
+			healthyIps = append(healthyIps, node.Ip)
 		}
 		for _, tableNode := range node.ClusterNodesTable {
-			// If the *tableNode* is non existing pod or is non reachable pod it need to be forgotten
-			tableNodeName, exists := clusterView2.NodeIdToPodName[tableNode.Id]
-			if !exists {
-				if _, definedAsLost := visitedById[tableNode.Id]; !definedAsLost {
-					fmt.Printf("In table of node %+v, detected node with id %+v that not exists in view map, tagged as lost\n", node.Name, tableNode.Id)
-					visitedById[tableNode.Id] = true
-					lostIds = append(lostIds, tableNode.Id)
-				}
-				continue
+			if _, declaredAsLost := visitedById[tableNode.Id]; !declaredAsLost && !tableNode.IsReachable {
+				visitedById[tableNode.Id] = true
+				lostIds = append(lostIds, tableNode.Id)
 			}
-			// If the current node recognize tableNode that doesn't recognize back, then this *current node* (table owner) need to be forgotten
-			recognizedNode := clusterView2.PodsViewByName[tableNodeName]
-			if _, recognizeBack := recognizedNode.ClusterNodesTable[node.NodeId]; !recognizeBack {
-				if _, definedAsLost := visitedById[node.NodeId]; !definedAsLost {
-					fmt.Printf("Node %+v recognizing node %+v that doesn't recognize back, tagged as lost", node.Name, recognizedNode.Name)
-					visitedById[node.NodeId] = true
-					lostIds = append(lostIds, node.NodeId)
-				}
-				break
-			}
-		}
-	}
-	for _, node := range clusterView2.PodsViewByName {
-		if _, lost := visitedById[node.NodeId]; !lost {
-			healthyIps = append(healthyIps, node.Ip)
 		}
 	}
 
@@ -560,7 +542,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 
 	fmt.Printf("Old view list of healthy nodes: %+v\n", healthyNodeIPs)
 
-	for id, _ := range lostNodeIDSet {
+	for id := range lostNodeIDSet {
 		r.forgetNode(healthyNodeIPs, id)
 	}
 	data, _ := json.MarshalIndent(clusterView, "", "")
