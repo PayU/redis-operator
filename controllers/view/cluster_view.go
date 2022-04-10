@@ -24,7 +24,7 @@ type PodView struct {
 	IsReachable       bool
 	IsTerminating     bool
 	Exists            bool
-	ClusterNodesTable map[string]*TableNodeView
+	ClusterNodesTable map[string]TableNodeView
 	FollowersByName   []string
 	Pod               corev1.Pod
 }
@@ -85,7 +85,7 @@ func (v *RedisClusterView) analyzePods(pods []corev1.Pod, redisCli *rediscli.Red
 			IsReachable:       false,
 			IsTerminating:     false,
 			Exists:            true,
-			ClusterNodesTable: make(map[string]*TableNodeView),
+			ClusterNodesTable: make(map[string]TableNodeView),
 			FollowersByName:   make([]string, 0),
 			Pod:               pod,
 		}
@@ -112,7 +112,7 @@ func (v *RedisClusterView) linkLedersToFollowers() {
 						IsReachable:       false,
 						IsTerminating:     false,
 						Exists:            false,
-						ClusterNodesTable: make(map[string]*TableNodeView),
+						ClusterNodesTable: make(map[string]TableNodeView),
 						FollowersByName:   []string{node.Name},
 						Pod:               corev1.Pod{},
 					}
@@ -127,34 +127,33 @@ func (v *RedisClusterView) linkLedersToFollowers() {
 	}
 }
 
-func (p *PodView) validatePodIsReachable(redisCli *rediscli.RedisCLI) bool {
+func (p *PodView) validatePodIsReachable(redisCli *rediscli.RedisCLI) {
 	var e error
 	if p.NodeId, e = redisCli.MyClusterID(p.Ip); e != nil {
-		return false
+		return
 	}
 	if p.Pod.ObjectMeta.DeletionTimestamp != nil {
 		p.IsTerminating = true
-		return false
+		return
 	}
 	if clusterInfo, _, err := redisCli.ClusterInfo(p.Ip); err != nil || clusterInfo == nil || (*clusterInfo)["cluster_state"] != "ok" {
-		return false
+		return
 	}
 	var clusterNodes *rediscli.RedisClusterNodes
 	if clusterNodes, _, e = redisCli.ClusterNodes(p.Ip); e != nil || clusterNodes == nil {
-		return false
+		return
 	}
 	p.IsReachable = true
 	p.fillClusterTable(clusterNodes)
-	return true
 }
 
 func (p *PodView) fillClusterTable(clusterNodes *rediscli.RedisClusterNodes) {
 	for _, clusterNode := range *clusterNodes {
-		p.ClusterNodesTable[clusterNode.ID] = &TableNodeView{
+		p.ClusterNodesTable[clusterNode.ID] = TableNodeView{
 			Id:          clusterNode.ID,
 			LeaderId:    clusterNode.Leader,
 			IsLeader:    strings.Contains(clusterNode.Flags, "master"),
-			IsReachable: strings.Contains(clusterNode.Flags, "fail"),
+			IsReachable: !strings.Contains(clusterNode.Flags, "fail"),
 		}
 	}
 }

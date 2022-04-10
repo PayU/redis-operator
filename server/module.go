@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 
-	. "github.com/PayU/redis-operator/controllers"
+	//. "github.com/PayU/redis-operator/controllers"
+	"github.com/PayU/redis-operator/controllers/view"
 	clusterData "github.com/PayU/redis-operator/data"
 	"github.com/labstack/echo/v4"
 	v1 "k8s.io/api/core/v1"
 )
 
 type ResponseRedisClusterView struct {
-	State string
-	Nodes []ResponseLeaderNode
+	State       string
+	ClusterView view.PrintableRedisClusterView
 }
 
 type ResponseLeaderNode struct {
@@ -37,35 +38,13 @@ func clusterInfo(c echo.Context) error {
 		return c.String(http.StatusNotFound, "Cluster info not available")
 	}
 
-	var result RedisClusterView
+	var result view.PrintableRedisClusterView
 	json.Unmarshal([]byte(byteValue), &result)
 
 	s := clusterData.GetRedisClusterState()
 	ResponseRedisClusterView := ResponseRedisClusterView{
-		State: s,
-		Nodes: make([]ResponseLeaderNode, len(result)),
-	}
-
-	for i, leaderNode := range result {
-		ip := getIP(leaderNode.Pod)
-
-		ResponseRedisClusterView.Nodes[i] = ResponseLeaderNode{
-			Followers:   make([]ResponseFollowerNode, len(leaderNode.Followers)),
-			PodIp:       ip,
-			NodeName:    leaderNode.NodeName,
-			Failed:      leaderNode.Failed,
-			Terminating: leaderNode.Terminating,
-		}
-		for j, follower := range leaderNode.Followers {
-			followerIp := getIP(follower.Pod)
-			ResponseRedisClusterView.Nodes[i].Followers[j] = ResponseFollowerNode{
-				PodIp:       followerIp,
-				NodeName:    follower.NodeName,
-				LeaderName:  follower.LeaderName,
-				Failed:      follower.Failed,
-				Terminating: leaderNode.Terminating,
-			}
-		}
+		State:       s,
+		ClusterView: result,
 	}
 
 	return c.JSON(http.StatusOK, ResponseRedisClusterView)

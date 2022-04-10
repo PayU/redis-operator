@@ -76,7 +76,7 @@ func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, e
 
 	var stdout, stderr bytes.Buffer
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*defaultRedisCliTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*defaultRedisCliTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "redis-cli", args...)
