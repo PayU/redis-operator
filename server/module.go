@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	//. "github.com/PayU/redis-operator/controllers"
 	"github.com/PayU/redis-operator/controllers/view"
 	clusterData "github.com/PayU/redis-operator/data"
 	"github.com/labstack/echo/v4"
@@ -14,22 +13,6 @@ import (
 type ResponseRedisClusterView struct {
 	State       string
 	ClusterView view.PrintableRedisClusterView
-}
-
-type ResponseLeaderNode struct {
-	PodIp       string
-	NodeName    string
-	Failed      bool
-	Terminating bool
-	Followers   []ResponseFollowerNode
-}
-
-type ResponseFollowerNode struct {
-	PodIp       string
-	NodeName    string
-	LeaderName  string
-	Failed      bool
-	Terminating bool
 }
 
 func clusterInfo(c echo.Context) error {

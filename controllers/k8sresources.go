@@ -180,6 +180,56 @@ func (r *RedisClusterReconciler) makeFollowerPod(redisCluster *dbv1.RedisCluster
 	return pod, nil
 }
 
+func (r *RedisClusterReconciler) makeConfigMap(redisCluster *dbv1.RedisCluster) error {
+	//
+	return nil
+}
+
+func (r *RedisClusterReconciler) GetConfigMap() (corev1.ConfigMap, error) {
+	var configMap corev1.ConfigMap
+	namespace := "default"
+	err := r.Get(context.Background(), client.ObjectKey{Name: "myconfigmap", Namespace: namespace}, &configMap)
+	fmt.Sprintf("Config map data: %+v\n", configMap.Data)
+	return configMap, err
+}
+
+func (r *RedisClusterReconciler) CreateConfigMap() (corev1.ConfigMap, error) {
+	name := "expected-cluster-nodes-map"
+	// try to get
+	var configMap corev1.ConfigMap
+	namespace := "default"
+	err := r.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, &configMap)
+	if len(configMap.Data) > 0 {
+		fmt.Printf("Exists. Data:\n%v\n", configMap.Data)
+		return configMap, err
+	}
+	// if not exists
+	myData := map[string][]string{
+		"redis-node-0": {"redis-node-0-1", "redis-node-0-2"},
+		"redis-node-1": {"redis-node-1-1", "redis-node-1-2"},
+		"redis-node-2": {"redis-node-2-1", "redis-node-2-2"},
+	}
+	data := map[string]string{
+		"LeaderToFollowers": fmt.Sprintf("%v", myData),
+	}
+	configMap = corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Data: data,
+	}
+	err = r.Create(context.Background(), &configMap)
+	if err == nil {
+		fmt.Printf("Created. Data:\n%v\n", configMap.Data)
+	}
+	return configMap, err
+}
+
 func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.RedisCluster, nodeNames ...NodeNames) ([]corev1.Pod, error) {
 	if len(nodeNames) == 0 {
 		return nil, errors.Errorf("Failed to create Redis followers - no node numbers")

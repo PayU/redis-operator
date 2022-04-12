@@ -5,7 +5,7 @@ metadata:
   namespace: default
 spec:
   leaderCount: 5
-  leaderFollowersCount: 1
+  leaderFollowersCount: 2
   enableDefaultAffinity: true
   podLabelSelector:
     app: redis-cluster-pod

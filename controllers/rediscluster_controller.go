@@ -57,9 +57,6 @@ const (
 	Updating RedisClusterState = "Updating"
 )
 
-var ResetCluster bool = false
-var OnStart = true
-
 type RedisClusterState string
 
 type RedisClusterReconciler struct {
@@ -70,6 +67,9 @@ type RedisClusterReconciler struct {
 	Config   *OperatorConfig
 	State    RedisClusterState
 }
+
+var reconciler *RedisClusterReconciler
+var cluster *dbv1.RedisCluster
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters/status,verbs=get;update;patch
@@ -147,6 +147,7 @@ func (r *RedisClusterReconciler) handleUpdatingState(redisCluster *dbv1.RedisClu
 }
 
 func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+	reconciler = r
 	r.Status()
 
 	var redisCluster dbv1.RedisCluster
@@ -159,50 +160,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	r.State = getCurrentClusterState(&redisCluster)
 
-	if ResetCluster {
-		println("Resetting cluster...")
-		redisCluster.Status.ClusterState = string("Resetting cluster")
-		v, e := r.NewRedisClusterView2(&redisCluster)
-		if e == nil {
-			for _, node := range v.PodsViewByName {
-				deletedPods, e := r.deletePodsByIP(node.Namespace, node.Ip)
-				if e == nil {
-					for _, deletePod := range deletedPods {
-						r.waitForPodDelete(deletePod)
-					}
-				}
-			}
-			if e := r.handleInitializingCluster(&redisCluster); e == nil {
-				if err = r.handleInitializingFollowers(&redisCluster); e == nil {
-					ResetCluster = false
-				}
-			}
-		}
-		println("Done resetting cluster...")
-		r.State = Ready
-	} else if OnStart {
-		println("Starting cluster...")
-		redisCluster.Status.ClusterState = string("Resetting cluster")
-		v, e := r.NewRedisClusterView2(&redisCluster)
-		if e == nil {
-			for _, node := range v.PodsViewByName {
-				deletedPods, e := r.deletePodsByIP(node.Namespace, node.Ip)
-				if e == nil {
-					for _, deletePod := range deletedPods {
-						r.waitForPodDelete(deletePod)
-					}
-				}
-			}
-			if e := r.handleInitializingCluster(&redisCluster); e == nil {
-				if err = r.handleInitializingFollowers(&redisCluster); e == nil {
-					ResetCluster = false
-				}
-			}
-		}
-		println("Done starting cluster...")
-		OnStart = false
-		r.State = Ready
-	}
+	cluster = &redisCluster
 
 	switch r.State {
 	case NotExists:
@@ -270,6 +228,40 @@ func SayHello(c echo.Context) error {
 }
 
 func DoResetCluster(c echo.Context) error {
-	ResetCluster = true
-	return c.String(http.StatusOK, "Cluster is resetting")
+	println("Resetting cluster...")
+	v, e := reconciler.NewRedisClusterView2(cluster)
+	if e == nil {
+		for _, node := range v.PodsViewByName {
+			deletedPods, e := reconciler.deletePodsByIP(node.Namespace, node.Ip)
+			if e == nil {
+				for _, deletePod := range deletedPods {
+					reconciler.waitForPodDelete(deletePod)
+				}
+			}
+		}
+		if e := reconciler.handleInitializingCluster(cluster); e != nil {
+			c.String(http.StatusBadRequest, "Cluster restart failed")
+		}
+		if e = reconciler.handleInitializingFollowers(cluster); e != nil {
+			c.String(http.StatusBadRequest, "Cluster restart failed")
+		}
+	}
+	println("Done resetting cluster...")
+	return c.String(http.StatusOK, "Cluster restart successful")
+}
+
+func GetConfigMap(c echo.Context) error {
+	configMap, e := reconciler.GetConfigMap()
+	if e != nil {
+		return c.String(http.StatusBadRequest, fmt.Sprintf("%+v\n", e.Error()))
+	}
+	return c.String(http.StatusOK, fmt.Sprintf("%+v\n", configMap.Data))
+}
+
+func CreateConfigMap(c echo.Context) error {
+	configMap, e := reconciler.CreateConfigMap()
+	if e != nil {
+		return c.String(http.StatusBadRequest, fmt.Sprintf("%+v\n", e.Error()))
+	}
+	return c.String(http.StatusOK, fmt.Sprintf("%+v\n", configMap.Data))
 }
