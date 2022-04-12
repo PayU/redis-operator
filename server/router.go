@@ -10,6 +10,6 @@ func Register(e *echo.Echo) {
 	e.GET("/info", clusterInfo)
 	e.GET("/hello", controllers.SayHello)
 	e.GET("/reset", controllers.DoResetCluster)
-	e.GET("/getconfigmap", controllers.GetConfigMap)
-	e.GET("/createconfigmap", controllers.CreateConfigMap)
+	e.GET("/updateview", controllers.UpdateExpectedView)
+	e.GET("/getview", controllers.GetExpectedView)
 }

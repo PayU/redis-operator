@@ -19,62 +19,7 @@ import (
 	clusterData "github.com/PayU/redis-operator/data"
 )
 
-var EMPTY struct{}
-
-// Representation of a cluster, each element contains information about a leader
-type RedisClusterView []LeaderNode
-
-type LeaderNode struct {
-	Pod         *corev1.Pod
-	NodeName    string
-	RedisID     string
-	Failed      bool
-	Terminating bool
-	Followers   []FollowerNode
-}
-
-type FollowerNode struct {
-	Pod         *corev1.Pod
-	NodeName    string
-	LeaderName  string
-	RedisID     string
-	Failed      bool
-	Terminating bool
-}
-
-func (v *RedisClusterView) String() string {
-	result := ""
-	for _, leader := range *v {
-		leaderStatus := "ok"
-		leaderPodStatus := "up"
-		if leader.Pod == nil {
-			leaderPodStatus = "down"
-		} else if leader.Terminating {
-			leaderPodStatus = "terminating"
-		}
-		if leader.Failed {
-			leaderStatus = "fail"
-		}
-		result = result + fmt.Sprintf("Leader: %s(%s,%s)-[", leader.NodeName, leaderPodStatus, leaderStatus)
-		for _, follower := range leader.Followers {
-			status := "ok"
-			podStatus := "up"
-			if follower.Pod == nil {
-				podStatus = "down"
-			} else if follower.Terminating {
-				podStatus = "terminating"
-			}
-			if follower.Failed {
-				status = "fail"
-			}
-			result = result + fmt.Sprintf("%s(%s,%s)", follower.NodeName, podStatus, status)
-		}
-		result += "]"
-	}
-	return result
-}
-
-func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCluster) (*view.RedisClusterView, error) {
+func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisCluster) (*view.RedisClusterView, error) {
 	v := &view.RedisClusterView{
 		PodsViewByName:  make(map[string]*view.PodView),
 		NodeIdToPodName: make(map[string]string),
@@ -86,39 +31,6 @@ func (r *RedisClusterReconciler) NewRedisClusterView2(redisCluster *dbv1.RedisCl
 	}
 	v.CreateView(pods, r.RedisCLI)
 	return v, nil
-}
-
-// Returns a list with all the IPs of the Redis nodes
-func (v *RedisClusterView) IPs() []string {
-	var ips []string
-	for _, leader := range *v {
-		if leader.Pod != nil {
-			ips = append(ips, leader.Pod.Status.PodIP)
-		}
-		for _, follower := range leader.Followers {
-			if follower.Pod != nil {
-				ips = append(ips, follower.Pod.Status.PodIP)
-			}
-		}
-	}
-	return ips
-}
-
-// Returns a list with all the IPs of the Redis nodes that are healthy
-// A nod eis healthy if Redis can be reached and is in cluster mode
-func (r *RedisClusterView) HealthyNodeIPs() []string {
-	var ips []string
-	for _, leader := range *r {
-		if leader.Pod != nil && !(leader.Failed || leader.Terminating) {
-			ips = append(ips, leader.Pod.Status.PodIP)
-		}
-		for _, follower := range leader.Followers {
-			if follower.Pod != nil && !(follower.Failed || follower.Terminating) {
-				ips = append(ips, follower.Pod.Status.PodIP)
-			}
-		}
-	}
-	return ips
 }
 
 type NodeNames [2]string // 0: node name, 1: leader name
@@ -391,7 +303,7 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, n
 // Removes all nodes the cluster node table entries with IDs of nodes not available
 // Recives the list of healthy cluster nodes (Redis is reachable and has cluster mode on)
 func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster) error {
-	v, e := r.NewRedisClusterView2(redisCluster)
+	v, e := r.NewRedisClusterView(redisCluster)
 	if e != nil {
 		println("Cloud not retrieve new cluster view")
 		return e
@@ -512,7 +424,7 @@ func (r *RedisClusterReconciler) handleFailover(redisCluster *dbv1.RedisCluster,
 }
 
 func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster) error {
-	v, e := r.NewRedisClusterView2(redisCluster)
+	v, e := r.NewRedisClusterView(redisCluster)
 	if e != nil {
 		println("Cloud not retrieve new cluster view")
 		return e
@@ -663,7 +575,7 @@ func (r *RedisClusterReconciler) updateLeader(redisCluster *dbv1.RedisCluster, l
 }
 
 func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) error {
-	v, err := r.NewRedisClusterView2(redisCluster)
+	v, err := r.NewRedisClusterView(redisCluster)
 	if err != nil {
 		return err
 	}
@@ -957,7 +869,7 @@ func (r *RedisClusterReconciler) isClusterUpToDate(redisCluster *dbv1.RedisClust
 }
 
 func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisCluster) (bool, error) {
-	v, e := r.NewRedisClusterView2(redisCluster)
+	v, e := r.NewRedisClusterView(redisCluster)
 	if e != nil {
 		return false, e
 	}

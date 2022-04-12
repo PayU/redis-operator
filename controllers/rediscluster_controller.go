@@ -61,11 +61,12 @@ type RedisClusterState string
 
 type RedisClusterReconciler struct {
 	client.Client
-	Log      logr.Logger
-	Scheme   *runtime.Scheme
-	RedisCLI *rediscli.RedisCLI
-	Config   *OperatorConfig
-	State    RedisClusterState
+	Log                  logr.Logger
+	Scheme               *runtime.Scheme
+	RedisCLI             *rediscli.RedisCLI
+	Config               *OperatorConfig
+	State                RedisClusterState
+	ClusterStatusMapName string
 }
 
 var reconciler *RedisClusterReconciler
@@ -229,7 +230,7 @@ func SayHello(c echo.Context) error {
 
 func DoResetCluster(c echo.Context) error {
 	println("Resetting cluster...")
-	v, e := reconciler.NewRedisClusterView2(cluster)
+	v, e := reconciler.NewRedisClusterView(cluster)
 	if e == nil {
 		for _, node := range v.PodsViewByName {
 			deletedPods, e := reconciler.deletePodsByIP(node.Namespace, node.Ip)
@@ -250,18 +251,22 @@ func DoResetCluster(c echo.Context) error {
 	return c.String(http.StatusOK, "Cluster restart successful")
 }
 
-func GetConfigMap(c echo.Context) error {
-	configMap, e := reconciler.GetConfigMap()
-	if e != nil {
-		return c.String(http.StatusBadRequest, fmt.Sprintf("%+v\n", e.Error()))
+func UpdateExpectedView(c echo.Context) error {
+	view, err := reconciler.NewRedisClusterView(cluster)
+	if err != nil {
+		return err
 	}
-	return c.String(http.StatusOK, fmt.Sprintf("%+v\n", configMap.Data))
+	err = reconciler.UpdateExpectedView(cluster, view)
+	if err != nil {
+		return err
+	}
+	return c.String(http.StatusOK, "Config map updated")
 }
 
-func CreateConfigMap(c echo.Context) error {
-	configMap, e := reconciler.CreateConfigMap()
-	if e != nil {
-		return c.String(http.StatusBadRequest, fmt.Sprintf("%+v\n", e.Error()))
+func GetExpectedView(c echo.Context) error {
+	expectedView, err := reconciler.GetExpectedView(cluster)
+	if err != nil {
+		return err
 	}
-	return c.String(http.StatusOK, fmt.Sprintf("%+v\n", configMap.Data))
+	return c.String(http.StatusOK, fmt.Sprintf("%v", expectedView.ToPrintableForm()))
 }

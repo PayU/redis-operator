@@ -30,15 +30,14 @@ type PodView struct {
 }
 
 type PrintablePodView struct {
-	Name        string
-	NodeId      string
-	Namespace   string
-	Ip          string
-	LeaderName  string
-	IsLeader    bool
-	IsReachable bool
-	Exists      bool
-	//ClusterNodesTable map[string]TableNodeView
+	Name            string
+	NodeId          string
+	Namespace       string
+	Ip              string
+	LeaderName      string
+	IsLeader        bool
+	IsReachable     bool
+	Exists          bool
 	FollowersByName []string
 }
 
@@ -47,25 +46,6 @@ type TableNodeView struct {
 	LeaderId    string
 	IsLeader    bool
 	IsReachable bool
-}
-
-func (v *RedisClusterView) ToPrintableForm() PrintableRedisClusterView {
-	printableView := make(map[string]PrintablePodView)
-	for _, podView := range v.PodsViewByName {
-		printableView[podView.Name] = PrintablePodView{
-			Name:        podView.Name,
-			NodeId:      podView.NodeId,
-			Namespace:   podView.Namespace,
-			Ip:          podView.Ip,
-			LeaderName:  podView.LeaderName,
-			IsLeader:    podView.IsLeader,
-			IsReachable: podView.IsReachable,
-			Exists:      podView.Exists,
-			//ClusterNodesTable: podView.ClusterNodesTable,
-			FollowersByName: podView.FollowersByName,
-		}
-	}
-	return printableView
 }
 
 func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.RedisCLI) {
@@ -90,7 +70,7 @@ func (v *RedisClusterView) analyzePods(pods []corev1.Pod, redisCli *rediscli.Red
 			Pod:               pod,
 		}
 		v.PodsViewByName[node.Name] = node
-		node.validatePodIsReachable(redisCli)
+		node.validateReachableAndGetId(redisCli)
 		v.NodeIdToPodName[node.NodeId] = node.Name
 	}
 }
@@ -127,7 +107,7 @@ func (v *RedisClusterView) linkLedersToFollowers() {
 	}
 }
 
-func (p *PodView) validatePodIsReachable(redisCli *rediscli.RedisCLI) {
+func (p *PodView) validateReachableAndGetId(redisCli *rediscli.RedisCLI) {
 	var e error
 	if p.NodeId, e = redisCli.MyClusterID(p.Ip); e != nil {
 		return
@@ -156,4 +136,22 @@ func (p *PodView) fillClusterTable(clusterNodes *rediscli.RedisClusterNodes) {
 			IsReachable: !strings.Contains(clusterNode.Flags, "fail"),
 		}
 	}
+}
+
+func (v *RedisClusterView) ToPrintableForm() PrintableRedisClusterView {
+	printableView := make(map[string]PrintablePodView)
+	for _, podView := range v.PodsViewByName {
+		printableView[podView.Name] = PrintablePodView{
+			Name:            podView.Name,
+			NodeId:          podView.NodeId,
+			Namespace:       podView.Namespace,
+			Ip:              podView.Ip,
+			LeaderName:      podView.LeaderName,
+			IsLeader:        podView.IsLeader,
+			IsReachable:     podView.IsReachable,
+			Exists:          podView.Exists,
+			FollowersByName: podView.FollowersByName,
+		}
+	}
+	return printableView
 }

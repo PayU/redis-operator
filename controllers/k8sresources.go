@@ -2,10 +2,12 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
+	"github.com/PayU/redis-operator/controllers/view"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -180,54 +182,95 @@ func (r *RedisClusterReconciler) makeFollowerPod(redisCluster *dbv1.RedisCluster
 	return pod, nil
 }
 
-func (r *RedisClusterReconciler) makeConfigMap(redisCluster *dbv1.RedisCluster) error {
-	//
-	return nil
-}
-
-func (r *RedisClusterReconciler) GetConfigMap() (corev1.ConfigMap, error) {
+func (r *RedisClusterReconciler) UpdateExpectedView(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
 	var configMap corev1.ConfigMap
-	namespace := "default"
-	err := r.Get(context.Background(), client.ObjectKey{Name: "myconfigmap", Namespace: namespace}, &configMap)
-	fmt.Sprintf("Config map data: %+v\n", configMap.Data)
-	return configMap, err
-}
-
-func (r *RedisClusterReconciler) CreateConfigMap() (corev1.ConfigMap, error) {
-	name := "expected-cluster-nodes-map"
-	// try to get
-	var configMap corev1.ConfigMap
-	namespace := "default"
-	err := r.Get(context.Background(), client.ObjectKey{Name: name, Namespace: namespace}, &configMap)
+	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
 	if len(configMap.Data) > 0 {
-		fmt.Printf("Exists. Data:\n%v\n", configMap.Data)
-		return configMap, err
+		r.applyViewToConfigMap(&configMap, v)
+		return err
 	}
-	// if not exists
-	myData := map[string][]string{
-		"redis-node-0": {"redis-node-0-1", "redis-node-0-2"},
-		"redis-node-1": {"redis-node-1-1", "redis-node-1-2"},
-		"redis-node-2": {"redis-node-2-1", "redis-node-2-2"},
-	}
-	data := map[string]string{
-		"LeaderToFollowers": fmt.Sprintf("%v", myData),
-	}
+	// If not exists
 	configMap = corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name:      configMapName,
+			Namespace: configMapNamespace,
 		},
-		Data: data,
+		Data: nil,
 	}
+	r.applyViewToConfigMap(&configMap, v)
 	err = r.Create(context.Background(), &configMap)
-	if err == nil {
-		fmt.Printf("Created. Data:\n%v\n", configMap.Data)
+	return err
+}
+
+func (r *RedisClusterReconciler) GetExpectedView(redisCluster *dbv1.RedisCluster) (expectedView *view.RedisClusterView, err error) {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	var configMap corev1.ConfigMap
+	err = r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	if err != nil {
+		return nil, err
 	}
-	return configMap, err
+	return r.retrieveExpectedViewFromConfigMap(&configMap)
+}
+
+func (r *RedisClusterReconciler) applyViewToConfigMap(cm *corev1.ConfigMap, v *view.RedisClusterView) {
+	viewData := make(map[string][]string)
+	for _, p := range v.PodsViewByName {
+		if p.IsLeader {
+			if _, inMap := viewData[p.Name]; !inMap {
+				viewData[p.Name] = make([]string, 0)
+			}
+		} else {
+			leaderName := p.LeaderName
+			if _, leaderInMap := viewData[leaderName]; !leaderInMap {
+				viewData[leaderName] = []string{p.Name}
+			} else {
+				viewData[leaderName] = append(viewData[leaderName], p.Name)
+			}
+		}
+	}
+	data := map[string]string{
+		"view": fmt.Sprintf("%v", viewData),
+	}
+	cm.Data = data
+}
+
+func (r *RedisClusterReconciler) retrieveExpectedViewFromConfigMap(cm *corev1.ConfigMap) (expectedView *view.RedisClusterView, err error) {
+	expectedView = &view.RedisClusterView{
+		PodsViewByName:  make(map[string]*view.PodView),
+		NodeIdToPodName: nil,
+	}
+	var data map[string][]string
+	dataMap := fmt.Sprintf("%v", cm.Data["view"])
+	fmt.Printf("Data map: %v\n", dataMap)
+
+	err = json.Unmarshal([]byte(dataMap), &data)
+	if err != nil {
+		fmt.Printf("Unmarshal to map[string][]string error: %v\n", err.Error())
+		return nil, err
+	}
+	for leaderName, followersList := range data {
+		expectedView.PodsViewByName[leaderName] = &view.PodView{
+			Name:            leaderName,
+			LeaderName:      leaderName,
+			IsLeader:        true,
+			FollowersByName: followersList,
+		}
+		for _, followerName := range followersList {
+			expectedView.PodsViewByName[followerName] = &view.PodView{
+				Name:       followerName,
+				LeaderName: leaderName,
+				IsLeader:   false,
+			}
+		}
+	}
+	return expectedView, nil
 }
 
 func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.RedisCluster, nodeNames ...NodeNames) ([]corev1.Pod, error) {
