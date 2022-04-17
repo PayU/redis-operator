@@ -256,6 +256,21 @@ func (r *RedisCLI) AddFollower(newNodeAddr string, existingNodeAddr string, lead
 	return stdout, nil
 }
 
+// AddLeader uses the '--cluster add-node' option on redis-cli to add a node to the cluster
+// newNodeAddr: Address of the follower that will join the cluster in a format of <ip>:<port> or <ip>: or <ip>
+// existingNodeAddr: IP of a node in the cluster in a format of <ip>:<port> or <ip>: or <ip>
+// leaderID: 	Redis ID of the leader that the new follower will replicate
+// In case port won't bw provided as part of the given addresses, cli default port will be added automatically to the address
+func (r *RedisCLI) AddLeader(newNodeAddr string, existingNodeAddr string, opt ...string) (string, error) {
+	args := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port)}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s): %s | %s | %v", newNodeAddr, existingNodeAddr, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
 // DelNode uses the '--cluster del-node' option of redis-cli to remove a node from the cluster
 // nodeIP: any node of the cluster
 // nodeID: node that needs to be removed

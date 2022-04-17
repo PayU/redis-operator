@@ -232,16 +232,14 @@ func (r *RedisClusterReconciler) applyViewToConfigMap(cm *corev1.ConfigMap, v *v
 	cm.Data = data
 }
 
-func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.RedisCluster, nodeNames ...NodeNames) ([]corev1.Pod, error) {
-	if len(nodeNames) == 0 {
-		return nil, errors.Errorf("Failed to create Redis followers - no node numbers")
-	}
+// can be parallel
+func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.RedisCluster, followersNamesToLeaderNodes map[string]*view.PodView) ([]corev1.Pod, error) {
 
 	var followerPods []corev1.Pod
 	createOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
-	for _, nodeName := range nodeNames {
-		pod, err := r.makeFollowerPod(redisCluster, nodeName[0], nodeName[1])
+	for followerName, leaderNode := range followersNamesToLeaderNodes {
+		pod, err := r.makeFollowerPod(redisCluster, followerName, leaderNode.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -257,7 +255,7 @@ func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.Redi
 		return nil, err
 	}
 
-	r.Log.Info(fmt.Sprintf("New follower pods created: %v", nodeNames))
+	r.Log.Info(fmt.Sprintf("New follower pods created"))
 	return followerPods, nil
 }
 
@@ -275,7 +273,7 @@ func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, 
 func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNames ...string) ([]corev1.Pod, error) {
 
 	if len(nodeNames) == 0 {
-		return nil, errors.New("Failed to create leader pods - no node numbers")
+		return nil, errors.New("Failed to create leader pods - no node names")
 	}
 
 	var leaderPods []corev1.Pod
