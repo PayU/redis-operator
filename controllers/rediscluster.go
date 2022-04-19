@@ -135,12 +135,8 @@ func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisClust
 }
 
 // Make a new Redis node join the cluster as a follower and wait until data sync is complete
-func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP string) error {
+func (r *RedisClusterReconciler) replicateLeader(followerIP string, leaderIP string, leaderID string) error {
 	r.Log.Info(fmt.Sprintf("Replicating leader: %s->%s", followerIP, leaderIP))
-	leaderID, err := r.RedisCLI.MyClusterID(leaderIP)
-	if err != nil {
-		return err
-	}
 
 	followerID, err := r.RedisCLI.MyClusterID(followerIP)
 	if err != nil {
@@ -226,12 +222,8 @@ func (r *RedisClusterReconciler) doLeaderFailover(leaderIP string, opt string, f
 
 // Recreates a leader based on a replica that took its place in a failover process;
 // the old leader pod must be already deleted
-func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster, promotedFollowerIP string) error {
-	nodeName, oldLeaderName, err := r.getRedisNodeNamesFromIP(redisCluster.Namespace, promotedFollowerIP)
-	if err != nil {
-		return err
-	}
-	r.Log.Info(fmt.Sprintf("Recreating leader [%s] using node [%s]", oldLeaderName, nodeName))
+func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster, promotedFollowerIP string, promotedFollowerID string, oldLeaderName string) error {
+	r.Log.Info(fmt.Sprintf("Recreating leader [%s] using node [%s, %s]", oldLeaderName, promotedFollowerIP, promotedFollowerID))
 
 	newLeaderPods, err := r.createRedisLeaderPods(redisCluster, oldLeaderName)
 	if err != nil {
@@ -248,7 +240,7 @@ func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster,
 		return err
 	}
 
-	if err = r.replicateLeader(newLeaderIP, promotedFollowerIP); err != nil {
+	if err = r.replicateLeader(newLeaderIP, promotedFollowerIP, promotedFollowerID); err != nil {
 		return err
 	}
 
@@ -294,6 +286,7 @@ func (r *RedisClusterReconciler) addFollowers(redisCluster *dbv1.RedisCluster, f
 	for followerName, leaderNode := range followersNamesToLeaderNodes {
 		go r.addFollower(redisCluster, followerName, leaderNode, &wg)
 	}
+	wg.Wait()
 	return nil
 }
 
@@ -317,7 +310,7 @@ func (r *RedisClusterReconciler) addFollower(redisCluster *dbv1.RedisCluster, fo
 	}
 
 	r.Log.Info(fmt.Sprintf("Replicating: %s %s", followerName, leaderNode.Name))
-	if e = r.replicateLeader(newFollowerPods[0].Status.PodIP, leaderNode.Ip); e != nil {
+	if e = r.replicateLeader(newFollowerPods[0].Status.PodIP, leaderNode.Ip, leaderNode.NodeId); e != nil {
 		r.Log.Error(e, "Error while waiting for pods to be ready")
 		return
 	}
@@ -355,17 +348,26 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 
 	fmt.Printf("List of lost nodes ids: %+v\n", lostIds)
 	fmt.Printf("List of healthy nodes ips: %+v\n", healthyIps)
-	var wg sync.WaitGroup
-	wg.Add(len(healthyIps))
+
+	var forgetByAllWG sync.WaitGroup
+	forgetByAllWG.Add(len(lostIds))
 	for _, id := range lostIds {
-		for _, ip := range healthyIps {
-			go r.forgetNode(ip, id, &wg)
-		}
-		wg.Wait()
+		r.forgetNodeToAllHealthyIps(healthyIps, id, &forgetByAllWG)
 	}
+	forgetByAllWG.Wait()
 	data, _ := json.MarshalIndent(v.ToPrintableForm(), "", "")
 	clusterData.SaveRedisClusterView(data)
 	return nil
+}
+
+func (r *RedisClusterReconciler) forgetNodeToAllHealthyIps(healthyIps []string, nodeId string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	var forgetByOneWG sync.WaitGroup
+	forgetByOneWG.Add(len(healthyIps))
+	for _, ip := range healthyIps {
+		go r.forgetNode(ip, nodeId, &forgetByOneWG)
+	}
+	forgetByOneWG.Wait()
 }
 
 func (r *RedisClusterReconciler) forgetNode(healthyIp string, idToForget string, wg *sync.WaitGroup) {
@@ -376,30 +378,26 @@ func (r *RedisClusterReconciler) forgetNode(healthyIp string, idToForget string,
 // Handles the failover process for a leader. Waits for automatic failover, then
 // attempts a forced failover and eventually a takeover
 // Returns the ip of the promoted follower
-func (r *RedisClusterReconciler) handleFailover(redisCluster *dbv1.RedisCluster, leaderName string, reachableFollowersNames []string, v *view.RedisClusterView) (string, error) {
+func (r *RedisClusterReconciler) handleFailover(redisCluster *dbv1.RedisCluster, leaderName string, reachableFollowers []corev1.Pod) (string, error) {
 	var promotedPodIP string = ""
 
-	promotedPodIP, err := r.waitForFailover(redisCluster, leaderName, reachableFollowersNames, v)
+	promotedPodIP, err := r.waitForFailover(redisCluster, leaderName, reachableFollowers)
 	if err == nil && promotedPodIP != "" {
 		return promotedPodIP, nil
 	}
 	r.Log.Info(fmt.Sprintf("[WARN] Automatic failover failed for leader [%s]. Attempting forced failover.", leaderName))
 	// Automatic failover failed. Attempt to force failover on a healthy follower.
-	for _, reachableFollowerName := range reachableFollowersNames {
-		follower, exists := v.PodsViewByName[reachableFollowerName]
-		if !exists {
-			continue
-		}
-		if forcedFailoverErr := r.doFailover(follower.Ip, "force"); forcedFailoverErr != nil {
+	for _, follower := range reachableFollowers {
+		if forcedFailoverErr := r.doFailover(follower.Status.PodIP, "force"); forcedFailoverErr != nil {
 			if rediscli.IsFailoverNotOnReplica(forcedFailoverErr) {
-				r.Log.Info(fmt.Sprintf("Forced failover successful on [%s](%s)", reachableFollowerName, follower.Ip))
-				promotedPodIP = follower.Ip
+				r.Log.Info(fmt.Sprintf("Forced failover successful on [%s](%s)", follower.Name, follower.Status.PodIP))
+				promotedPodIP = follower.Status.PodIP
 				break
 			}
-			r.Log.Error(forcedFailoverErr, fmt.Sprintf("[WARN] Failed forced attempt to make node [%s](%s) leader", reachableFollowerName, follower.Ip))
+			r.Log.Error(forcedFailoverErr, fmt.Sprintf("[WARN] Failed forced attempt to make node [%s](%s) leader", follower.Name, follower.Status.PodIP))
 		} else {
-			r.Log.Info(fmt.Sprintf("Forced failover successful on [%s](%s)", reachableFollowerName, follower.Ip))
-			promotedPodIP = follower.Ip
+			r.Log.Info(fmt.Sprintf("Forced failover successful on [%s](%s)", follower.Name, follower.Status.PodIP))
+			promotedPodIP = follower.Status.PodIP
 			break
 		}
 	}
@@ -411,21 +409,17 @@ func (r *RedisClusterReconciler) handleFailover(redisCluster *dbv1.RedisCluster,
 	var forcedFailoverErr error
 
 	// Forced failover failed. Attempt to takeover on a healthy follower.
-	for _, reachableFollowerName := range reachableFollowersNames {
-		follower, exists := v.PodsViewByName[reachableFollowerName]
-		if !exists {
-			continue
-		}
-		if forcedFailoverErr = r.doFailover(follower.Pod.Status.PodIP, "takeover"); forcedFailoverErr != nil {
+	for _, follower := range reachableFollowers {
+		if forcedFailoverErr = r.doFailover(follower.Status.PodIP, "takeover"); forcedFailoverErr != nil {
 			if rediscli.IsFailoverNotOnReplica(forcedFailoverErr) {
-				r.Log.Info(fmt.Sprintf("Takeover successful on [%s](%s)", reachableFollowerName, follower.Ip))
-				promotedPodIP = follower.Ip
+				r.Log.Info(fmt.Sprintf("Takeover successful on [%s](%s)", follower.Name, follower.Status.PodIP))
+				promotedPodIP = follower.Status.PodIP
 				break
 			}
-			r.Log.Error(forcedFailoverErr, fmt.Sprintf("[WARN] Failed takeover attempt to make node [%s](%s) leader", reachableFollowerName, follower.Ip))
+			r.Log.Error(forcedFailoverErr, fmt.Sprintf("[WARN] Failed takeover attempt to make node [%s](%s) leader", follower.Name, follower.Status.PodIP))
 		} else {
-			r.Log.Info(fmt.Sprintf("Takeover successful on [%s](%s)", reachableFollowerName, follower.Ip))
-			promotedPodIP = follower.Pod.Status.PodIP
+			r.Log.Info(fmt.Sprintf("Takeover successful on [%s](%s)", follower.Name, follower.Status.PodIP))
+			promotedPodIP = follower.Status.PodIP
 			break
 		}
 	}
@@ -476,14 +470,32 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 func (r *RedisClusterReconciler) recoverLeaders(redisCluster *dbv1.RedisCluster, view *view.RedisClusterView, missingLeaders map[string][]string) {
 	// Missing leaders holds missing leaders names and list of their *existing/reachable* followers names
 	r.Log.Info("Recovering leaders...")
-	for missingLeader, reachableFollowers := range missingLeaders {
+	m := make(map[string][]corev1.Pod)
+	for missingLeader, followersNames := range missingLeaders {
+		m[missingLeader] = make([]corev1.Pod, 0)
+		for _, followerName := range followersNames {
+			follower, exists := view.PodsViewByName[followerName]
+			if exists {
+				m[missingLeader] = append(m[missingLeader], follower.Pod)
+			}
+		}
+	}
+	for missingLeader, reachableFollowers := range m {
 		if len(reachableFollowers) > 0 {
-			promotedIp, err := r.handleFailover(redisCluster, missingLeader, reachableFollowers, view)
+			promotedIp, err := r.handleFailover(redisCluster, missingLeader, reachableFollowers)
 			if err != nil {
 				r.Log.Error(err, fmt.Sprintf("Could not failover leader [%s]\n", missingLeader))
 				continue
 			}
-			err = r.recreateLeader(redisCluster, promotedIp)
+			var promotedId string
+			for _, reachableFollower := range reachableFollowers {
+				follower := view.PodsViewByName[reachableFollower.Name]
+				if follower.Ip == promotedIp {
+					promotedId = follower.NodeId
+					break
+				}
+			}
+			err = r.recreateLeader(redisCluster, promotedIp, promotedId, missingLeader)
 			if err != nil {
 				r.Log.Error(err, fmt.Sprintf("Could not re create leader [%s]\n", missingLeader))
 				continue
@@ -567,6 +579,16 @@ func (r *RedisClusterReconciler) updateLeader(redisCluster *dbv1.RedisCluster, l
 		return err
 	}
 
+	promotedFollowerID, err := r.RedisCLI.MyClusterID(leaderIP)
+	if err != nil {
+		return err
+	}
+
+	_, leaderName, err := r.getRedisNodeNamesFromIP(redisCluster.Namespace, promotedFollowerIP)
+	if err != nil {
+		return err
+	}
+
 	if deletedPods, err := r.deletePodsByIP(redisCluster.Namespace, leaderIP); err != nil {
 		return err
 	} else {
@@ -579,7 +601,7 @@ func (r *RedisClusterReconciler) updateLeader(redisCluster *dbv1.RedisCluster, l
 		return err
 	}
 
-	if err := r.recreateLeader(redisCluster, promotedFollowerIP); err != nil {
+	if err := r.recreateLeader(redisCluster, promotedFollowerIP, promotedFollowerID, leaderName); err != nil {
 		return err
 	}
 	return nil
@@ -811,23 +833,19 @@ func (r *RedisClusterReconciler) waitForManualFailover(podIP string) error {
 
 // Waits for Redis to pick a new leader
 // Returns the IP of the promoted follower
-func (r *RedisClusterReconciler) waitForFailover(redisCluster *dbv1.RedisCluster, leaderName string, reachableFollowersNames []string, v *view.RedisClusterView) (string, error) {
+func (r *RedisClusterReconciler) waitForFailover(redisCluster *dbv1.RedisCluster, leaderName string, reachableFollowers []corev1.Pod) (string, error) {
 	r.Log.Info(fmt.Sprintf("Waiting for leader [%s] failover", leaderName))
 	var promotedFollowerIP string
 
 	return promotedFollowerIP, wait.PollImmediate(2*r.Config.Times.RedisAutoFailoverCheckInterval, 5*r.Config.Times.RedisAutoFailoverCheckTimeout, func() (bool, error) {
-		for _, reachableFollowerName := range reachableFollowersNames {
-			follower, exists := v.PodsViewByName[reachableFollowerName]
-			if !exists {
-				continue
-			}
-			info, _, err := r.RedisCLI.Info(follower.Ip)
+		for _, follower := range reachableFollowers {
+			info, _, err := r.RedisCLI.Info(follower.Status.PodIP)
 			if err != nil {
 				continue
 			}
 
 			if info.Replication["role"] == "master" {
-				promotedFollowerIP = follower.Ip
+				promotedFollowerIP = follower.Status.PodIP
 				return true, nil
 			}
 		}
@@ -883,4 +901,88 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 	clusterData.SaveRedisClusterView(data)
 
 	return isComplete, nil
+}
+
+// Handle leaders -- TODO
+
+func (r *RedisClusterReconciler) RecoverLeaders(redisCluster *dbv1.RedisCluster, expectedView map[string]string) error {
+	missingLeaders, e := r.GetMissingLeadersMap(redisCluster, expectedView)
+	if e != nil {
+		return e
+	}
+	followersMap, e := r.DetectMissingLeadersResponsiveFollowers(redisCluster, missingLeaders, map[string]bool{})
+	if e != nil {
+		return e
+	}
+	r.FailOverMissingLeaders(followersMap)
+	go r.RecreateLeaders()
+	go r.GetMissingLeadersAndFailover(redisCluster, expectedView) // with excluding map
+	return nil
+}
+
+func (r *RedisClusterReconciler) GetMissingLeadersAndFailover(redisCluster *dbv1.RedisCluster, expectedView map[string]string) error {
+	missingLeaders, e := r.GetMissingLeadersMap(redisCluster, expectedView)
+	if e != nil {
+		return e
+	}
+	followersMap, e := r.DetectMissingLeadersResponsiveFollowers(redisCluster, missingLeaders, map[string]bool{})
+	if e != nil {
+		return e
+	}
+	r.FailOverMissingLeaders(followersMap)
+	return nil
+}
+
+func (r *RedisClusterReconciler) GetMissingLeadersMap(redisCluster *dbv1.RedisCluster, expectedView map[string]string) (map[string]bool, error) {
+	pods, e := r.getRedisClusterPods(redisCluster)
+	if e != nil {
+		return nil, e
+	}
+	podsByName := make(map[string]bool)
+	for _, pod := range pods {
+		podsByName[pod.Name] = true
+	}
+	missingLeaders := make(map[string]bool)
+	for _, nodeFromView := range expectedView {
+		_, exists := podsByName[nodeFromView]
+		_, declaredMissing := missingLeaders[nodeFromView]
+		if !exists && !declaredMissing {
+			missingLeaders[nodeFromView] = true
+		}
+	}
+	return missingLeaders, nil
+}
+
+func (r *RedisClusterReconciler) DetectMissingLeadersResponsiveFollowers(redisCluster *dbv1.RedisCluster, missingLeaders map[string]bool, excludedLeaders map[string]bool) (map[string][]corev1.Pod, error) {
+	m := make(map[string][]corev1.Pod)
+	for missingLeader, _ := range missingLeaders {
+		if _, excluded := excludedLeaders[missingLeader]; !excluded {
+			responsiveFollowers, e := r.getRedisClusterPodsByLabel(redisCluster, "leader-name", missingLeader)
+			if e != nil {
+				return nil, e
+			}
+			m[missingLeader] = make([]corev1.Pod, 0)
+			for _, responsiveFollower := range responsiveFollowers {
+				if responsiveFollower.Status.Phase == "Running" {
+					m[missingLeader] = append(m[missingLeader], responsiveFollower)
+				}
+			}
+		}
+	}
+	return m, nil
+}
+
+func (r *RedisClusterReconciler) FailOverMissingLeaders(followersMap map[string][]corev1.Pod) error {
+	// check failover for each
+	return nil
+}
+
+func (r *RedisClusterReconciler) RecreateLeaders() {
+	r.RecreateLeader()
+}
+
+func (r *RedisClusterReconciler) RecreateLeader() {
+	// Receive map of the missing leader and his responsive followers
+	// if has responsive followers -> recreate, replicate, failback
+	// else -> create and add to cluster
 }

@@ -45,6 +45,8 @@ const (
 	// pods are created and clusterized
 	InitializingCluster RedisClusterState = "InitializingCluster"
 
+	UpdateView RedisClusterState = "UpdateView"
+
 	// Ready: cluster is up & running as expected
 	Ready RedisClusterState = "Ready"
 
@@ -83,6 +85,7 @@ func getCurrentClusterState(redisCluster *dbv1.RedisCluster) RedisClusterState {
 }
 
 func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.RedisCluster) error {
+	redisCluster.Status.ClusterState = string(InitializingCluster)
 	r.Log.Info("Handling initializing leaders...")
 	if err := r.createNewRedisCluster(redisCluster); err != nil {
 		return err
@@ -91,7 +94,7 @@ func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.Re
 	if err := r.initializeFollowers(redisCluster); err != nil {
 		return err
 	}
-	redisCluster.Status.ClusterState = string(Recovering)
+	redisCluster.Status.ClusterState = string(UpdateView)
 	return nil
 }
 
@@ -159,8 +162,15 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	switch r.State {
 	case NotExists:
-		redisCluster.Status.ClusterState = string(InitializingCluster)
 		err = r.handleInitializingCluster(&redisCluster)
+		break
+	case InitializingCluster:
+		err = r.deleteAllPods()
+		if err != nil {
+			err = r.handleInitializingCluster(&redisCluster)
+		}
+		break
+	case UpdateView:
 		r.UpdateView(&redisCluster)
 		break
 	case Ready:
@@ -202,15 +212,17 @@ func (r *RedisClusterReconciler) validateStateUpdated(redisCluster *dbv1.RedisCl
 	return ctrl.Result{}, nil
 }
 
-func (r *RedisClusterReconciler) UpdateView(redisCluster *dbv1.RedisCluster) {
+func (r *RedisClusterReconciler) UpdateView(redisCluster *dbv1.RedisCluster) error {
 	v, err := r.NewRedisClusterView(redisCluster)
 	if err != nil {
-		fmt.Printf("Error extracting view: %v\n", err)
+		return err
 	}
 	err = r.UpdateExpectedView(redisCluster, v)
 	if err != nil {
-		fmt.Printf("Error updating expected view: %v\n", err)
+		return err
 	}
+	redisCluster.Status.ClusterState = string(Recovering)
+	return nil
 }
 
 func (r *RedisClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -237,6 +249,7 @@ func (r *RedisClusterReconciler) deleteAllPods() error {
 	for _, pod := range pods {
 		go r.deletePod(pod.Namespace, pod.Status.PodIP, &wg)
 	}
+	wg.Wait()
 	return nil
 }
 
@@ -259,6 +272,7 @@ func DoResetCluster(c echo.Context) error {
 	if e != nil {
 		c.String(http.StatusBadRequest, "Cluster restart failed")
 	}
+	reconciler.DeleteExpectedView(cluster)
 	e = reconciler.handleInitializingCluster(cluster)
 	if e != nil {
 		c.String(http.StatusBadRequest, "Cluster restart failed")

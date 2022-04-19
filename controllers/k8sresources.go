@@ -53,6 +53,20 @@ func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisClu
 	return pods.Items, nil
 }
 
+func (r *RedisClusterReconciler) getRedisClusterPodsByLabel(redisCluster *dbv1.RedisCluster, key string, value string) ([]corev1.Pod, error) {
+	pods := &corev1.PodList{}
+	matchingLabels := redisCluster.Spec.PodLabelSelector
+
+	matchingLabels[key] = value
+
+	err := r.List(context.Background(), pods, client.InNamespace(redisCluster.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
+	if err != nil {
+		return nil, err
+	}
+
+	return pods.Items, nil
+}
+
 func (r *RedisClusterReconciler) getPodByIP(namespace string, podIP string) (corev1.Pod, error) {
 	var podList corev1.PodList
 	err := r.List(context.Background(), &podList, client.InNamespace(namespace), client.MatchingFields{"status.podIP": podIP})
@@ -185,12 +199,10 @@ func (r *RedisClusterReconciler) UpdateExpectedView(redisCluster *dbv1.RedisClus
 	configMapName := r.ClusterStatusMapName
 	configMapNamespace := redisCluster.ObjectMeta.Namespace
 	var configMap corev1.ConfigMap
-	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
 	if len(configMap.Data) > 0 {
 		r.applyViewToConfigMap(&configMap, v)
-
-		err = r.Update(context.Background(), &configMap, &client.UpdateOptions{})
-		return err
+		return r.Update(context.Background(), &configMap, &client.UpdateOptions{})
 	}
 	// If not exists
 	configMap = corev1.ConfigMap{
@@ -205,23 +217,26 @@ func (r *RedisClusterReconciler) UpdateExpectedView(redisCluster *dbv1.RedisClus
 		Data: nil,
 	}
 	r.applyViewToConfigMap(&configMap, v)
-	err = r.Create(context.Background(), &configMap)
-	return err
+	return r.Create(context.Background(), &configMap)
 }
 
 func (r *RedisClusterReconciler) DeleteExpectedView(redisCluster *dbv1.RedisCluster) error {
-	return nil
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	var configMap corev1.ConfigMap
+	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	if err == nil && len(configMap.Data) > 0 {
+		return r.Delete(context.Background(), &configMap)
+	}
+	return err
 }
 
 func (r *RedisClusterReconciler) GetExpectedView(redisCluster *dbv1.RedisCluster) (map[string]string, error) {
 	configMapName := r.ClusterStatusMapName
 	configMapNamespace := redisCluster.ObjectMeta.Namespace
 	var configMap corev1.ConfigMap
-	e := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
-	if e != nil {
-		return nil, e
-	}
-	return configMap.Data, nil
+	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	return configMap.Data, err
 }
 
 func (r *RedisClusterReconciler) applyViewToConfigMap(cm *corev1.ConfigMap, v *view.RedisClusterView) {
