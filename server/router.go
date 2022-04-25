@@ -8,7 +8,6 @@ import (
 func Register(e *echo.Echo) {
 	e.GET("/state", clusterState)
 	e.GET("/info", clusterInfo)
-	e.GET("/hello", controllers.SayHello)
 	e.GET("/reset", controllers.DoResetCluster)
 	e.GET("/updateview", controllers.UpdateExpectedView)
 	e.GET("/getview", controllers.GetExpectedView)

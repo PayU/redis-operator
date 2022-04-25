@@ -7,12 +7,11 @@ import (
 	"github.com/PayU/redis-operator/controllers/view"
 	clusterData "github.com/PayU/redis-operator/data"
 	"github.com/labstack/echo/v4"
-	v1 "k8s.io/api/core/v1"
 )
 
 type ResponseRedisClusterView struct {
 	State       string
-	ClusterView view.PrintableRedisClusterView
+	ClusterView view.RedisClusterView
 }
 
 func clusterInfo(c echo.Context) error {
@@ -21,7 +20,7 @@ func clusterInfo(c echo.Context) error {
 		return c.String(http.StatusNotFound, "Cluster info not available")
 	}
 
-	var result view.PrintableRedisClusterView
+	var result view.RedisClusterView
 	json.Unmarshal([]byte(byteValue), &result)
 
 	s := clusterData.GetRedisClusterState()
@@ -31,14 +30,6 @@ func clusterInfo(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, ResponseRedisClusterView)
-}
-
-func getIP(pod *v1.Pod) string {
-	if pod == nil {
-		return ""
-	} else {
-		return pod.Status.PodIP
-	}
 }
 
 func clusterState(c echo.Context) error {

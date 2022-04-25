@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
-	"github.com/PayU/redis-operator/controllers/view"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -20,19 +20,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// func exponentialRetry(attempts int, sleep time.Duration, fn func() error) error {
-// 	if e := fn(); e != nil {
-// 		if stop, ok := e.(error); ok {
-// 			return stop
-// 		}
-// 		if attempts--; attempts > 0 {
-// 			time.Sleep(sleep)
-// 			return exponentialRetry(attempts, 2*sleep, fn)
-// 		}
-// 		return e
-// 	}
-// 	return nil
-// }
+type K8sManager struct {
+	client.Client
+	Log    logr.Logger
+	Config *RedisOperatorConfig
+	Scheme *runtime.Scheme
+}
+
+// Get/Read methods
 
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
@@ -79,33 +74,82 @@ func (r *RedisClusterReconciler) getPodByIP(namespace string, podIP string) (cor
 	return podList.Items[0], nil
 }
 
-func (r *RedisClusterReconciler) deletePodsByIP(namespace string, ip ...string) ([]corev1.Pod, error) {
-	var deletedPods []corev1.Pod
-	for _, ip := range ip {
-		pod, err := r.getPodByIP(namespace, ip)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return nil, err
-		}
-		if err := r.Delete(context.Background(), &pod); err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return nil, err
-		}
-		deletedPods = append(deletedPods, pod)
-	}
-	return deletedPods, nil
-}
-
 func getSelectorRequirementFromPodLabelSelector(redisCluster *dbv1.RedisCluster) []metav1.LabelSelectorRequirement {
 	lsr := []metav1.LabelSelectorRequirement{}
 	for k, v := range redisCluster.Spec.PodLabelSelector {
 		lsr = append(lsr, metav1.LabelSelectorRequirement{Key: k, Operator: metav1.LabelSelectorOpIn, Values: []string{v}})
 	}
 	return lsr
+}
+
+func (r *RedisClusterReconciler) GetExpectedView(redisCluster *dbv1.RedisCluster) (map[string]string, error) {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	var configMap corev1.ConfigMap
+	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	return configMap.Data, err
+}
+
+// Update methods
+
+func (r *RedisClusterReconciler) UpdateExpectedView(redisCluster *dbv1.RedisCluster) error {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	var configMap corev1.ConfigMap
+	r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	if len(configMap.Data) > 0 {
+		e := r.applyViewToConfigMap(redisCluster, &configMap)
+		if e != nil {
+			return e
+		}
+		return r.Update(context.Background(), &configMap, &client.UpdateOptions{})
+	}
+	// If not exists
+	configMap = corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: configMapNamespace,
+		},
+		Data: nil,
+	}
+	e := r.applyViewToConfigMap(redisCluster, &configMap)
+	if e != nil {
+		return e
+	}
+	return r.Create(context.Background(), &configMap)
+}
+
+func (r *RedisClusterReconciler) applyViewToConfigMap(redisCluster *dbv1.RedisCluster, cm *corev1.ConfigMap) error {
+	pods, err := r.getRedisClusterPods(redisCluster)
+	if err != nil {
+		return err
+	}
+	data := make(map[string]string)
+	for _, p := range pods {
+		data[p.Name] = p.Labels["leader-name"]
+	}
+	cm.Data = data
+	return nil
+}
+
+// Create/Make/Write methods
+
+func (r *K8sManager) WritePodAnnotations(annotations map[string]string, pods ...corev1.Pod) error {
+	annotationsString := ""
+	for key, val := range annotations {
+		annotationsString = fmt.Sprintf("\"%s\": \"%s\",%s", key, val, annotationsString)
+	}
+	patch := []byte(fmt.Sprintf(`{"metadata":{"annotations":{%s}}}`, annotationsString[:len(annotationsString)-1]))
+	for _, pod := range pods {
+		if err := r.Patch(context.Background(), &pod, client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
+			r.Log.Error(err, fmt.Sprintf("Failed to patch the annotations on pod %s (%s)", pod.Name, pod.Status.PodIP))
+		}
+	}
+	return nil
 }
 
 func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, nodeRole string, leaderName string, nodeName string, preferredLabelSelectorRequirement []metav1.LabelSelectorRequirement) corev1.Pod {
@@ -195,96 +239,43 @@ func (r *RedisClusterReconciler) makeFollowerPod(redisCluster *dbv1.RedisCluster
 	return pod, nil
 }
 
-func (r *RedisClusterReconciler) UpdateExpectedView(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
-	configMapName := r.ClusterStatusMapName
-	configMapNamespace := redisCluster.ObjectMeta.Namespace
-	var configMap corev1.ConfigMap
-	r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
-	if len(configMap.Data) > 0 {
-		r.applyViewToConfigMap(&configMap, v)
-		return r.Update(context.Background(), &configMap, &client.UpdateOptions{})
-	}
-	// If not exists
-	configMap = corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName,
-			Namespace: configMapNamespace,
-		},
-		Data: nil,
-	}
-	r.applyViewToConfigMap(&configMap, v)
-	return r.Create(context.Background(), &configMap)
-}
-
-func (r *RedisClusterReconciler) DeleteExpectedView(redisCluster *dbv1.RedisCluster) error {
-	configMapName := r.ClusterStatusMapName
-	configMapNamespace := redisCluster.ObjectMeta.Namespace
-	var configMap corev1.ConfigMap
-	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
-	if err == nil && len(configMap.Data) > 0 {
-		return r.Delete(context.Background(), &configMap)
-	}
-	return err
-}
-
-func (r *RedisClusterReconciler) GetExpectedView(redisCluster *dbv1.RedisCluster) (map[string]string, error) {
-	configMapName := r.ClusterStatusMapName
-	configMapNamespace := redisCluster.ObjectMeta.Namespace
-	var configMap corev1.ConfigMap
-	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
-	return configMap.Data, err
-}
-
-func (r *RedisClusterReconciler) applyViewToConfigMap(cm *corev1.ConfigMap, v *view.RedisClusterView) {
-	data := make(map[string]string)
-	for _, p := range v.PodsViewByName {
-		data[p.Name] = p.LeaderName
-	}
-	cm.Data = data
-}
-
-// can be parallel
-func (r *RedisClusterReconciler) createRedisFollowerPods(redisCluster *dbv1.RedisCluster, followersNamesToLeaderNodes map[string]*view.PodView) ([]corev1.Pod, error) {
-
-	var followerPods []corev1.Pod
-	createOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
-
-	for followerName, leaderNode := range followersNamesToLeaderNodes {
-		pod, err := r.makeFollowerPod(redisCluster, followerName, leaderNode.Name)
-		if err != nil {
-			return nil, err
-		}
-		err = r.Create(context.Background(), &pod, createOpts...)
-		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return nil, err
-		}
-		followerPods = append(followerPods, pod)
-	}
-
-	followerPods, err := r.waitForPodNetworkInterface(followerPods...)
+func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisCluster) (*corev1.Service, error) {
+	svc, err := r.makeService(redisCluster)
 	if err != nil {
 		return nil, err
 	}
-
-	r.Log.Info(fmt.Sprintf("New follower pods created"))
-	return followerPods, nil
-}
-
-func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, nodeName string) (corev1.Pod, error) {
-	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
-	pod := r.makeRedisPod(redisCluster, "leader", nodeName, nodeName, preferredLabelSelectorRequirement)
-
-	if err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme); err != nil {
-		return pod, err
+	err = r.Create(context.Background(), &svc)
+	if !apierrors.IsAlreadyExists(err) {
+		return nil, err
 	}
-	return pod, nil
+	return &svc, nil
 }
 
-// Creates one or more leader pods; waits for available IP before returning
+func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (corev1.Service, error) {
+	service := corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "redis-cluster-service",
+			Namespace: redisCluster.ObjectMeta.Namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "redis-client-port",
+					Port:       6379,
+					TargetPort: intstr.FromInt(6379),
+				},
+			},
+			Selector: redisCluster.Spec.PodLabelSelector,
+		},
+	}
+
+	if err := ctrl.SetControllerReference(redisCluster, &service, r.Scheme); err != nil {
+		return service, err
+	}
+
+	return service, nil
+}
+
 func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNames ...string) ([]corev1.Pod, error) {
 
 	if len(nodeNames) == 0 {
@@ -318,42 +309,17 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 	return leaderPods, nil
 }
 
-func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (corev1.Service, error) {
-	service := corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "redis-cluster-service",
-			Namespace: redisCluster.ObjectMeta.Namespace,
-		},
-		Spec: corev1.ServiceSpec{
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "redis-client-port",
-					Port:       6379,
-					TargetPort: intstr.FromInt(6379),
-				},
-			},
-			Selector: redisCluster.Spec.PodLabelSelector,
-		},
-	}
+func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, nodeName string) (corev1.Pod, error) {
+	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "redis-node-role", Operator: metav1.LabelSelectorOpIn, Values: []string{"leader"}}}
+	pod := r.makeRedisPod(redisCluster, "leader", nodeName, nodeName, preferredLabelSelectorRequirement)
 
-	if err := ctrl.SetControllerReference(redisCluster, &service, r.Scheme); err != nil {
-		return service, err
+	if err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme); err != nil {
+		return pod, err
 	}
-
-	return service, nil
+	return pod, nil
 }
 
-func (r *RedisClusterReconciler) createRedisService(redisCluster *dbv1.RedisCluster) (*corev1.Service, error) {
-	svc, err := r.makeService(redisCluster)
-	if err != nil {
-		return nil, err
-	}
-	err = r.Create(context.Background(), &svc)
-	if !apierrors.IsAlreadyExists(err) {
-		return nil, err
-	}
-	return &svc, nil
-}
+// Wait methods
 
 func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.Pod, error) {
 	var readyPods []corev1.Pod
@@ -363,7 +329,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 			return nil, err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
-		if pollErr := wait.PollImmediate(2*r.Config.Times.PodReadyCheckInterval, 5*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(2*r.Config.Times.PodReadyCheckInterval, 10*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return false, err
@@ -385,13 +351,12 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 	return readyPods, nil
 }
 
-// Method used to wait for one or more pods to have an IP address
 func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) ([]corev1.Pod, error) {
 	r.Log.Info(fmt.Sprintf("Waiting for pod network interfaces..."))
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(2*r.Config.Times.PodNetworkCheckInterval, 5*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(2*r.Config.Times.PodNetworkCheckInterval, 20*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil
@@ -410,7 +375,6 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	return readyPods, nil
 }
 
-// TODO should wait as long as delete grace period
 func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 	for _, p := range pods {
 		key, err := client.ObjectKeyFromObject(&p)
@@ -434,23 +398,58 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 	return nil
 }
 
-type K8sManager struct {
-	client.Client
-	Log    logr.Logger
-	Config *RedisOperatorConfig
-	Scheme *runtime.Scheme
+// Delete methods
+
+func (r *RedisClusterReconciler) deleteAllRedisClusterPods() error {
+	pods, e := r.getRedisClusterPods(cluster)
+	if e != nil {
+		return e
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(pods))
+	for _, pod := range pods {
+		go r.deletePodAsync(pod.Namespace, pod.Status.PodIP, &wg)
+	}
+	wg.Wait()
+	return nil
 }
 
-func (r *K8sManager) WritePodAnnotations(annotations map[string]string, pods ...corev1.Pod) error {
-	annotationsString := ""
-	for key, val := range annotations {
-		annotationsString = fmt.Sprintf("\"%s\": \"%s\",%s", key, val, annotationsString)
+func (r *RedisClusterReconciler) deletePodAsync(namespace string, ip string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	deletedPods, _ := r.deletePodsByIP(namespace, ip)
+	if len(deletedPods) > 0 {
+		r.waitForPodDelete(deletedPods...)
 	}
-	patch := []byte(fmt.Sprintf(`{"metadata":{"annotations":{%s}}}`, annotationsString[:len(annotationsString)-1]))
-	for _, pod := range pods {
-		if err := r.Patch(context.Background(), &pod, client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
-			r.Log.Error(err, fmt.Sprintf("Failed to patch the annotations on pod %s (%s)", pod.Name, pod.Status.PodIP))
+}
+
+func (r *RedisClusterReconciler) deletePodsByIP(namespace string, ip ...string) ([]corev1.Pod, error) {
+	var deletedPods []corev1.Pod
+	for _, ip := range ip {
+		pod, err := r.getPodByIP(namespace, ip)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
 		}
+		if err := r.Delete(context.Background(), &pod); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		deletedPods = append(deletedPods, pod)
 	}
-	return nil
+	return deletedPods, nil
+}
+
+func (r *RedisClusterReconciler) DeleteExpectedView(redisCluster *dbv1.RedisCluster) error {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	var configMap corev1.ConfigMap
+	err := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	if err == nil && len(configMap.Data) > 0 {
+		return r.Delete(context.Background(), &configMap)
+	}
+	return err
 }
