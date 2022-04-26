@@ -401,7 +401,7 @@ func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 	return stdout, nil
 }
 
-func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...string) (bool, error) {
+func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...string) (string, bool, error) {
 	args := []string{"--cluster", "rebalance", addressPortDecider(nodeIP, r.Port)}
 	if useEmptyMasters {
 		args = append(args, "--cluster-use-empty-masters")
@@ -410,9 +410,9 @@ func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return false, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
+		return stdout, false, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-	return true, nil
+	return stdout, true, nil
 }
 
 // https://redis.io/commands/flushall

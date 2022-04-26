@@ -81,10 +81,12 @@ func TestRedisCLI(test *testing.T) {
 	testClusterFailOver()
 	testClusterMeet()
 	testClusterReset()
+	testClusterRebalance()
 	testFlushAll()
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
+	t.Errorf("")
 }
 
 func testClusterCreate() {
@@ -436,10 +438,7 @@ func execAddLeaderTest(testCaseId string, newNodeAddr string, existingNodeAddr s
 	result, _ := r.AddLeader(newNodeAddr, existingNodeAddr, opt...)
 	argMap := make(map[string]string)
 	argLineToArgMap(result, argMap)
-	newNodeAddr = addressPortDecider(newNodeAddr, r.Port)
-	existingNodeAddr = addressPortDecider(existingNodeAddr, r.Port)
-	expectedArgList := []string{"--cluster", "add-node"}
-	expectedArgList = append(expectedArgList, newNodeAddr, existingNodeAddr)
+	expectedArgList := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port)}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "Add Leader "+testCaseId, argMap, expectedArgMap)
@@ -556,10 +555,14 @@ func execClusterResetTest(testCaseId string, nodeIP string, opt ...string) {
 }
 
 func execClusterRebalanceTest(testCaseId string, nodeIP string, useEmptyMasters bool, opt ...string) {
-	result, _ := r.ClusterRebalance(nodeIP, useEmptyMasters, opt...)
+	result, _, _ := r.ClusterRebalance(nodeIP, useEmptyMasters, opt...)
 	argMap := make(map[string]string)
 	argLineToArgMap(fmt.Sprint(result), argMap)
-	expectedArgList := []string{"-h", nodeIP, "cluster", "reset"}
+	expectedArgList := []string{"--cluster", "rebalance", addressPortDecider(nodeIP, r.Port)}
+	if useEmptyMasters {
+		expectedArgList = append(expectedArgList, "--cluster-use-empty-masters")
+	}
+	expectedArgList = append(expectedArgList, "--cluster-yes")
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, fmt.Sprint(result), "Cluster Rebalance "+testCaseId, argMap, expectedArgMap)
