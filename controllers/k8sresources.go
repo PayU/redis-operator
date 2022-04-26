@@ -277,13 +277,14 @@ func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (c
 }
 
 func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisCluster, nodeNames ...string) ([]corev1.Pod, error) {
-
+	fmt.Println("Creating new leader...")
 	if len(nodeNames) == 0 {
 		return nil, errors.New("Failed to create leader pods - no node names")
 	}
 
 	var leaderPods []corev1.Pod
 	for _, nodeName := range nodeNames {
+		fmt.Println("Making pod " + nodeName)
 		pod, err := r.makeLeaderPod(redisCluster, nodeName)
 		if err != nil {
 			return nil, err
@@ -294,12 +295,14 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 
 	for _, pod := range leaderPods {
+		fmt.Println("Creating pod with options")
 		err := r.Create(context.Background(), &pod, applyOpts...)
 		if err != nil && !apierrors.IsAlreadyExists(err) && !apierrors.IsConflict(err) {
+			fmt.Printf(err.Error())
 			return nil, err
 		}
 	}
-
+	fmt.Println("Waiting for interface")
 	leaderPods, err := r.waitForPodNetworkInterface(leaderPods...)
 	if err != nil {
 		return nil, err

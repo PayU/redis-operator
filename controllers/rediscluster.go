@@ -244,31 +244,91 @@ func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster,
 	return nil
 }
 
-func (r *RedisClusterReconciler) addNewLeader(redisCluster *dbv1.RedisCluster, leaderName string, healthyLeaderIp string) error {
-	r.Log.Info(fmt.Sprintf("Recreating followersless leader [%s]", leaderName))
-	newLeaderPods, err := r.createRedisLeaderPods(redisCluster, leaderName)
-	if err != nil {
-		return err
+func (r *RedisClusterReconciler) deleteLeaders(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, leaderNames map[string]bool) error {
+	var healthyServerIp string
+	for _, node := range v.Pods {
+		if node.IsLeader && node.IsReachable {
+			if _, toBeDeleted := leaderNames[node.Name]; !toBeDeleted {
+				healthyServerIp = node.Ip
+				break
+			}
+		}
 	}
-	newLeaderIP := newLeaderPods[0].Status.PodIP
-
-	newLeaderPods, err = r.waitForPodReady(newLeaderPods...)
-	if err != nil {
-		return err
+	if len(healthyServerIp) == 0 {
+		return errors.New("Could not find healthy redis server ip to perform leader deletion operation")
 	}
-
-	if err := r.waitForRedis(newLeaderIP); err != nil {
-		return err
+	var wg sync.WaitGroup
+	wg.Add(len(leaderNames))
+	for leaderName, _ := range leaderNames {
+		go r.delLeaderNode(redisCluster, leaderName, healthyServerIp, &wg)
 	}
-
-	if _, err := r.RedisCLI.AddLeader(newLeaderIP, healthyLeaderIp); err != nil {
-		return err
-	}
-
-	// todo: rebalance
-
-	r.Log.Info(fmt.Sprintf("[OK] Leader [%s] recreated successfully; new IP: [%s]", leaderName, newLeaderIP))
+	wg.Wait()
 	return nil
+}
+
+func (r *RedisClusterReconciler) delLeaderNode(redisCluster *dbv1.RedisCluster, leaderName string, healthyServerIp string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	pods, e := r.getRedisClusterPodsByLabel(redisCluster, "node-name", leaderName)
+	if e != nil || len(pods) == 0 {
+		r.Log.Error(e, "Could not get leader by name: "+leaderName)
+		return
+	}
+	leader := pods[0]
+	id, e := r.RedisCLI.MyClusterID(leader.Status.PodIP)
+	if e != nil {
+		r.Log.Error(e, "Could not get leader cluster id: "+leader.Name)
+		return
+	}
+	_, e = r.RedisCLI.DelNode(healthyServerIp, id)
+	if e != nil {
+		r.Log.Error(e, "Could not perform cluster delete operation: "+leader.Name)
+		return
+	}
+	r.deletePodsByIP(leader.Namespace, leader.Status.PodIP)
+}
+
+func (r *RedisClusterReconciler) addLeaders(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, leaderNames []string) error {
+	leaders, e := r.createRedisLeaderPods(redisCluster, leaderNames...)
+	if e != nil || len(leaders) == 0 {
+		r.Log.Error(e, "Could not add new leaders")
+		return e
+	}
+	var healthyServerIp string
+	for _, node := range v.Pods {
+		if node.IsLeader && node.IsReachable {
+			healthyServerIp = node.Ip
+			break
+		}
+	}
+	if len(healthyServerIp) == 0 {
+		return errors.New("Could not find healthy redis server ip to perform leader addition operation")
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(leaders))
+	for _, leader := range leaders {
+		go r.addLeader(redisCluster, leader, healthyServerIp, &wg)
+	}
+	wg.Wait()
+	return nil
+}
+
+func (r *RedisClusterReconciler) addLeader(redisCluster *dbv1.RedisCluster, leaderPod corev1.Pod, healthyServerIp string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	leaderPods, e := r.waitForPodReady(leaderPod)
+	if e != nil || len(leaderPods) == 0 {
+		r.Log.Error(e, fmt.Sprintf("Error while waiting for pod [%s] to be ready\n", leaderPod.Name))
+		return
+	}
+	e = r.waitForRedis(leaderPods[0].Status.PodIP)
+	if e != nil {
+		r.Log.Error(e, fmt.Sprintf("Error while waiting for pod [%s] to be ready\n", leaderPod.Name))
+		return
+	}
+	_, e = r.RedisCLI.AddLeader(leaderPods[0].Status.PodIP, healthyServerIp)
+	if e != nil {
+		r.Log.Error(e, fmt.Sprintf("Error while adding pod [%s] to redis cluster, healthy node ip: [%s]", leaderPod.Name, healthyServerIp))
+		return
+	}
 }
 
 // Adds one or more follower pods to the cluster
