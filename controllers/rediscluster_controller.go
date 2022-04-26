@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync"
 
 	"github.com/go-logr/logr"
 	"github.com/labstack/echo/v4"
@@ -164,7 +163,11 @@ func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.Re
 }
 
 func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluster) error {
-	complete, err := r.isClusterComplete(redisCluster)
+	expectedView, e := r.GetExpectedView(redisCluster)
+	if e != nil {
+		r.Log.Info("Could not retrieve expected view for [Ready] state verification")
+	}
+	complete, err := r.isClusterComplete(redisCluster, expectedView)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is complete")
 		return err
@@ -189,21 +192,10 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 
 func (r *RedisClusterReconciler) handleRecoveringState(redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("Handling cluster recovery...")
-	expectedView, err := r.GetExpectedView(cluster)
-	if err != nil {
-		return err
+	e := r.recoverCluster(redisCluster)
+	if e != nil {
+		return e
 	}
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go r.recoverCluster(redisCluster, &wg)
-	detectUrgentEvents := make(chan struct{})
-	go func() {
-		for {
-			r.mitigateUrgentEvents(redisCluster, expectedView)
-		}
-	}()
-	wg.Wait()
-	close(detectUrgentEvents)
 	redisCluster.Status.ClusterState = string(Ready)
 	return nil
 }
@@ -216,10 +208,6 @@ func (r *RedisClusterReconciler) handleUpdatingState(redisCluster *dbv1.RedisClu
 	}
 	redisCluster.Status.ClusterState = string(Recovering)
 	return err
-}
-
-func (r *RedisClusterReconciler) mitigateUrgentEvents(redisCluster *dbv1.RedisCluster, expectedView map[string]string) {
-	r.GetMissingLeadersAndFailover(redisCluster, expectedView, map[string]bool{})
 }
 
 func (r *RedisClusterReconciler) validateStateUpdated(redisCluster *dbv1.RedisCluster) (ctrl.Result, error) {

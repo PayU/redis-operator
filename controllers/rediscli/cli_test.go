@@ -1,6 +1,7 @@
 package rediscli
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -68,6 +69,7 @@ func TestRedisCLI(test *testing.T) {
 	testClusterCreate()
 	testClusterCheck()
 	testAddFollower()
+	testAddLeader()
 	testDelNode()
 	testClusterInfo()
 	testInfo()
@@ -140,6 +142,25 @@ func testAddFollower() {
 	execAddFollowerTest("4", newNodeAddr, existingNodeAddr, leaderID, "-p 6379 -optArg1 optVal1 -optArg2 optVal2")
 	// Test 5 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is provided, optional arguments provided as a parametrized arg list
 	execAddFollowerTest("5", newNodeAddr, existingNodeAddr, leaderID, "-optArg1 optVal1", "-p 6379", "-optArg2 optVal2")
+}
+
+func testAddLeader() {
+	// Test 1 : Routing port is not provided, newNodeAddr port is not provided, existingNodeAddr port is not provided, no optional args
+	newNodeAddr := "127.0.0.1"
+	existingNodeAddr := "128.1.1.2:"
+	execAddLeaderTest("1", newNodeAddr, existingNodeAddr)
+	// Test 2 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is not provided, no optional args
+	newNodeAddr = "127.0.0.1:6565"
+	execAddLeaderTest("2", newNodeAddr, existingNodeAddr, "-p 8080")
+	// Test 3 : Routing port is not provided, newNodeAddr port is not provided, existingNodeAddr port is provided, optional arguments provided
+	newNodeAddr = "127.0.0.1:"
+	existingNodeAddr = "128.1.1.2:6377"
+	execAddLeaderTest("3", newNodeAddr, existingNodeAddr, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is provided, optional arguments provided
+	newNodeAddr = "127.0.0.1:6377"
+	execAddLeaderTest("4", newNodeAddr, existingNodeAddr, "-p 6379 -optArg1 optVal1 -optArg2 optVal2")
+	// Test 5 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is provided, optional arguments provided as a parametrized arg list
+	execAddLeaderTest("5", newNodeAddr, existingNodeAddr, "-optArg1 optVal1", "-p 6379", "-optArg2 optVal2")
 }
 
 func testDelNode() {
@@ -301,6 +322,20 @@ func testClusterReset() {
 	execClusterResetTest("5", nodeIP, "-p 6399", "-optArg1 optVal1")
 }
 
+func testClusterRebalance() {
+	nodeIP := "127.0.0.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterRebalanceTest("1", nodeIP, true)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterRebalanceTest("2", nodeIP, false, "-p 8383")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterRebalanceTest("3", nodeIP, true, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterRebalanceTest("4", nodeIP, false, "-p 8384 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterRebalanceTest("5", nodeIP, true, "-p 6399", "-optArg1 optVal1")
+}
+
 func testFlushAll() {
 	nodeIP := "128.0.1.1"
 	// Test 1 : Routing port is not provided, no optional arguments
@@ -395,6 +430,19 @@ func execAddFollowerTest(testCaseId string, newNodeAddr string, existingNodeAddr
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "Add follower "+testCaseId, argMap, expectedArgMap)
+}
+
+func execAddLeaderTest(testCaseId string, newNodeAddr string, existingNodeAddr string, opt ...string) {
+	result, _ := r.AddLeader(newNodeAddr, existingNodeAddr, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(result, argMap)
+	newNodeAddr = addressPortDecider(newNodeAddr, r.Port)
+	existingNodeAddr = addressPortDecider(existingNodeAddr, r.Port)
+	expectedArgList := []string{"--cluster", "add-node"}
+	expectedArgList = append(expectedArgList, newNodeAddr, existingNodeAddr)
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, result, "Add Leader "+testCaseId, argMap, expectedArgMap)
 }
 
 func execDelNodeTest(testCaseId string, nodeIP string, nodeID string, opt ...string) {
@@ -505,6 +553,16 @@ func execClusterResetTest(testCaseId string, nodeIP string, opt ...string) {
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "Cluster Reset "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterRebalanceTest(testCaseId string, nodeIP string, useEmptyMasters bool, opt ...string) {
+	result, _ := r.ClusterRebalance(nodeIP, useEmptyMasters, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(fmt.Sprint(result), argMap)
+	expectedArgList := []string{"-h", nodeIP, "cluster", "reset"}
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, fmt.Sprint(result), "Cluster Rebalance "+testCaseId, argMap, expectedArgMap)
 }
 
 func execFlushAllTest(testCaseId string, nodeIP string, opt ...string) {
