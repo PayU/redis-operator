@@ -310,9 +310,60 @@ func DeleteNewLeaders(c echo.Context) error {
 	if e != nil {
 		return c.String(http.StatusOK, "Could not retrieve cluster view")
 	}
-	e = reconciler.deleteLeaders(cluster, v, map[string]bool{"redis-node-8": true, "redis-node-9": true})
+	e = reconciler.deleteNodes(cluster, v, []string{"redis-node-8", "redis-node-9"})
 	if e != nil {
 		return c.String(http.StatusOK, "Could not delete requested leaders properly")
 	}
 	return c.String(http.StatusOK, "New leader node deleted successfully")
+}
+
+func ClusterRebalance(c echo.Context) error {
+	v, e := reconciler.NewRedisClusterView(cluster)
+	if e != nil {
+		return c.String(http.StatusOK, "Could not retrieve cluster view")
+	}
+	var healthyServerIp string
+	for _, node := range v.Pods {
+		if node.IsLeader && node.IsReachable {
+			healthyServerIp = node.Ip
+			break
+		}
+	}
+
+	if len(healthyServerIp) == 0 {
+		return c.String(http.StatusOK, "Could not find healthy server to serve the rebalance request")
+	}
+
+	successful, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
+	println("Successful: " + fmt.Sprint(successful))
+	if err != nil {
+		println(err.Error())
+	}
+
+	return c.String(http.StatusOK, "Cluster rebalance attempt executed")
+}
+
+func ClusterFix(c echo.Context) error {
+	v, e := reconciler.NewRedisClusterView(cluster)
+	if e != nil {
+		return c.String(http.StatusOK, "Could not retrieve cluster view")
+	}
+	var healthyServerIp string
+	for _, node := range v.Pods {
+		if node.IsLeader && node.IsReachable {
+			healthyServerIp = node.Ip
+			break
+		}
+	}
+
+	if len(healthyServerIp) == 0 {
+		return c.String(http.StatusOK, "Could not find healthy server to serve the fix request")
+	}
+
+	successful, _, err := reconciler.RedisCLI.ClusterFix(healthyServerIp)
+	println("Successful: " + fmt.Sprint(successful))
+	if err != nil {
+		println(err.Error())
+	}
+	return c.String(http.StatusOK, "Cluster fix attempt executed")
 }

@@ -24,6 +24,7 @@ type RedisAuth struct {
 type CommandHandler interface {
 	buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string)
 	executeCommand(args []string) (string, string, error)
+	executeCommandWithPipe(pipeArgs []string, args []string) (string, string, error)
 	buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error)
 	buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error)
 }
@@ -80,6 +81,73 @@ func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, e
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "redis-cli", args...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		return stdout.String(), stderr.String(), err
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if e, ok := err.(*exec.ExitError); ok {
+
+			// If the process exited by itself, just return the error to the caller
+			if e.Exited() {
+				return stdout.String(), stderr.String(), e
+			}
+
+			// We know now that the process could be started, but didn't exit
+			// by itself. Something must have killed it. If the context is done,
+			// we can *assume* that it has been killed by the exec.Command.
+			// Let's return ctx.Err() so our user knows that this *might* be
+			// the case.
+
+			select {
+			case <-ctx.Done():
+				return stdout.String(), stderr.String(), errors.Errorf("exec of %v failed with: %v", args, ctx.Err())
+			default:
+				return stdout.String(), stderr.String(), errors.Errorf("exec of %v failed with: %v", args, e)
+			}
+		}
+		return stdout.String(), stderr.String(), err
+	}
+
+	stdOutput := strings.TrimSpace(stdout.String())
+	errOutput := strings.TrimSpace(stderr.String())
+
+	if errOutput != "" {
+		return stdOutput, errOutput, errors.New(errOutput)
+	}
+	if stdOutput != "" && strings.Contains(strings.ToLower(stdOutput), "error:") {
+		return stdOutput, stdOutput, errors.New(stdOutput)
+	}
+	return stdOutput, errOutput, nil
+}
+
+/* Executes command and returns cmd stdout, stderr and runtime error if appears
+ *  pipeArgs: argument list which will start the pipe the args list will be added to
+ *  args: arguments, flags and their values, in the order they should appear as if they were executed in the cli itself
+ */
+func (h *RunTimeCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string) (string, string, error) {
+
+	var stdout, stderr bytes.Buffer
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*defaultRedisCliTimeout)
+	defer cancel()
+
+	argLine := ""
+	for _, arg := range pipeArgs {
+		argLine += arg + " "
+	}
+	argLine += "| redis-cli"
+	for _, arg := range args {
+		argLine += " " + arg
+	}
+
+	println(argLine)
+
+	cmd := exec.CommandContext(ctx, "bash", "-c", argLine)
+
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -401,7 +469,7 @@ func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 	return stdout, nil
 }
 
-func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...string) (string, bool, error) {
+func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...string) (bool, string, error) {
 	args := []string{"--cluster", "rebalance", addressPortDecider(nodeIP, r.Port)}
 	if useEmptyMasters {
 		args = append(args, "--cluster-use-empty-masters")
@@ -410,9 +478,9 @@ func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return stdout, false, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
+		return false, stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-	return stdout, true, nil
+	return true, stdout, nil
 }
 
 // https://redis.io/commands/flushall
@@ -464,4 +532,15 @@ func (r *RedisCLI) ACLList(nodeIP string, opt ...string) (*RedisACL, string, err
 		return nil, "", err
 	}
 	return acl, stdout, nil
+}
+
+func (r *RedisCLI) ClusterFix(nodeIP string, opt ...string) (bool, string, error) {
+	args := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	pipeArgs := []string{"yes", "yes"}
+	stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return false, stdout, errors.Errorf("Failed to execute cluster fix (%v): %s | %s | %v", addressPortDecider(nodeIP, r.Port), stdout, stderr, err)
+	}
+	return true, stdout, nil
 }

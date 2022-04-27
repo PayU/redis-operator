@@ -244,47 +244,43 @@ func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster,
 	return nil
 }
 
-func (r *RedisClusterReconciler) deleteLeaders(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, leaderNames map[string]bool) error {
+func (r *RedisClusterReconciler) deleteNodes(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, nodeNames []string) error {
 	var healthyServerIp string
-	for _, node := range v.Pods {
-		if node.IsLeader && node.IsReachable {
-			if _, toBeDeleted := leaderNames[node.Name]; !toBeDeleted {
-				healthyServerIp = node.Ip
-				break
-			}
+	nodeNameToIp := make(map[string]string)
+	for _, nodeName := range nodeNames {
+		if node, exists := v.Pods[nodeName]; exists {
+			nodeNameToIp[nodeName] = node.Ip
 		}
 	}
-	if len(healthyServerIp) == 0 {
-		return errors.New("Could not find healthy redis server ip to perform leader deletion operation")
+	for _, node := range v.Pods {
+		if _, toRemove := nodeNameToIp[node.Name]; !toRemove && node.IsLeader && node.IsReachable {
+			healthyServerIp = node.Ip
+			break
+		}
 	}
+
+	if len(healthyServerIp) == 0 {
+		return errors.New("Could not find healthy redis server ip to perform node deletion operation")
+	}
+
 	var wg sync.WaitGroup
-	wg.Add(len(leaderNames))
-	for leaderName, _ := range leaderNames {
-		go r.delLeaderNode(redisCluster, leaderName, healthyServerIp, &wg)
+	wg.Add(len(nodeNameToIp))
+	for nodeName, nodeIp := range nodeNameToIp {
+		nodeId := v.Pods[nodeName].NodeId
+		go r.delNode(redisCluster, nodeIp, nodeId, healthyServerIp, &wg)
 	}
 	wg.Wait()
 	return nil
 }
 
-func (r *RedisClusterReconciler) delLeaderNode(redisCluster *dbv1.RedisCluster, leaderName string, healthyServerIp string, wg *sync.WaitGroup) {
+func (r *RedisClusterReconciler) delNode(redisCluster *dbv1.RedisCluster, nodeIp string, nodeId string, healthyServerIp string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	pods, e := r.getRedisClusterPodsByLabel(redisCluster, "node-name", leaderName)
-	if e != nil || len(pods) == 0 {
-		r.Log.Error(e, "Could not get leader by name: "+leaderName)
-		return
-	}
-	leader := pods[0]
-	id, e := r.RedisCLI.MyClusterID(leader.Status.PodIP)
+	_, e := r.RedisCLI.DelNode(healthyServerIp, nodeId)
 	if e != nil {
-		r.Log.Error(e, "Could not get leader cluster id: "+leader.Name)
+		r.Log.Error(e, "Could not perform cluster delete operation: "+nodeIp+":"+nodeId)
 		return
 	}
-	_, e = r.RedisCLI.DelNode(healthyServerIp, id)
-	if e != nil {
-		r.Log.Error(e, "Could not perform cluster delete operation: "+leader.Name)
-		return
-	}
-	r.deletePodsByIP(leader.Namespace, leader.Status.PodIP)
+	r.deletePodsByIP(redisCluster.Namespace, nodeIp)
 }
 
 func (r *RedisClusterReconciler) addLeaders(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, leaderNames []string) error {

@@ -36,6 +36,18 @@ func (h *TestCommandHandler) executeCommand(args []string) (string, string, erro
 	return executedCommand, "", nil
 }
 
+func (h *TestCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string) (string, string, error) {
+	executedCommand := ""
+	for _, arg := range pipeArgs {
+		executedCommand += arg + " "
+	}
+	executedCommand += "| "
+	for _, arg := range args {
+		executedCommand += arg + " "
+	}
+	return executedCommand, "", nil
+}
+
 func mapToPrintableStr(argMap map[string]string) string {
 	toStr := "{\n"
 	for key, val := range argMap {
@@ -555,7 +567,7 @@ func execClusterResetTest(testCaseId string, nodeIP string, opt ...string) {
 }
 
 func execClusterRebalanceTest(testCaseId string, nodeIP string, useEmptyMasters bool, opt ...string) {
-	result, _, _ := r.ClusterRebalance(nodeIP, useEmptyMasters, opt...)
+	_, result, _ := r.ClusterRebalance(nodeIP, useEmptyMasters, opt...)
 	argMap := make(map[string]string)
 	argLineToArgMap(fmt.Sprint(result), argMap)
 	expectedArgList := []string{"--cluster", "rebalance", addressPortDecider(nodeIP, r.Port)}

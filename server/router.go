@@ -13,4 +13,6 @@ func Register(e *echo.Echo) {
 	e.GET("/getview", controllers.GetExpectedView)
 	e.GET("/addLeaders", controllers.AddNewLeaders)
 	e.GET("/delLeaders", controllers.DeleteNewLeaders)
+	e.GET("/clusterRebalance", controllers.ClusterRebalance)
+	e.GET("/clusterFix", controllers.ClusterFix)
 }
