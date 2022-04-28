@@ -56,6 +56,8 @@ const (
 
 	// Updating: the cluster is in the middle of a rolling update
 	Updating RedisClusterState = "Updating"
+
+	Scale RedisClusterState = "Scale"
 )
 
 type RedisClusterState string
@@ -125,6 +127,10 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 			err = r.handleUpdatingState(&redisCluster)
 		}
 		break
+	case Scale:
+		if !ClusterReset {
+			err = r.handleScaleState(&redisCluster)
+		}
 	}
 
 	r.updateClusterView(&redisCluster)
@@ -197,6 +203,21 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		return nil
 	}
 	r.Log.Info("Cluster is healthy")
+	scale, scaleType := r.isScaleRequired(redisCluster, expectedView)
+	if scale {
+		r.Log.Info(fmt.Sprintf("Scale is required, scale type: [%v]", scaleType.String()))
+		redisCluster.Status.ClusterState = string(Scale)
+	}
+	return nil
+}
+
+func (r *RedisClusterReconciler) handleScaleState(redisCluster *dbv1.RedisCluster) error {
+	e := r.scaleCluster(redisCluster)
+	if e != nil {
+		r.Log.Error(e, "Could not perform cluster scale")
+	}
+	redisCluster.Status.ClusterState = string(UpdateView)
+	r.updateClusterState(redisCluster)
 	return nil
 }
 
@@ -298,7 +319,17 @@ func AddNewLeaders(c echo.Context) error {
 	if e != nil {
 		return c.String(http.StatusOK, "Could not retrieve cluster view")
 	}
-	e = reconciler.addLeaders(cluster, v, []string{"redis-node-8", "redis-node-9"})
+	var healthyLeaderIp string
+	for _, node := range v.Pods {
+		if node.IsLeader && node.IsReachable {
+			healthyLeaderIp = node.Ip
+			break
+		}
+	}
+	if len(healthyLeaderIp) == 0 {
+		return c.String(http.StatusOK, "Could not find healthy reachable leader to serve the fix request")
+	}
+	e = reconciler.addLeaders(cluster, healthyLeaderIp, []string{"redis-node-8", "redis-node-9"})
 	if e != nil {
 		return c.String(http.StatusOK, "Could not add requested leaders properly")
 	}

@@ -20,6 +20,19 @@ import (
 	view "github.com/PayU/redis-operator/controllers/view"
 )
 
+type ScaleType int
+
+const (
+	ScaleUpLeaders ScaleType = iota
+	ScaleUpFollowers
+	ScaleDownLeaders
+	ScaleDownFollowers
+)
+
+func (s ScaleType) String() string {
+	return [...]string{"ScaleUpLeaders", "ScaleUpFollowers", "ScaleDownLeaders", "ScaleDownFollowers"}[s]
+}
+
 func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisCluster) (*view.RedisClusterView, error) {
 	v := &view.RedisClusterView{}
 	pods, e := r.getRedisClusterPods(redisCluster)
@@ -283,26 +296,16 @@ func (r *RedisClusterReconciler) delNode(redisCluster *dbv1.RedisCluster, nodeIp
 	r.deletePodsByIP(redisCluster.Namespace, nodeIp)
 }
 
-func (r *RedisClusterReconciler) addLeaders(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, leaderNames []string) error {
+func (r *RedisClusterReconciler) addLeaders(redisCluster *dbv1.RedisCluster, healthyLeaderIp string, leaderNames []string) error {
 	leaders, e := r.createRedisLeaderPods(redisCluster, leaderNames...)
 	if e != nil || len(leaders) == 0 {
 		r.Log.Error(e, "Could not add new leaders")
 		return e
 	}
-	var healthyServerIp string
-	for _, node := range v.Pods {
-		if node.IsLeader && node.IsReachable {
-			healthyServerIp = node.Ip
-			break
-		}
-	}
-	if len(healthyServerIp) == 0 {
-		return errors.New("Could not find healthy redis server ip to perform leader addition operation")
-	}
 	var wg sync.WaitGroup
 	wg.Add(len(leaders))
 	for _, leader := range leaders {
-		go r.addLeader(redisCluster, leader, healthyServerIp, &wg)
+		go r.addLeader(redisCluster, leader, healthyLeaderIp, &wg)
 	}
 	wg.Wait()
 	return nil
@@ -496,20 +499,45 @@ func (r *RedisClusterReconciler) handleFailover(redisCluster *dbv1.RedisCluster,
 
 func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster) error {
 	defer r.forgetLostNodes(redisCluster)
+
 	r.Log.Info("Getting expected cluster view...")
 	expectedView, err := r.GetExpectedView(cluster)
 	if err != nil {
 		return err
 	}
+
+	err = r.waitForNonReachablePodsTermination(redisCluster)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info(fmt.Sprintf("Validating leaders state..."))
+	leadersRecovered, err := r.RecoverLeaders(redisCluster, expectedView)
+	if err != nil {
+		return err
+	}
+
+	if !leadersRecovered {
+		r.Log.Info(fmt.Sprintf("Validating followers state..."))
+		r.RecoverFollowers(redisCluster, expectedView)
+	}
+
+	complete, err := r.isClusterComplete(redisCluster, expectedView)
+	if err != nil || !complete || leadersRecovered {
+		r.Log.Info("Cluster recovery not complete")
+	}
+
+	return nil
+}
+
+func (r *RedisClusterReconciler) waitForNonReachablePodsTermination(redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("Getting actual cluster view...")
 	pods, e := r.getRedisClusterPods(redisCluster)
 	if e != nil {
-		fmt.Printf("Error fetching pods viw %+v\n", e.Error())
 		return e
 	}
 	terminatingPods := make([]corev1.Pod, 0)
 	nonReachablePods := make([]corev1.Pod, 0)
-
 	for _, pod := range pods {
 		if pod.Status.Phase == "Terminating" {
 			terminatingPods = append(terminatingPods, pod)
@@ -532,23 +560,6 @@ func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster)
 	for _, terminatingPod := range terminatingPods {
 		r.waitForPodDelete(terminatingPod)
 	}
-
-	r.Log.Info(fmt.Sprintf("Validating leaders state..."))
-	leadersRecovered, err := r.RecoverLeaders(redisCluster, expectedView)
-	if err != nil {
-		return err
-	}
-
-	if !leadersRecovered {
-		r.Log.Info(fmt.Sprintf("Validating followers state..."))
-		r.RecoverFollowers(redisCluster, expectedView)
-	}
-
-	complete, err := r.isClusterComplete(redisCluster, expectedView)
-	if err != nil || !complete || leadersRecovered {
-		r.Log.Info("Cluster recovery not complete")
-	}
-
 	return nil
 }
 
@@ -938,21 +949,24 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 func (r *RedisClusterReconciler) RecoverLeaders(redisCluster *dbv1.RedisCluster, expectedView map[string]string) (bool, error) {
 	missingLeaders, e := r.GetMissingLeadersMap(redisCluster, expectedView)
 	if e != nil {
-		r.Log.Error(e, fmt.Sprintf("Could not retrieve missing leaders, failover process failed\n"))
-		return false, nil
+		r.Log.Error(e, fmt.Sprintf("Could not retrieve missing leaders, failover process failed"))
+		return true, nil
 	}
 	leadersWithResponsiveFollowers, leadersWithoutFollowers, e := r.GetResponsiveFollowers(redisCluster, missingLeaders)
 	if e != nil {
-		r.Log.Error(e, fmt.Sprintf("Could not retrieve followers list for missing leaders, failover process failed\n"))
-		return false, nil
+		r.Log.Error(e, fmt.Sprintf("Could not retrieve followers list for missing leaders, failover process failed"))
+		return true, nil
 	}
 	successfulFailovers := r.FailOverMissingLeaders(redisCluster, leadersWithResponsiveFollowers)
 	if len(successfulFailovers) > 0 {
 		r.RecreateLeaders(redisCluster, successfulFailovers)
 	}
-	r.Log.Info(fmt.Sprintf("Leaders without followers: %v", leadersWithoutFollowers))
-	recoveryInitiated := len(leadersWithResponsiveFollowers)+len(leadersWithoutFollowers) > 0
-	return recoveryInitiated, nil
+	e = r.RecreateLeaderWithoutReplicas(redisCluster, leadersWithoutFollowers)
+	if e != nil {
+		r.Log.Error(e, fmt.Sprintf("Could not  process failed"))
+	}
+	recoveryRequired := len(leadersWithResponsiveFollowers)+len(leadersWithoutFollowers) > 0
+	return recoveryRequired, nil
 }
 
 func (r *RedisClusterReconciler) GetMissingLeadersMap(redisCluster *dbv1.RedisCluster, expectedView map[string]string) (map[string]bool, error) {
@@ -1041,4 +1055,120 @@ func (r *RedisClusterReconciler) RecreateLeaders(redisCluster *dbv1.RedisCluster
 func (r *RedisClusterReconciler) RecreateLeader(redisCluster *dbv1.RedisCluster, oldLeaderName string, promotedFollowerIp string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	r.recreateLeader(redisCluster, promotedFollowerIp, oldLeaderName)
+}
+
+func (r *RedisClusterReconciler) RecreateLeaderWithoutReplicas(redisCluster *dbv1.RedisCluster, leadersWithoutReplicas []string) error {
+	if len(leadersWithoutReplicas) == 0 {
+		return nil
+	}
+	view, e := r.NewRedisClusterView(redisCluster)
+	if e != nil {
+		return e
+	}
+	var healthyLeaderIp string
+	for _, node := range view.Pods {
+		if node.IsLeader && node.IsReachable {
+			healthyLeaderIp = node.Ip
+			break
+		}
+	}
+	if len(healthyLeaderIp) == 0 {
+		return errors.New("Could not find healthy reachable leader to serve the fix request")
+	}
+	successful, _, e := r.RedisCLI.ClusterFix(healthyLeaderIp)
+	if !successful || e != nil {
+		r.Log.Error(nil, fmt.Sprintf("Could not perform cluster fix with ip [%s]", healthyLeaderIp))
+		return e
+	}
+	e = r.addLeaders(redisCluster, healthyLeaderIp, leadersWithoutReplicas)
+	if e != nil {
+		return e
+	}
+	successful, _, e = r.RedisCLI.ClusterRebalance(healthyLeaderIp, true)
+	if !successful || e != nil {
+		r.Log.Error(nil, fmt.Sprintf("Could not perform cluster rebalance with ip [%s]", healthyLeaderIp))
+		return e
+	}
+	return nil
+}
+
+func (r *RedisClusterReconciler) isScaleRequired(redisCluster *dbv1.RedisCluster, expectedView map[string]string) (bool, ScaleType) {
+	leaders := 0
+	followers := 0
+	for nodeName, leaderName := range expectedView {
+		if nodeName == leaderName {
+			fmt.Printf("leader: %v\n", nodeName)
+			leaders++
+			fmt.Printf("leaders so far: %v\n", leaders)
+		} else {
+			fmt.Printf("follower: %v\n", nodeName)
+			followers++
+			fmt.Printf("followers so far: %v\n", followers)
+		}
+	}
+	leadersBySpec := redisCluster.Spec.LeaderCount
+	followersBySpec := leadersBySpec * redisCluster.Spec.LeaderFollowersCount
+	isRequired := (leaders == leadersBySpec) && (followers == followersBySpec)
+	var scaleType ScaleType
+	if leaders < leadersBySpec {
+		scaleType = ScaleUpLeaders
+	} else if leaders > leadersBySpec {
+		scaleType = ScaleDownLeaders
+	} else if followers < followersBySpec {
+		scaleType = ScaleUpFollowers
+	} else if followers > followersBySpec {
+		scaleType = ScaleDownFollowers
+	}
+	fmt.Printf("leaders: %v\n", leaders)
+	fmt.Printf("leaders by spec: %v\n", leadersBySpec)
+	fmt.Printf("followers: %v\n", followers)
+	fmt.Printf("followers by spec: %v\n", followersBySpec)
+	return isRequired, scaleType
+}
+
+func (r *RedisClusterReconciler) scaleCluster(redisCluster *dbv1.RedisCluster) error {
+	expectedView, e := r.GetExpectedView(redisCluster)
+	if e != nil {
+		r.Log.Info("Could not retrieve expected view for [Scale] state handle")
+	}
+	_, scaleType := r.isScaleRequired(redisCluster, expectedView)
+	switch scaleType {
+	case ScaleUpLeaders:
+		fmt.Printf("%v\n", scaleType.String())
+		e = r.scaleUpLeaders()
+		break
+	case ScaleDownLeaders:
+		fmt.Printf("%v\n", scaleType.String())
+		e = r.scaleDownLeaders()
+		break
+	case ScaleUpFollowers:
+		fmt.Printf("%v\n", scaleType.String())
+		e = r.scaleUpFollowers()
+		break
+	case ScaleDownFollowers:
+		fmt.Printf("%v\n", scaleType.String())
+		e = r.scaleDownFollowers()
+		break
+	}
+	if e != nil {
+		return e
+	}
+	// failure cascade
+	return nil
+}
+
+func (r *RedisClusterReconciler) scaleUpLeaders() error {
+	return nil
+}
+
+func (r *RedisClusterReconciler) scaleDownLeaders() error {
+	return nil
+}
+
+func (r *RedisClusterReconciler) scaleUpFollowers() error {
+	return nil
+}
+
+func (r *RedisClusterReconciler) scaleDownFollowers() error {
+	return nil
 }

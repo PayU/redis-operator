@@ -41,9 +41,9 @@ func (h *TestCommandHandler) executeCommandWithPipe(pipeArgs []string, args []st
 	for _, arg := range pipeArgs {
 		executedCommand += arg + " "
 	}
-	executedCommand += "| "
+	executedCommand += "| redis-cli"
 	for _, arg := range args {
-		executedCommand += arg + " "
+		executedCommand += " " + arg
 	}
 	return executedCommand, "", nil
 }
@@ -98,6 +98,7 @@ func TestRedisCLI(test *testing.T) {
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
+	testClusterFix()
 	t.Errorf("")
 }
 
@@ -407,6 +408,20 @@ func testACLList() {
 	execACLListTest("5", nodeIP, "-p 6381", "-optArg1 optVal1")
 }
 
+func testClusterFix() {
+	nodeIP := "129.4.6.2"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterFixTest("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterFixTest("2", nodeIP, "-p 6379")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterFixTest("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterFixTest("4", nodeIP, "-p 6381 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterFixTest("5", nodeIP, "-p 6381", "-optArg1 optVal1")
+}
+
 // Test exec helpers
 
 func execClusterCreateTest(testCaseId string, addresses []string, opt ...string) {
@@ -618,4 +633,15 @@ func execACLListTest(testCaseId string, nodeIP string, opt ...string) {
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "ACLList "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterFixTest(testCaseId string, nodeIP string, opt ...string) {
+	_, result, _ := r.ClusterFix(nodeIP, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(result, argMap)
+	expectedArgList := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	pipeArgs := []string{"yes", "yes"}
+	expectedResult, _, _ := r.Handler.executeCommandWithPipe(pipeArgs, expectedArgList)
+	resultHandler(expectedResult, result, "Cluster fix "+testCaseId, argMap, expectedArgMap)
 }
