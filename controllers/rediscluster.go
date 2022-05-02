@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -94,7 +95,7 @@ func (r *RedisClusterReconciler) initializeCluster(redisCluster *dbv1.RedisClust
 	// leaders are created first to increase the chance they get scheduled on different
 	// AZs when using soft affinity rules
 	for leaderNumber := 0; leaderNumber < redisCluster.Spec.LeaderCount; leaderNumber++ {
-		leaderNames = append(leaderNames, "redis-node-"+strconv.Itoa(leaderNumber))
+		leaderNames = append(leaderNames, "redis-node-"+fmt.Sprint(leaderNumber))
 	}
 
 	newLeaderPods, err := r.createRedisLeaderPods(redisCluster, leaderNames...)
@@ -257,18 +258,11 @@ func (r *RedisClusterReconciler) recreateLeader(redisCluster *dbv1.RedisCluster,
 	return nil
 }
 
-func (r *RedisClusterReconciler) deleteNodes(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, nodeNames []string) error {
-	var healthyServerIp string
+func (r *RedisClusterReconciler) deleteNodes(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView, healthyServerIp string, nodeNames map[string]bool) error {
 	nodeNameToIp := make(map[string]string)
-	for _, nodeName := range nodeNames {
+	for nodeName, _ := range nodeNames {
 		if node, exists := v.Pods[nodeName]; exists {
 			nodeNameToIp[nodeName] = node.Ip
-		}
-	}
-	for _, node := range v.Pods {
-		if _, toRemove := nodeNameToIp[node.Name]; !toRemove && node.IsLeader && node.IsReachable {
-			healthyServerIp = node.Ip
-			break
 		}
 	}
 
@@ -327,6 +321,68 @@ func (r *RedisClusterReconciler) addLeader(redisCluster *dbv1.RedisCluster, lead
 	if e != nil {
 		r.Log.Error(e, fmt.Sprintf("Error while adding pod [%s] to redis cluster, healthy node ip: [%s]", leaderPod.Name, healthyServerIp))
 		return
+	}
+}
+
+func (r *RedisClusterReconciler) addLeadersAndTheirNewFollowers(redisCluster *dbv1.RedisCluster, healthyLeaderIp string, leaderNames []string) error {
+	leaders, e := r.createRedisLeaderPods(redisCluster, leaderNames...)
+	if e != nil || len(leaders) == 0 {
+		r.Log.Error(e, "Could not add new leaders")
+		return e
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(leaders))
+	for _, leader := range leaders {
+		go r.addLeaderAndItsNewFollowers(redisCluster, leader, healthyLeaderIp, &wg)
+	}
+	wg.Wait()
+	return nil
+}
+
+func (r *RedisClusterReconciler) addLeaderAndItsNewFollowers(redisCluster *dbv1.RedisCluster, leaderPod corev1.Pod, healthyServerIp string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	leader, e := r.waitForPodReady(leaderPod)
+	if e != nil || len(leader) == 0 {
+		r.Log.Error(e, fmt.Sprintf("Error while waiting for pod [%s] to be ready\n", leaderPod.Name))
+		return
+	}
+	leaderPod = leader[0]
+	e = r.waitForRedis(leaderPod.Status.PodIP)
+	if e != nil {
+		r.Log.Error(e, fmt.Sprintf("Error while waiting for pod [%s] to be ready\n", leaderPod.Name))
+		return
+	}
+	_, e = r.RedisCLI.AddLeader(leaderPod.Status.PodIP, healthyServerIp)
+	if e != nil {
+		r.Log.Error(e, fmt.Sprintf("Error while adding pod [%s] to redis cluster, healthy node ip: [%s]", leaderPod.Name, healthyServerIp))
+		return
+	}
+
+	leaderView := &view.NodeView{
+		Name:        leaderPod.Name,
+		NodeId:      "",
+		Namespace:   leaderPod.Namespace,
+		Ip:          leaderPod.Status.PodIP,
+		LeaderName:  leaderPod.Name,
+		IsLeader:    true,
+		IsReachable: false,
+	}
+	id, e := r.RedisCLI.MyClusterID(leaderView.Ip)
+	if e != nil || len(id) == 0 {
+		r.Log.Error(e, fmt.Sprintf("Could not add followers for new leader [%s]", leaderView.Name))
+	}
+	leaderView.NodeId = id
+	leaderView.IsReachable = true
+
+	followersToAdd := redisCluster.Spec.LeaderFollowersCount
+	newFollowers := make(map[string]*view.NodeView)
+	for i := 1; i <= followersToAdd; i++ {
+		followerName := leaderView.Name + "-" + fmt.Sprint(i)
+		newFollowers[followerName] = leaderView
+	}
+	e = r.addFollowers(redisCluster, newFollowers)
+	if e != nil || len(id) == 0 {
+		r.Log.Error(e, fmt.Sprintf("Could not add followers for new leader [%s]", leaderView.Name))
 	}
 }
 
@@ -947,7 +1003,11 @@ func (r *RedisClusterReconciler) isClusterComplete(redisCluster *dbv1.RedisClust
 }
 
 func (r *RedisClusterReconciler) RecoverLeaders(redisCluster *dbv1.RedisCluster, expectedView map[string]string) (bool, error) {
-	missingLeaders, e := r.GetMissingLeadersMap(redisCluster, expectedView)
+	view, e := r.NewRedisClusterView(redisCluster)
+	if e != nil {
+		return true, e
+	}
+	missingLeaders, e := r.GetMissingLeadersMap(redisCluster, expectedView, view)
 	if e != nil {
 		r.Log.Error(e, fmt.Sprintf("Could not retrieve missing leaders, failover process failed"))
 		return true, nil
@@ -958,22 +1018,18 @@ func (r *RedisClusterReconciler) RecoverLeaders(redisCluster *dbv1.RedisCluster,
 		return true, nil
 	}
 	successfulFailovers := r.FailOverMissingLeaders(redisCluster, leadersWithResponsiveFollowers)
-	if len(successfulFailovers) > 0 {
-		r.RecreateLeaders(redisCluster, successfulFailovers)
-	}
-	e = r.RecreateLeaderWithoutReplicas(redisCluster, leadersWithoutFollowers)
+	e = r.RecreateLeaderWithoutReplicas(redisCluster, leadersWithoutFollowers, view)
 	if e != nil {
 		r.Log.Error(e, fmt.Sprintf("Could not  process failed"))
+	}
+	if len(successfulFailovers) > 0 {
+		r.RecreateLeaders(redisCluster, successfulFailovers)
 	}
 	recoveryRequired := len(leadersWithResponsiveFollowers)+len(leadersWithoutFollowers) > 0
 	return recoveryRequired, nil
 }
 
-func (r *RedisClusterReconciler) GetMissingLeadersMap(redisCluster *dbv1.RedisCluster, expectedView map[string]string) (map[string]bool, error) {
-	view, e := r.NewRedisClusterView(redisCluster)
-	if e != nil {
-		return nil, e
-	}
+func (r *RedisClusterReconciler) GetMissingLeadersMap(redisCluster *dbv1.RedisCluster, expectedView map[string]string, view *view.RedisClusterView) (map[string]bool, error) {
 	missingLeaders := make(map[string]bool)
 	for _, leaderName := range expectedView {
 		_, exists := view.Pods[leaderName]
@@ -1057,30 +1113,21 @@ func (r *RedisClusterReconciler) RecreateLeader(redisCluster *dbv1.RedisCluster,
 	r.recreateLeader(redisCluster, promotedFollowerIp, oldLeaderName)
 }
 
-func (r *RedisClusterReconciler) RecreateLeaderWithoutReplicas(redisCluster *dbv1.RedisCluster, leadersWithoutReplicas []string) error {
+func (r *RedisClusterReconciler) RecreateLeaderWithoutReplicas(redisCluster *dbv1.RedisCluster, leadersWithoutReplicas []string, view *view.RedisClusterView) error {
 	if len(leadersWithoutReplicas) == 0 {
 		return nil
 	}
-	view, e := r.NewRedisClusterView(redisCluster)
-	if e != nil {
-		return e
-	}
-	var healthyLeaderIp string
-	for _, node := range view.Pods {
-		if node.IsLeader && node.IsReachable {
-			healthyLeaderIp = node.Ip
-			break
-		}
-	}
-	if len(healthyLeaderIp) == 0 {
+	healthyLeaderName := r.findHealthyLeader(view, nil)
+	if len(healthyLeaderName) == 0 {
 		return errors.New("Could not find healthy reachable leader to serve the fix request")
 	}
+	healthyLeaderIp := view.Pods[healthyLeaderName].Ip
 	successful, _, e := r.RedisCLI.ClusterFix(healthyLeaderIp)
 	if !successful || e != nil {
 		r.Log.Error(nil, fmt.Sprintf("Could not perform cluster fix with ip [%s]", healthyLeaderIp))
 		return e
 	}
-	e = r.addLeaders(redisCluster, healthyLeaderIp, leadersWithoutReplicas)
+	e = r.addLeadersAndTheirNewFollowers(redisCluster, healthyLeaderIp, leadersWithoutReplicas)
 	if e != nil {
 		return e
 	}
@@ -1092,23 +1139,37 @@ func (r *RedisClusterReconciler) RecreateLeaderWithoutReplicas(redisCluster *dbv
 	return nil
 }
 
+func (r *RedisClusterReconciler) findHealthyLeader(view *view.RedisClusterView, excludedNames map[string]bool) (name string) {
+	for _, node := range view.Pods {
+		if node.IsLeader && node.IsReachable {
+			if excludedNames != nil {
+				if _, excluded := excludedNames[node.Name]; excluded {
+					continue
+				}
+			}
+			//info, _, e := r.RedisCLI.Info(node.Ip)
+			// if e != nil {
+			// 	continue
+			// }
+			return node.Name
+		}
+	}
+	return ""
+}
+
 func (r *RedisClusterReconciler) isScaleRequired(redisCluster *dbv1.RedisCluster, expectedView map[string]string) (bool, ScaleType) {
 	leaders := 0
 	followers := 0
 	for nodeName, leaderName := range expectedView {
 		if nodeName == leaderName {
-			fmt.Printf("leader: %v\n", nodeName)
 			leaders++
-			fmt.Printf("leaders so far: %v\n", leaders)
 		} else {
-			fmt.Printf("follower: %v\n", nodeName)
 			followers++
-			fmt.Printf("followers so far: %v\n", followers)
 		}
 	}
 	leadersBySpec := redisCluster.Spec.LeaderCount
 	followersBySpec := leadersBySpec * redisCluster.Spec.LeaderFollowersCount
-	isRequired := (leaders == leadersBySpec) && (followers == followersBySpec)
+	isRequired := (leaders != leadersBySpec) || (followers != followersBySpec)
 	var scaleType ScaleType
 	if leaders < leadersBySpec {
 		scaleType = ScaleUpLeaders
@@ -1119,35 +1180,35 @@ func (r *RedisClusterReconciler) isScaleRequired(redisCluster *dbv1.RedisCluster
 	} else if followers > followersBySpec {
 		scaleType = ScaleDownFollowers
 	}
-	fmt.Printf("leaders: %v\n", leaders)
-	fmt.Printf("leaders by spec: %v\n", leadersBySpec)
-	fmt.Printf("followers: %v\n", followers)
-	fmt.Printf("followers by spec: %v\n", followersBySpec)
 	return isRequired, scaleType
 }
 
 func (r *RedisClusterReconciler) scaleCluster(redisCluster *dbv1.RedisCluster) error {
 	expectedView, e := r.GetExpectedView(redisCluster)
 	if e != nil {
-		r.Log.Info("Could not retrieve expected view for [Scale] state handle")
+		return e
+	}
+	view, e := r.NewRedisClusterView(redisCluster)
+	if e != nil {
+		return e
 	}
 	_, scaleType := r.isScaleRequired(redisCluster, expectedView)
 	switch scaleType {
 	case ScaleUpLeaders:
 		fmt.Printf("%v\n", scaleType.String())
-		e = r.scaleUpLeaders()
+		e = r.scaleUpLeaders(redisCluster, view)
 		break
 	case ScaleDownLeaders:
 		fmt.Printf("%v\n", scaleType.String())
-		e = r.scaleDownLeaders()
+		e = r.scaleDownLeaders(redisCluster, view)
 		break
 	case ScaleUpFollowers:
 		fmt.Printf("%v\n", scaleType.String())
-		e = r.scaleUpFollowers()
+		e = r.scaleUpFollowers(redisCluster, view)
 		break
 	case ScaleDownFollowers:
 		fmt.Printf("%v\n", scaleType.String())
-		e = r.scaleDownFollowers()
+		e = r.scaleDownFollowers(redisCluster, view)
 		break
 	}
 	if e != nil {
@@ -1157,18 +1218,166 @@ func (r *RedisClusterReconciler) scaleCluster(redisCluster *dbv1.RedisCluster) e
 	return nil
 }
 
-func (r *RedisClusterReconciler) scaleUpLeaders() error {
+func (r *RedisClusterReconciler) scaleUpLeaders(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
+	healthyLeaderName := r.findHealthyLeader(v, nil)
+	if len(healthyLeaderName) == 0 {
+		return errors.New("Could not find healthy reachable leader to serve the fix request")
+	}
+	healthyLeaderIp := v.Pods[healthyLeaderName].Ip
+	leaders := r.leadersCount(v)
+	leadersBySpec := redisCluster.Spec.LeaderCount
+	newLeadersNames := []string{}
+	for i := leaders; i < leadersBySpec; i++ {
+		newLeadersNames = append(newLeadersNames, "redis-node-"+fmt.Sprint(i))
+	}
+	e := r.addLeadersAndTheirNewFollowers(redisCluster, healthyLeaderIp, newLeadersNames)
+	if e != nil {
+		return e
+	}
+	successful, _, e := r.RedisCLI.ClusterRebalance(healthyLeaderIp, true)
+	if !successful || e != nil {
+		r.Log.Error(nil, fmt.Sprintf("Could not perform cluster rebalance with ip [%s]", healthyLeaderIp))
+		return e
+	}
 	return nil
 }
 
-func (r *RedisClusterReconciler) scaleDownLeaders() error {
+func (r *RedisClusterReconciler) scaleDownLeaders(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
+	leaders := r.leadersCount(v)
+	leadersBySpec := redisCluster.Spec.LeaderCount
+
+	leadersToRemove := []*view.NodeView{}
+	leadersToExclude := map[string]bool{}
+	skip := false
+	for i := leadersBySpec; i < leaders || !skip; i++ {
+		skip = false
+		leaderName := "redis-node-" + fmt.Sprint(i)
+		leader, exists := v.Pods[leaderName]
+		if !exists {
+			r.Log.Error(nil, "Scale operation could not be performed on non-healthy cluster, aborting deletion for node "+leaderName)
+			skip = true
+		} else {
+			leadersToRemove = append(leadersToRemove, leader)
+			leadersToExclude[leader.Name] = true
+		}
+
+	}
+	healthyLeaderName := r.findHealthyLeader(v, leadersToExclude)
+	if len(healthyLeaderName) == 0 {
+		return errors.New("Could not find healthy reachable leader to serve the fix request")
+	}
+	leadersToExclude[healthyLeaderName] = true
+	targetLeaderName := r.findHealthyLeader(v, leadersToExclude)
+	if len(targetLeaderName) == 0 {
+		return errors.New("Could not find healthy reachable leader to serve the fix request")
+	}
+	healthyLeaderIp := v.Pods[healthyLeaderName].Ip
+	targetLeaderId := v.Pods[targetLeaderName].NodeId
+	for _, leaderToRemove := range leadersToRemove {
+		e := r.removeLeaderAndFollowers(redisCluster, healthyLeaderIp, targetLeaderId, leaderToRemove, v)
+		if e != nil {
+			return e
+		}
+	}
 	return nil
 }
 
-func (r *RedisClusterReconciler) scaleUpFollowers() error {
-	return nil
+func (r *RedisClusterReconciler) scaleUpFollowers(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
+	leadersToFollowerCount := r.numOfFollowersPerLeader(v)
+	followersBySpec := redisCluster.Spec.LeaderFollowersCount
+	followers := map[string]*view.NodeView{}
+	for leaderName, followerCount := range leadersToFollowerCount {
+		for i := followerCount + 1; i <= followersBySpec; i++ {
+			followers[leaderName+"-"+fmt.Sprint(i)] = v.Pods[leaderName]
+		}
+	}
+	return r.addFollowers(redisCluster, followers)
 }
 
-func (r *RedisClusterReconciler) scaleDownFollowers() error {
-	return nil
+func (r *RedisClusterReconciler) scaleDownFollowers(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
+	leadersToFollowerCount := r.numOfFollowersPerLeader(v)
+	followersBySpec := redisCluster.Spec.LeaderFollowersCount
+	followersToRemove := map[string]bool{}
+	for leaderName, followerCount := range leadersToFollowerCount {
+		for i := followersBySpec + 1; i <= followerCount; i++ {
+			followersToRemove[leaderName+"-"+fmt.Sprint(i)] = true
+		}
+	}
+	fmt.Printf("Followers to remove: %v\n", followersToRemove)
+	healthyLeaderName := r.findHealthyLeader(v, followersToRemove)
+	if len(healthyLeaderName) == 0 {
+		return errors.New("Could not find healthy reachable leader to serve the fix request")
+	}
+	healthyLeaderIp := v.Pods[healthyLeaderName].Ip
+	return r.deleteNodes(redisCluster, v, healthyLeaderIp, followersToRemove)
+}
+
+func (r *RedisClusterReconciler) removeLeaderAndFollowers(redisCluster *dbv1.RedisCluster, healthyLeaderIp string, targetLeaderId string, leaderToRemove *view.NodeView, v *view.RedisClusterView) error {
+	maxSlotsPerLeader := 16384
+	success, _, e := r.RedisCLI.ClusterReshard(healthyLeaderIp, leaderToRemove.NodeId, targetLeaderId, maxSlotsPerLeader)
+	if e != nil || !success {
+		return e
+	}
+	emptyLeadersIds, fullCoverage, e := r.CheckClusterAndCoverage(healthyLeaderIp)
+	if !fullCoverage || e != nil {
+		return e
+	}
+	if _, leaderHasZeroSlots := emptyLeadersIds[leaderToRemove.NodeId]; !leaderHasZeroSlots {
+		return errors.New(fmt.Sprintf("Could not perform reshard operation for leader %s  %s", leaderToRemove.Ip, leaderToRemove.NodeId))
+	}
+	nodesToRemove := map[string]bool{leaderToRemove.Name: true}
+	for _, node := range v.Pods {
+		if node.LeaderName == leaderToRemove.Name && !node.IsLeader {
+			nodesToRemove[node.Name] = true
+		}
+	}
+	return r.deleteNodes(redisCluster, v, healthyLeaderIp, nodesToRemove)
+}
+
+func (r *RedisClusterReconciler) CheckClusterAndCoverage(nodeIp string) (emptyLeadersIds map[string]bool, fullyCovered bool, err error) {
+	emptyLeadersIds = map[string]bool{}
+	clusterCheckResult, err := r.RedisCLI.ClusterCheck(nodeIp)
+	if err != nil {
+		return emptyLeadersIds, false, err
+	}
+	slotsConfigurationFormat := "[OK] All nodes agree about slots configuration"
+	allSlotsCoveredFormat := "[OK] All 16384 slots covered"
+	zeroSlotsPerMasterFormat := "M:\\s*(\\w*|\\d*)\\s*\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+\\s*slots:\\s*\\(0 slots\\)\\s*master"
+	c := regexp.MustCompile(zeroSlotsPerMasterFormat)
+	matchingSubstrings := c.FindAllStringSubmatch(clusterCheckResult, -1)
+	for _, match := range matchingSubstrings {
+		if len(match) > 1 {
+			captureId := match[1]
+			emptyLeadersIds[captureId] = true
+		}
+	}
+
+	if strings.Contains(clusterCheckResult, slotsConfigurationFormat) && strings.Contains(clusterCheckResult, allSlotsCoveredFormat) {
+		r.Log.Info(fmt.Sprintf("[OK] All slots are covered, empty leaders list contains leaders that it is safe now to remove: %v", emptyLeadersIds))
+		return emptyLeadersIds, true, nil
+	}
+	return emptyLeadersIds, false, errors.New(fmt.Sprintf("Cluster check validation failed, command stdout result: %v", clusterCheckResult))
+}
+
+func (r *RedisClusterReconciler) leadersCount(v *view.RedisClusterView) int {
+	leaders := 0
+	for _, nodeView := range v.Pods {
+		if nodeView.IsLeader {
+			leaders++
+		}
+	}
+	return leaders
+}
+
+func (r *RedisClusterReconciler) numOfFollowersPerLeader(v *view.RedisClusterView) map[string]int {
+	followersPerLeader := map[string]int{}
+	for _, node := range v.Pods {
+		if _, contained := followersPerLeader[node.LeaderName]; !contained {
+			followersPerLeader[node.LeaderName] = 0
+		}
+		if !node.IsLeader {
+			followersPerLeader[node.LeaderName]++
+		}
+	}
+	return followersPerLeader
 }

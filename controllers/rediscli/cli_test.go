@@ -94,12 +94,13 @@ func TestRedisCLI(test *testing.T) {
 	testClusterMeet()
 	testClusterReset()
 	testClusterRebalance()
+	testClusterReshard()
 	testFlushAll()
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
 	testClusterFix()
-	t.Errorf("")
+	//t.Errorf("")
 }
 
 func testClusterCreate() {
@@ -351,6 +352,20 @@ func testClusterRebalance() {
 	execClusterRebalanceTest("5", nodeIP, true, "-p 6399", "-optArg1 optVal1")
 }
 
+func testClusterReshard() {
+	nodeIP := "127.0.0.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterReshardTest("1", nodeIP, "abc", "edf", 16384)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterReshardTest("2", nodeIP, "abc", "edf", 16384, "-p 8383")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterReshardTest("3", nodeIP, "abc", "edf", 16384, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterReshardTest("4", nodeIP, "abc", "edf", 16384, "-p 8384 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterReshardTest("5", nodeIP, "abc", "edf", 16384, "-p 6399", "-optArg1 optVal1")
+}
+
 func testFlushAll() {
 	nodeIP := "128.0.1.1"
 	// Test 1 : Routing port is not provided, no optional arguments
@@ -593,6 +608,18 @@ func execClusterRebalanceTest(testCaseId string, nodeIP string, useEmptyMasters 
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
 	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, fmt.Sprint(result), "Cluster Rebalance "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterReshardTest(testCaseId string, nodeIP string, sourceId string, targetId string, slots int, opt ...string) {
+	_, result, _ := r.ClusterReshard(nodeIP, sourceId, targetId, slots, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(fmt.Sprint(result), argMap)
+	expectedArgList := []string{"--cluster reshard", addressPortDecider(nodeIP, r.Port)}
+	expectedArgList = append(expectedArgList, "--cluster-from", sourceId, "--cluster-to", targetId)
+	expectedArgList = append(expectedArgList, "--cluster-slots", fmt.Sprint(slots), "--cluster-yes")
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	resultHandler(expectedResult, fmt.Sprint(result), "Cluster Reshard "+testCaseId, argMap, expectedArgMap)
 }
 
 func execFlushAllTest(testCaseId string, nodeIP string, opt ...string) {

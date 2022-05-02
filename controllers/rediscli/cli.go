@@ -3,6 +3,7 @@ package rediscli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -139,7 +140,10 @@ func (h *RunTimeCommandHandler) executeCommandWithPipe(pipeArgs []string, args [
 	for _, arg := range pipeArgs {
 		argLine += arg + " "
 	}
-	argLine += "| redis-cli"
+	if len(pipeArgs) > 0 {
+		argLine += "| "
+	}
+	argLine += "redis-cli"
 	for _, arg := range args {
 		argLine += " " + arg
 	}
@@ -479,6 +483,22 @@ func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return true, stdout, nil
+}
+
+func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId string, slots int, opt ...string) (bool, string, error) {
+	args := []string{
+		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
+		"--cluster-from", sourceId,
+		"--cluster-to", targetId,
+		"--cluster-slots", fmt.Sprint(slots),
+		"--cluster-yes",
+	}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommandWithPipe([]string{}, args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return false, stdout, errors.Errorf("Failed to execute cluster reshard (%v): from [%s] to [%s] stdout: %s | stderr : %s | err: %v", nodeIP, sourceId, targetId, stdout, stderr, err)
 	}
 	return true, stdout, nil
 }
