@@ -91,10 +91,15 @@ func startManager() {
 	k8sManager := controllers.K8sManager{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    configLogger}
+		Log:    configLogger,
+	}
+
+	// read about docs
+	//cache := mgr.GetCache()
 
 	if err = (&controllers.RedisClusterReconciler{
 		Client:               mgr.GetClient(),
+		Cache:                mgr.GetCache(),
 		Log:                  rdcLogger,
 		Scheme:               mgr.GetScheme(),
 		RedisCLI:             getRedisCLI(&rdcLogger),

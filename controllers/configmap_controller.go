@@ -60,9 +60,16 @@ const redisConfigLabelKey string = "redis-cluster"
 const handleACLConfigErrorMessage = "Failed to handle ACL configuration"
 const operatorConfigLabelKey string = "redis-operator"
 
-func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
+func callBackWithin(d time.Duration, wg *sync.WaitGroup) {
+	defer wg.Done()
+	time.Sleep(d)
+}
 
-	time.Sleep(ACLFilePropagationDuration)
+func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
+	var sleepingGroup sync.WaitGroup
+	sleepingGroup.Add(1)
+	go callBackWithin(ACLFilePropagationDuration, &sleepingGroup)
+	sleepingGroup.Wait()
 
 	for _, pod := range redisPods {
 		msg, err := r.RedisCLI.ACLLoad(pod.Status.PodIP)
@@ -71,7 +78,9 @@ func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ..
 			return err
 		}
 
-		time.Sleep(ACLFileLoadDuration)
+		sleepingGroup.Add(1)
+		go callBackWithin(ACLFileLoadDuration, &sleepingGroup)
+		sleepingGroup.Wait()
 
 		loadedConfig, _, err := r.RedisCLI.ACLList(pod.Status.PodIP)
 		if err != nil {
@@ -141,8 +150,8 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 	configMapACLHash := fmt.Sprintf("%x", sha256.Sum256([]byte(acl.String())))
 	r.Log.Info(fmt.Sprintf("Computed hash: %s", configMapACLHash))
 
+	wg.Add(len(rdcPods.Items))
 	for i := range rdcPods.Items {
-		wg.Add(1)
 		go func(failSignal *bool, pod *corev1.Pod, wg *sync.WaitGroup) {
 			defer wg.Done()
 			if _, e := r.RedisCLI.Ping(pod.Status.PodIP); e != nil {

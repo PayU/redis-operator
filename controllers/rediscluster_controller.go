@@ -27,6 +27,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
@@ -64,6 +65,7 @@ type RedisClusterState string
 
 type RedisClusterReconciler struct {
 	client.Client
+	Cache                cache.Cache
 	Log                  logr.Logger
 	Scheme               *runtime.Scheme
 	RedisCLI             *rediscli.RedisCLI
@@ -81,6 +83,7 @@ var ClusterReset bool = false
 // +kubebuilder:rbac:groups=*,resources=pods;services;configmaps,verbs=create;update;patch;get;list;watch;delete
 
 func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+	println("Reconcile call")
 	reconciler = r
 	r.Status()
 
@@ -101,14 +104,12 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	switch r.State {
 	case NotExists:
-		r.deleteAllRedisClusterPods()
 		err = r.handleInitializingCluster(&redisCluster)
 		break
 	case UpdateView:
 		r.UpdateView(&redisCluster)
 		break
 	case Reset:
-		r.deleteAllRedisClusterPods()
 		err = r.handleInitializingCluster(&redisCluster)
 		ClusterReset = false
 		break
@@ -160,6 +161,8 @@ func (r *RedisClusterReconciler) updateClusterView(redisCluster *dbv1.RedisClust
 
 func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.RedisCluster) error {
 	r.updateClusterState(redisCluster)
+	r.Log.Info("Clear all cluster pods...")
+	r.deleteAllRedisClusterPods()
 	r.Log.Info("Handling initializing leaders...")
 	if err := r.createNewRedisCluster(redisCluster); err != nil {
 		redisCluster.Status.ClusterState = string(Reset)
@@ -322,7 +325,7 @@ func AddNewLeaders(c echo.Context) error {
 	if len(healthyServerName) == 0 {
 		return c.String(http.StatusOK, "Could not find healthy reachable leader to serve the fix request")
 	}
-	healthyServerIp := v.Pods[healthyServerName].Ip
+	healthyServerIp := v.Nodes[healthyServerName].Ip
 	e = reconciler.addLeaders(cluster, healthyServerIp, []string{"redis-node-8", "redis-node-9"})
 	if e != nil {
 		return c.String(http.StatusOK, "Could not add requested leaders properly")
@@ -340,7 +343,7 @@ func DeleteNewLeaders(c echo.Context) error {
 	if len(healthyServerName) == 0 {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the fix request")
 	}
-	healthyServerIp := v.Pods[healthyServerName].Ip
+	healthyServerIp := v.Nodes[healthyServerName].Ip
 	e = reconciler.deleteNodes(cluster, v, healthyServerIp, nodesToRemove)
 	if e != nil {
 		return c.String(http.StatusOK, "Could not delete requested leaders properly")
@@ -357,7 +360,7 @@ func ClusterRebalance(c echo.Context) error {
 	if len(healthyServerName) == 0 {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the rebalance request")
 	}
-	healthyServerIp := v.Pods[healthyServerName].Ip
+	healthyServerIp := v.Nodes[healthyServerName].Ip
 	successful, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
 	println("Successful: " + fmt.Sprint(successful))
 	if err != nil {
@@ -376,7 +379,7 @@ func ClusterFix(c echo.Context) error {
 	if len(healthyServerName) == 0 {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the fix request")
 	}
-	healthyServerIp := v.Pods[healthyServerName].Ip
+	healthyServerIp := v.Nodes[healthyServerName].Ip
 	successful, _, err := reconciler.RedisCLI.ClusterFix(healthyServerIp)
 	println("Successful: " + fmt.Sprint(successful))
 	if err != nil {

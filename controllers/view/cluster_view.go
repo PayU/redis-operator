@@ -5,8 +5,40 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+type ClusterState int
+type NodeState int
+
+const (
+	ClusterFix ClusterState = iota
+	ClusterRebalance
+	ClusterOK
+)
+
+const (
+	CreateNode NodeState = iota
+	AddNode
+	ReplicateNode
+	SyncNode
+	ReshardNode
+	DeleteNode
+	NodeOK
+)
+
+func (s ClusterState) String() string {
+	return [...]string{"ClusterFix", "ClusterRebalance", "ClusterOK"}[s]
+}
+
+func (n NodeState) String() string {
+	return [...]string{"CreateNode", "AddNode", "ReplicateNode", "SyncNode", "ReshardNode", "DeleteNode", "NodeOK"}[n]
+}
+
 type RedisClusterView struct {
-	Pods map[string]*NodeView
+	Nodes map[string]*NodeView
+}
+
+type RedisClusterStatusView struct {
+	ClusterState ClusterState
+	Nodes        map[string]*NodeStatusView
 }
 
 type NodeView struct {
@@ -19,8 +51,14 @@ type NodeView struct {
 	IsReachable bool
 }
 
+type NodeStatusView struct {
+	Name       string
+	LeaderName string
+	NodeState  NodeState
+}
+
 func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.RedisCLI) {
-	v.Pods = make(map[string]*NodeView)
+	v.Nodes = make(map[string]*NodeView)
 	for _, pod := range pods {
 		redisNode := &NodeView{
 			Name:       pod.Name,
@@ -31,7 +69,7 @@ func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.Redi
 			IsLeader:   pod.Labels["redis-node-role"] == "leader",
 		}
 		redisNode.IsReachable = isReachableNode(redisNode, redisCli)
-		v.Pods[pod.Name] = redisNode
+		v.Nodes[pod.Name] = redisNode
 	}
 }
 

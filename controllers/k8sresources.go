@@ -31,6 +31,11 @@ type K8sManager struct {
 
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
+	//informer, e := r.Cache.GetInformer(context.Background(), pods)
+	cacheSynced := r.Cache.WaitForCacheSync(make(<-chan struct{}))
+	if cacheSynced {
+		println("Cachesynced")
+	}
 	matchingLabels := redisCluster.Spec.PodLabelSelector
 
 	if len(podType) > 0 && strings.TrimSpace(podType[0]) != "" {
@@ -90,6 +95,17 @@ func (r *RedisClusterReconciler) GetExpectedView(redisCluster *dbv1.RedisCluster
 	return configMap.Data, err
 }
 
+func (r *RedisClusterReconciler) getClusterStateView(redisCluster *dbv1.RedisCluster) (string, error) {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	var configMap corev1.ConfigMap
+	e := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	if e != nil {
+		return "", e
+	}
+	return configMap.Data["data"], nil
+}
+
 // Update methods
 
 func (r *RedisClusterReconciler) UpdateExpectedView(redisCluster *dbv1.RedisCluster) error {
@@ -136,7 +152,41 @@ func (r *RedisClusterReconciler) applyViewToConfigMap(redisCluster *dbv1.RedisCl
 	return nil
 }
 
+func (r *RedisClusterReconciler) updateClusterStateView(redisCluster *dbv1.RedisCluster, viewStr string) error {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	var configMap corev1.ConfigMap
+	e := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
+	if e != nil {
+		return e
+	}
+	configMap.Data = map[string]string{
+		"data": viewStr,
+	}
+	return r.Update(context.Background(), &configMap)
+}
+
 // Create/Make/Write methods
+
+func (r *RedisClusterReconciler) createClusterStateView(redisCluster *dbv1.RedisCluster, viewStr string) error {
+	configMapName := r.ClusterStatusMapName
+	configMapNamespace := redisCluster.ObjectMeta.Namespace
+	data := map[string]string{
+		"data": viewStr,
+	}
+	configMap := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: configMapNamespace,
+		},
+		Data: data,
+	}
+	return r.Create(context.Background(), &configMap)
+}
 
 func (r *K8sManager) WritePodAnnotations(annotations map[string]string, pods ...corev1.Pod) error {
 	annotationsString := ""
