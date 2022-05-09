@@ -798,15 +798,19 @@ func (r *RedisClusterReconciler) waitForClusterCreate(leaderIPs []string) error 
 func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 	r.Log.Info("Waiting for SYNC to start on " + nodeIP)
 	if err := wait.PollImmediate(3*r.Config.Times.SyncStartCheckInterval, 10*r.Config.Times.SyncStartCheckTimeout, func() (bool, error) {
+		r.Log.Info("Im here in PollImmediate")
 		redisInfo, _, err := r.RedisCLI.Info(nodeIP)
 		if err != nil {
 			return false, err
 		}
+		r.Log.Info("after get redis info")
 
 		syncStatus := redisInfo.GetSyncStatus()
 		if syncStatus == "" {
 			return false, nil
 		}
+
+		r.Log.Info("After sync status")
 
 		return true, nil
 	}); err != nil {
