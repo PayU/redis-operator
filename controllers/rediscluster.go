@@ -802,11 +802,14 @@ func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 		if err != nil {
 			return false, err
 		}
+		r.Log.Info("after get redis info")
 
 		syncStatus := redisInfo.GetSyncStatus()
 		if syncStatus == "" {
 			return false, nil
 		}
+
+		r.Log.Info("After sync status")
 
 		return true, nil
 	}); err != nil {
