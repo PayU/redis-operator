@@ -31,26 +31,26 @@ type K8sManager struct {
 
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
-	//informer, e := r.Cache.GetInformer(context.Background(), pods)
+	r.Log.Info("Waiting for cache sync...")
 	cacheSynced := r.Cache.WaitForCacheSync(make(<-chan struct{}))
 	if cacheSynced {
-		println("Cachesynced")
-	}
-	matchingLabels := redisCluster.Spec.PodLabelSelector
+		matchingLabels := redisCluster.Spec.PodLabelSelector
 
-	if len(podType) > 0 && strings.TrimSpace(podType[0]) != "" {
-		pt := strings.TrimSpace(podType[0])
-		if pt == "follower" || pt == "leader" {
-			matchingLabels["redis-node-role"] = pt
+		if len(podType) > 0 && strings.TrimSpace(podType[0]) != "" {
+			pt := strings.TrimSpace(podType[0])
+			if pt == "follower" || pt == "leader" {
+				matchingLabels["redis-node-role"] = pt
+			}
 		}
-	}
 
-	err := r.List(context.Background(), pods, client.InNamespace(redisCluster.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
-	if err != nil {
-		return nil, err
-	}
+		err := r.List(context.Background(), pods, client.InNamespace(redisCluster.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
+		if err != nil {
+			return nil, err
+		}
 
-	return pods.Items, nil
+		return pods.Items, nil
+	}
+	return pods.Items, errors.New("Failed to sync k8s cluster cache...")
 }
 
 func (r *RedisClusterReconciler) getRedisClusterPodsByLabel(redisCluster *dbv1.RedisCluster, key string, value string) ([]corev1.Pod, error) {

@@ -797,7 +797,7 @@ func (r *RedisClusterReconciler) waitForClusterCreate(leaderIPs []string) error 
 // Safe to be called with both followers and leaders, the call on a leader will be ignored
 func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 	r.Log.Info("Waiting for SYNC to start on " + nodeIP)
-	if err := wait.PollImmediate(3*r.Config.Times.SyncStartCheckInterval, 10*r.Config.Times.SyncStartCheckTimeout, func() (bool, error) {
+	if err := wait.PollImmediate(r.Config.Times.SyncStartCheckInterval, r.Config.Times.SyncStartCheckTimeout, func() (bool, error) {
 		redisInfo, _, err := r.RedisCLI.Info(nodeIP)
 		if err != nil {
 			return false, err
@@ -816,7 +816,7 @@ func (r *RedisClusterReconciler) waitForRedisSync(nodeIP string) error {
 		r.Log.Info(fmt.Sprintf("[WARN] Timeout waiting for SYNC process to start on %s", nodeIP))
 	}
 
-	return wait.PollImmediate(3*r.Config.Times.SyncCheckInterval, 10*r.Config.Times.SyncCheckTimeout, func() (bool, error) {
+	return wait.PollImmediate(r.Config.Times.SyncCheckInterval, r.Config.Times.SyncCheckTimeout, func() (bool, error) {
 		redisInfo, _, err := r.RedisCLI.Info(nodeIP)
 		if err != nil {
 			return false, err
