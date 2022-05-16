@@ -21,6 +21,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/PayU/redis-operator/controllers/view"
 
 	"github.com/go-logr/logr"
 	"github.com/labstack/echo/v4"
@@ -45,8 +48,6 @@ const (
 	// InitializingCluster: ConfigMap, Service resources are created; the leader
 	// pods are created and clusterized
 
-	UpdateView RedisClusterState = "UpdateView"
-
 	Reset RedisClusterState = "Reset"
 
 	// Ready: cluster is up & running as expected
@@ -65,13 +66,13 @@ type RedisClusterState string
 
 type RedisClusterReconciler struct {
 	client.Client
-	Cache                cache.Cache
-	Log                  logr.Logger
-	Scheme               *runtime.Scheme
-	RedisCLI             *rediscli.RedisCLI
-	Config               *OperatorConfig
-	State                RedisClusterState
-	ClusterStatusMapName string
+	Cache                 cache.Cache
+	Log                   logr.Logger
+	Scheme                *runtime.Scheme
+	RedisCLI              *rediscli.RedisCLI
+	Config                *OperatorConfig
+	State                 RedisClusterState
+	RedisClusterStateView *view.RedisClusterStateView
 }
 
 var reconciler *RedisClusterReconciler
@@ -102,12 +103,17 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	cluster = &redisCluster
 
+	err = r.getClusterStateView(&redisCluster)
+	if r.State == NotExists {
+		r.RedisClusterStateView.CreateStateView(redisCluster.Spec.LeaderCount, redisCluster.Spec.LeaderFollowersCount)
+	} else if err != nil {
+		r.Log.Error(err, "Could not perform reconcile loop")
+		return ctrl.Result{RequeueAfter: 20 * time.Second}, nil
+	}
+
 	switch r.State {
 	case NotExists:
 		err = r.handleInitializingCluster(&redisCluster)
-		break
-	case UpdateView:
-		r.UpdateView(&redisCluster)
 		break
 	case Reset:
 		err = r.handleInitializingCluster(&redisCluster)
@@ -133,12 +139,12 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 			err = r.handleScaleState(&redisCluster)
 		}
 	}
-	r.updateClusterView(&redisCluster)
 	if err != nil {
 		r.Log.Error(err, "Handling error")
 	}
-	r.updateClusterState(&redisCluster)
-	return ctrl.Result{}, nil
+	defer r.updateClusterView(&redisCluster)
+	defer r.updateClusterState(&redisCluster)
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
 func (r *RedisClusterReconciler) updateClusterState(redisCluster *dbv1.RedisCluster) {
@@ -157,12 +163,26 @@ func (r *RedisClusterReconciler) updateClusterView(redisCluster *dbv1.RedisClust
 	data, _ := json.MarshalIndent(view, "", "")
 	clusterData.SaveRedisClusterView(data)
 	clusterData.SaveRedisClusterState(redisCluster.Status.ClusterState)
+
+	err = r.updateClusterStateView(redisCluster)
+	if err != nil {
+		err = r.createClusterStateView(redisCluster)
+		if err != nil {
+			r.Log.Error(err, "Could not update cluster state view")
+		}
+	}
 }
 
 func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.RedisCluster) error {
 	r.updateClusterState(redisCluster)
 	r.Log.Info("Clear all cluster pods...")
-	r.deleteAllRedisClusterPods()
+	e := r.deleteAllRedisClusterPods()
+	if e != nil {
+		return e
+	}
+	r.Log.Info("Clear cluster state map...")
+	r.deleteClusterStateView(redisCluster)
+	r.RedisClusterStateView.CreateStateView(redisCluster.Spec.LeaderCount, redisCluster.Spec.LeaderFollowersCount)
 	r.Log.Info("Handling initializing leaders...")
 	if err := r.createNewRedisCluster(redisCluster); err != nil {
 		redisCluster.Status.ClusterState = string(Reset)
@@ -175,17 +195,13 @@ func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.Re
 		ClusterReset = true
 		return err
 	}
-	redisCluster.Status.ClusterState = string(UpdateView)
+	redisCluster.Status.ClusterState = string(Ready)
 	r.updateClusterState(redisCluster)
 	return nil
 }
 
 func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluster) error {
-	expectedView, e := r.GetExpectedView(redisCluster)
-	if e != nil {
-		r.Log.Info("Could not retrieve expected view for [Ready] state verification")
-	}
-	complete, err := r.isClusterComplete(redisCluster, expectedView)
+	complete, err := r.isClusterComplete(redisCluster)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is complete")
 		return err
@@ -204,8 +220,9 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		redisCluster.Status.ClusterState = string(Updating)
 		return nil
 	}
+	defer r.forgetLostNodes(redisCluster)
 	r.Log.Info("Cluster is healthy")
-	scale, scaleType := r.isScaleRequired(redisCluster, expectedView)
+	scale, scaleType := r.isScaleRequired(redisCluster)
 	if scale {
 		r.Log.Info(fmt.Sprintf("Scale is required, scale type: [%v]", scaleType.String()))
 		redisCluster.Status.ClusterState = string(Scale)
@@ -218,8 +235,8 @@ func (r *RedisClusterReconciler) handleScaleState(redisCluster *dbv1.RedisCluste
 	if e != nil {
 		r.Log.Error(e, "Could not perform cluster scale")
 	}
-	redisCluster.Status.ClusterState = string(UpdateView)
-	r.updateClusterState(redisCluster)
+	defer r.forgetLostNodes(redisCluster)
+	redisCluster.Status.ClusterState = string(Ready)
 	return nil
 }
 
@@ -229,6 +246,7 @@ func (r *RedisClusterReconciler) handleRecoveringState(redisCluster *dbv1.RedisC
 	if e != nil {
 		return e
 	}
+	defer r.forgetLostNodes(redisCluster)
 	redisCluster.Status.ClusterState = string(Ready)
 	return nil
 }
@@ -265,15 +283,6 @@ func (r *RedisClusterReconciler) validateStateUpdated(redisCluster *dbv1.RedisCl
 	return ctrl.Result{}, nil
 }
 
-func (r *RedisClusterReconciler) UpdateView(redisCluster *dbv1.RedisCluster) error {
-	e := r.UpdateExpectedView(redisCluster)
-	if e != nil {
-		return e
-	}
-	redisCluster.Status.ClusterState = string(Ready)
-	return nil
-}
-
 func (r *RedisClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, "status.podIP", func(rawObj runtime.Object) []string {
 		pod := rawObj.(*corev1.Pod)
@@ -295,22 +304,6 @@ func DoResetCluster(c echo.Context) error {
 	return c.String(http.StatusOK, "Set cluster state to reset mode")
 }
 
-func UpdateExpectedView(c echo.Context) error {
-	e := reconciler.UpdateExpectedView(cluster)
-	if e != nil {
-		return e
-	}
-	return c.String(http.StatusOK, "Config map updated")
-}
-
-func GetExpectedView(c echo.Context) error {
-	expectedView, err := reconciler.GetExpectedView(cluster)
-	if err != nil {
-		return err
-	}
-	return c.String(http.StatusOK, fmt.Sprintf("%v", expectedView))
-}
-
 func DeleteAllPods(c echo.Context) error {
 	reconciler.deleteAllRedisClusterPods()
 	return c.String(http.StatusOK, "All pods deleted")
@@ -321,9 +314,9 @@ func AddNewLeaders(c echo.Context) error {
 	if e != nil {
 		return c.String(http.StatusOK, "Could not retrieve cluster view")
 	}
-	healthyServerName := reconciler.findHealthyLeader(v, nil)
+	healthyServerName := reconciler.findHealthyLeader(v)
 	if len(healthyServerName) == 0 {
-		return c.String(http.StatusOK, "Could not find healthy reachable leader to serve the fix request")
+		return c.String(http.StatusOK, "Could not find healthy reachable leader to serve the add leaders request")
 	}
 	healthyServerIp := v.Nodes[healthyServerName].Ip
 	e = reconciler.addLeaders(cluster, healthyServerIp, []string{"redis-node-8", "redis-node-9"})
@@ -338,13 +331,12 @@ func DeleteNewLeaders(c echo.Context) error {
 	if e != nil {
 		return c.String(http.StatusOK, "Could not retrieve cluster view")
 	}
-	nodesToRemove := map[string]bool{"redis-node-8": true, "redis-node-9": true}
-	healthyServerName := reconciler.findHealthyLeader(v, nodesToRemove)
+	healthyServerName := reconciler.findHealthyLeader(v)
 	if len(healthyServerName) == 0 {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the fix request")
 	}
 	healthyServerIp := v.Nodes[healthyServerName].Ip
-	e = reconciler.deleteNodes(cluster, v, healthyServerIp, nodesToRemove)
+	e = reconciler.deleteNodes(cluster, v, healthyServerIp)
 	if e != nil {
 		return c.String(http.StatusOK, "Could not delete requested leaders properly")
 	}
@@ -356,7 +348,7 @@ func ClusterRebalance(c echo.Context) error {
 	if e != nil {
 		return c.String(http.StatusOK, "Could not retrieve cluster view")
 	}
-	healthyServerName := reconciler.findHealthyLeader(v, nil)
+	healthyServerName := reconciler.findHealthyLeader(v)
 	if len(healthyServerName) == 0 {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the rebalance request")
 	}
@@ -375,7 +367,7 @@ func ClusterFix(c echo.Context) error {
 	if e != nil {
 		return c.String(http.StatusOK, "Could not retrieve cluster view")
 	}
-	healthyServerName := reconciler.findHealthyLeader(v, nil)
+	healthyServerName := reconciler.findHealthyLeader(v)
 	if len(healthyServerName) == 0 {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the fix request")
 	}
@@ -386,4 +378,34 @@ func ClusterFix(c echo.Context) error {
 		println(err.Error())
 	}
 	return c.String(http.StatusOK, "Cluster fix attempt executed")
+}
+
+func PrintClusterStateView(c echo.Context) error {
+	reconciler.RedisClusterStateView.CreateStateView(cluster.Spec.LeaderCount, cluster.Spec.LeaderFollowersCount)
+	reconciler.RedisClusterStateView.ClusterState = view.ClusterOK
+	reconciler.RedisClusterStateView.Nodes["redis-node-0-1"].NodeState = view.NodeOK
+	fmt.Printf("%+v\n", reconciler.RedisClusterStateView)
+	bytes, err := json.Marshal(reconciler.RedisClusterStateView)
+	if err != nil {
+		fmt.Printf("error: " + err.Error())
+	} else {
+		fmt.Printf(string(bytes) + "\n")
+		e := reconciler.updateClusterStateView(cluster)
+		if e != nil {
+			fmt.Printf(e.Error() + "\n")
+			e := reconciler.createClusterStateView(cluster)
+			if e != nil {
+				fmt.Printf(e.Error() + "\n")
+			}
+		}
+	}
+	reconciler.getClusterStateView(cluster)
+	fmt.Printf("%+v\n", reconciler.RedisClusterStateView)
+	bytes, err = json.Marshal(reconciler.RedisClusterStateView)
+	if err != nil {
+		fmt.Printf("error: " + err.Error())
+	} else {
+		fmt.Printf(string(bytes) + "\n")
+	}
+	return c.String(http.StatusOK, "Cluster state view printed to screen")
 }
