@@ -8,10 +8,8 @@ import (
 func Register(e *echo.Echo) {
 	e.GET("/state", clusterState)
 	e.GET("/info", clusterInfo)
-	e.GET("/reset", controllers.DoResetCluster)
-	e.GET("/addLeaders", controllers.AddNewLeaders)
-	e.GET("/delLeaders", controllers.DeleteNewLeaders)
-	e.GET("/clusterRebalance", controllers.ClusterRebalance)
-	e.GET("/clusterFix", controllers.ClusterFix)
-	e.GET("/stateView", controllers.PrintClusterStateView)
+	e.POST("/reset", controllers.DoResetCluster)
+	e.POST("/clusterRebalance", controllers.ClusterRebalance)
+	e.POST("/clusterFix", controllers.ClusterFix)
+	e.POST("/reconcile", controllers.DoReconcile)
 }

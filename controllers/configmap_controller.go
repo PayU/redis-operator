@@ -60,16 +60,8 @@ const redisConfigLabelKey string = "redis-cluster"
 const handleACLConfigErrorMessage = "Failed to handle ACL configuration"
 const operatorConfigLabelKey string = "redis-operator"
 
-func callBackWithin(d time.Duration, wg *sync.WaitGroup) {
-	defer wg.Done()
-	time.Sleep(d)
-}
-
 func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
-	var sleepingGroup sync.WaitGroup
-	sleepingGroup.Add(1)
-	go callBackWithin(ACLFilePropagationDuration, &sleepingGroup)
-	sleepingGroup.Wait()
+	time.Sleep(ACLFilePropagationDuration)
 
 	for _, pod := range redisPods {
 		msg, err := r.RedisCLI.ACLLoad(pod.Status.PodIP)
@@ -78,9 +70,7 @@ func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ..
 			return err
 		}
 
-		sleepingGroup.Add(1)
-		go callBackWithin(ACLFileLoadDuration, &sleepingGroup)
-		sleepingGroup.Wait()
+		time.Sleep(ACLFileLoadDuration)
 
 		loadedConfig, _, err := r.RedisCLI.ACLList(pod.Status.PodIP)
 		if err != nil {
@@ -255,7 +245,7 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			if _, ok := configMap.Data["users.acl"]; ok {
 				if err := r.handleACLConfig(&configMap); err != nil {
 					r.Log.Error(err, "Failed to reconcile ACL config")
-					return ctrl.Result{}, err
+					return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 				}
 				return ctrl.Result{}, nil
 			}
@@ -263,7 +253,7 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			if _, ok := configMap.Data["operator.conf"]; ok {
 				if err := r.handleOperatorConfig(&configMap); err != nil {
 					r.Log.Error(err, "Failed to reconcile operator config")
-					return ctrl.Result{}, err
+					return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 				}
 				return ctrl.Result{}, nil
 			}

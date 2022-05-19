@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
 	view "github.com/PayU/redis-operator/controllers/view"
@@ -33,26 +32,24 @@ type K8sManager struct {
 
 func (r *RedisClusterReconciler) getRedisClusterPods(redisCluster *dbv1.RedisCluster, podType ...string) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
-	r.Log.Info("Waiting for cache sync...")
-	cacheSynced := r.Cache.WaitForCacheSync(make(<-chan struct{}))
-	if cacheSynced {
-		r.Log.Info("Cache is synced")
-		matchingLabels := redisCluster.Spec.PodLabelSelector
-		if len(podType) > 0 && strings.TrimSpace(podType[0]) != "" {
-			pt := strings.TrimSpace(podType[0])
-			if pt == "follower" || pt == "leader" {
-				matchingLabels["redis-node-role"] = pt
-			}
+	// r.Log.Info("Waiting for cache sync...")
+	// cacheSynced := r.Cache.WaitForCacheSync(make(<-chan struct{}))
+	// if cacheSynced {
+	// }
+	// return pods.Items, errors.New("Failed to sync k8s cluster cache...")
+	//r.Log.Info("Cache is synced")
+	matchingLabels := redisCluster.Spec.PodLabelSelector
+	if len(podType) > 0 && strings.TrimSpace(podType[0]) != "" {
+		pt := strings.TrimSpace(podType[0])
+		if pt == "follower" || pt == "leader" {
+			matchingLabels["redis-node-role"] = pt
 		}
-
-		err := r.List(context.Background(), pods, client.InNamespace(redisCluster.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
-		if err != nil {
-			return nil, err
-		}
-
-		return pods.Items, nil
 	}
-	return pods.Items, errors.New("Failed to sync k8s cluster cache...")
+	err := r.List(context.Background(), pods, client.InNamespace(redisCluster.ObjectMeta.Namespace), client.MatchingLabels(matchingLabels))
+	if err != nil {
+		return nil, err
+	}
+	return pods.Items, nil
 }
 
 func (r *RedisClusterReconciler) getRedisClusterPodsByLabel(redisCluster *dbv1.RedisCluster, key string, value string) ([]corev1.Pod, error) {
@@ -67,18 +64,6 @@ func (r *RedisClusterReconciler) getRedisClusterPodsByLabel(redisCluster *dbv1.R
 	}
 
 	return pods.Items, nil
-}
-
-func (r *RedisClusterReconciler) getPodByIP(namespace string, podIP string) (corev1.Pod, error) {
-	var podList corev1.PodList
-	err := r.List(context.Background(), &podList, client.InNamespace(namespace), client.MatchingFields{"status.podIP": podIP})
-	if err != nil {
-		return corev1.Pod{}, err
-	}
-	if len(podList.Items) == 0 {
-		return corev1.Pod{}, apierrors.NewNotFound(corev1.Resource("Pod"), "")
-	}
-	return podList.Items[0], nil
 }
 
 func getSelectorRequirementFromPodLabelSelector(redisCluster *dbv1.RedisCluster) []metav1.LabelSelectorRequirement {
@@ -109,19 +94,6 @@ func (r *RedisClusterReconciler) getClusterStateView(redisCluster *dbv1.RedisClu
 }
 
 // Update methods
-
-func (r *RedisClusterReconciler) applyViewToConfigMap(redisCluster *dbv1.RedisCluster, cm *corev1.ConfigMap) error {
-	pods, err := r.getRedisClusterPods(redisCluster)
-	if err != nil {
-		return err
-	}
-	data := make(map[string]string)
-	for _, p := range pods {
-		data[p.Name] = p.Labels["leader-name"]
-	}
-	cm.Data = data
-	return nil
-}
 
 func (r *RedisClusterReconciler) updateClusterStateView(redisCluster *dbv1.RedisCluster) error {
 	configMapName := r.RedisClusterStateView.Name
@@ -360,7 +332,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 			return nil, err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod ready: %s(%s)", pod.Name, pod.Status.PodIP))
-		if pollErr := wait.PollImmediate(2*r.Config.Times.PodReadyCheckInterval, 10*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(3*r.Config.Times.PodReadyCheckInterval, 10*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return false, err
@@ -387,7 +359,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(2*r.Config.Times.PodNetworkCheckInterval, 20*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(3*r.Config.Times.PodNetworkCheckInterval, 20*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil
@@ -413,7 +385,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
 			return err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
-		if pollErr := wait.Poll(2*r.Config.Times.PodDeleteCheckInterval, 5*r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
+		if pollErr := wait.Poll(r.Config.Times.PodDeleteCheckInterval, r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &p)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
@@ -436,42 +408,30 @@ func (r *RedisClusterReconciler) deleteAllRedisClusterPods() error {
 	if e != nil {
 		return e
 	}
-	var wg sync.WaitGroup
-	wg.Add(len(pods))
+	deletedPods, err := r.deletePods(pods)
+	if err != nil {
+		return err
+	}
+	return r.waitForPodDelete(deletedPods...)
+}
+
+func (r *RedisClusterReconciler) deletePods(pods []corev1.Pod) ([]corev1.Pod, error) {
+	deletedPods := []corev1.Pod{}
 	for _, pod := range pods {
-		go r.deletePodAsync(pod.Namespace, pod.Status.PodIP, &wg)
-	}
-	wg.Wait()
-	return nil
-}
-
-func (r *RedisClusterReconciler) deletePodAsync(namespace string, ip string, wg *sync.WaitGroup) {
-	defer wg.Done()
-	deletedPods, _ := r.deletePodsByIP(namespace, ip)
-	if len(deletedPods) > 0 {
-		r.waitForPodDelete(deletedPods...)
-	}
-}
-
-func (r *RedisClusterReconciler) deletePodsByIP(namespace string, ip ...string) ([]corev1.Pod, error) {
-	var deletedPods []corev1.Pod
-	for _, ip := range ip {
-		pod, err := r.getPodByIP(namespace, ip)
+		err := r.deletePod(&pod)
 		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return nil, err
-		}
-		if err := r.Delete(context.Background(), &pod); err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return nil, err
+			return deletedPods, err
 		}
 		deletedPods = append(deletedPods, pod)
 	}
 	return deletedPods, nil
+}
+
+func (r *RedisClusterReconciler) deletePod(pod *corev1.Pod) error {
+	if err := r.Delete(context.Background(), pod); err != nil && apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func (r *RedisClusterReconciler) deleteClusterStateView(redisCluster *dbv1.RedisCluster) error {

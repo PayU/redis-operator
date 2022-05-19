@@ -22,6 +22,7 @@ const (
 	AddNode       NodeState = "AddNode"
 	ReplicateNode NodeState = "ReplicateNode"
 	SyncNode      NodeState = "SyncNode"
+	FailoverNode  NodeState = "FailoverNode"
 	ReshardNode   NodeState = "ReshardNode"
 	DeleteNode    NodeState = "DeleteNode"
 	NodeOK        NodeState = "NodeOK"
@@ -39,12 +40,13 @@ type RedisClusterStateView struct {
 
 type NodeView struct {
 	Name        string
-	NodeId      string
+	Id          string
 	Namespace   string
 	Ip          string
 	LeaderName  string
 	IsLeader    bool
 	IsReachable bool
+	Pod         *corev1.Pod
 }
 
 type NodeStateView struct {
@@ -84,11 +86,12 @@ func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.Redi
 	for _, pod := range pods {
 		redisNode := &NodeView{
 			Name:       pod.Name,
-			NodeId:     "",
+			Id:         "",
 			Namespace:  pod.Namespace,
 			Ip:         pod.Status.PodIP,
 			LeaderName: pod.Labels["leader-name"],
 			IsLeader:   pod.Labels["redis-node-role"] == "leader",
+			Pod:        &pod,
 		}
 		redisNode.IsReachable = isReachableNode(redisNode, redisCli)
 		v.Nodes[pod.Name] = redisNode
@@ -97,7 +100,7 @@ func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.Redi
 
 func isReachableNode(n *NodeView, redisCli *rediscli.RedisCLI) bool {
 	var e error
-	if n.NodeId, e = redisCli.MyClusterID(n.Ip); e != nil {
+	if n.Id, e = redisCli.MyClusterID(n.Ip); e != nil {
 		return false
 	}
 	if clusterInfo, _, err := redisCli.ClusterInfo(n.Ip); err != nil || clusterInfo == nil || (*clusterInfo)["cluster_state"] != "ok" {
