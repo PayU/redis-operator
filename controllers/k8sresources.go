@@ -428,7 +428,18 @@ func (r *RedisClusterReconciler) deletePods(pods []corev1.Pod) ([]corev1.Pod, er
 }
 
 func (r *RedisClusterReconciler) deletePod(pod *corev1.Pod) error {
+	key, err := client.ObjectKeyFromObject(pod)
+	if err != nil {
+		r.Log.Error(err, "Could not get key from object: "+pod.Name)
+		return err
+	}
+	err = r.Get(context.Background(), key, pod)
+	if err != nil {
+		r.Log.Error(err, "Could not get pod for deletion: "+pod.Name)
+		return err
+	}
 	if err := r.Delete(context.Background(), pod); err != nil && apierrors.IsNotFound(err) {
+		r.Log.Error(err, "Could not delete pod: "+pod.Name)
 		return err
 	}
 	return nil

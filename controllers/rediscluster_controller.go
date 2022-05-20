@@ -135,6 +135,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	if err != nil {
 		r.Log.Error(err, "Handling error")
 	}
+	defer r.updateClusterStateView(&redisCluster)
 	defer r.updateClusterView(&redisCluster)
 	return ctrl.Result{Requeue: err == nil, RequeueAfter: 15 * time.Second}, nil
 }
@@ -309,8 +310,7 @@ func ClusterRebalance(c echo.Context) error {
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterRebalance
 	mutex.Unlock()
 	healthyServerIp := v.Nodes[healthyServerName].Ip
-	successful, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
-	println("Successful: " + fmt.Sprint(successful))
+	_, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
 	if err != nil {
 		reconciler.Log.Error(err, "Could not perform cluster rebalance")
 	}
@@ -333,8 +333,7 @@ func ClusterFix(c echo.Context) error {
 	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterFix
 	mutex.Unlock()
-	successful, _, err := reconciler.RedisCLI.ClusterFix(healthyServerIp)
-	println("Successful: " + fmt.Sprint(successful))
+	_, _, err := reconciler.RedisCLI.ClusterFix(healthyServerIp)
 	if err != nil {
 		reconciler.Log.Error(err, "Could not perform cluster fix")
 	}
