@@ -86,7 +86,6 @@ var mutex *sync.Mutex = &sync.Mutex{}
 // +kubebuilder:rbac:groups=*,resources=pods;services;configmaps,verbs=create;update;patch;get;list;watch;delete
 
 func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
-	println("Reconcile call")
 	reconciler = r
 	r.Status()
 
@@ -135,8 +134,8 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	if err != nil {
 		r.Log.Error(err, "Handling error")
 	}
-	defer r.updateClusterStateView(&redisCluster)
-	defer r.updateClusterView(&redisCluster)
+	r.updateClusterStateView(&redisCluster)
+	r.updateClusterView(&redisCluster)
 	return ctrl.Result{Requeue: err == nil, RequeueAfter: 15 * time.Second}, nil
 }
 
@@ -154,12 +153,12 @@ func (r *RedisClusterReconciler) updateClusterView(redisCluster *dbv1.RedisClust
 		return
 	}
 	for _, n := range v.Nodes {
-		n.Pod = &corev1.Pod{}
+		n.Pod = corev1.Pod{}
 	}
 	data, _ := json.MarshalIndent(v, "", "")
 	clusterData.SaveRedisClusterView(data)
 	clusterData.SaveRedisClusterState(redisCluster.Status.ClusterState)
-	defer r.updateClusterState(redisCluster)
+	r.updateClusterState(redisCluster)
 }
 
 func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.RedisCluster) error {
@@ -183,7 +182,7 @@ func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.Re
 	}
 	redisCluster.Status.ClusterState = string(Ready)
 	r.updateClusterState(redisCluster)
-	defer r.createClusterStateView(redisCluster)
+	r.createClusterStateView(redisCluster)
 	return nil
 }
 
@@ -212,14 +211,14 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		redisCluster.Status.ClusterState = string(Updating)
 		return nil
 	}
-	defer r.forgetLostNodes(redisCluster, v)
+	r.forgetLostNodes(redisCluster, v)
 	r.Log.Info("Cluster is healthy")
 	scale, scaleType := r.isScaleRequired(redisCluster)
 	if scale {
 		r.Log.Info(fmt.Sprintf("Scale is required, scale type: [%v]", scaleType.String()))
 		redisCluster.Status.ClusterState = string(Scale)
 	}
-	defer r.updateClusterStateView(redisCluster)
+	r.updateClusterStateView(redisCluster)
 	return nil
 }
 
@@ -230,7 +229,7 @@ func (r *RedisClusterReconciler) handleScaleState(redisCluster *dbv1.RedisCluste
 		r.Log.Error(e, "Could not perform cluster scale")
 	}
 	redisCluster.Status.ClusterState = string(Ready)
-	defer r.updateClusterStateView(redisCluster)
+	r.updateClusterStateView(redisCluster)
 	return nil
 }
 
@@ -240,7 +239,7 @@ func (r *RedisClusterReconciler) handleRecoveringState(redisCluster *dbv1.RedisC
 	if e != nil {
 		return e
 	}
-	defer r.updateClusterStateView(redisCluster)
+	r.updateClusterStateView(redisCluster)
 	return nil
 }
 
@@ -251,7 +250,7 @@ func (r *RedisClusterReconciler) handleUpdatingState(redisCluster *dbv1.RedisClu
 		r.Log.Info("Rolling update failed")
 	}
 	redisCluster.Status.ClusterState = string(Recovering)
-	defer r.updateClusterStateView(redisCluster)
+	r.updateClusterStateView(redisCluster)
 	return err
 }
 

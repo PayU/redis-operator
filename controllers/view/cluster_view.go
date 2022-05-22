@@ -19,11 +19,10 @@ const (
 
 const (
 	CreateNode    NodeState = "CreateNode"
-	AddNode       NodeState = "AddNode"
 	ReplicateNode NodeState = "ReplicateNode"
-	SyncNode      NodeState = "SyncNode"
 	FailoverNode  NodeState = "FailoverNode"
 	ReshardNode   NodeState = "ReshardNode"
+	RemoveNode    NodeState = "RemoveNode"
 	DeleteNode    NodeState = "DeleteNode"
 	NodeOK        NodeState = "NodeOK"
 )
@@ -46,13 +45,22 @@ type NodeView struct {
 	LeaderName  string
 	IsLeader    bool
 	IsReachable bool
-	Pod         *corev1.Pod
+	Pod         corev1.Pod
 }
 
 type NodeStateView struct {
 	Name       string
 	LeaderName string
 	NodeState  NodeState
+}
+
+type MissingNodeView struct {
+	Name              string
+	LeaderName        string
+	CurrentMasterName string
+	CurrentMasterId   string
+	CurrentMasterIp   string
+	Pod               corev1.Pod
 }
 
 func (sv *RedisClusterStateView) CreateStateView(leaderCount int, followersPerLeaderCount int) {
@@ -81,6 +89,19 @@ func (sv *RedisClusterStateView) CreateStateView(leaderCount int, followersPerLe
 	}
 }
 
+func (sv *RedisClusterStateView) SetNodeState(name string, leaderName string, nodeState NodeState) {
+	n, exists := sv.Nodes[name]
+	if exists {
+		n.NodeState = nodeState
+	} else {
+		sv.Nodes[name] = &NodeStateView{
+			Name:       name,
+			LeaderName: leaderName,
+			NodeState:  nodeState,
+		}
+	}
+}
+
 func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.RedisCLI) {
 	v.Nodes = make(map[string]*NodeView)
 	for _, pod := range pods {
@@ -91,7 +112,7 @@ func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.Redi
 			Ip:         pod.Status.PodIP,
 			LeaderName: pod.Labels["leader-name"],
 			IsLeader:   pod.Labels["redis-node-role"] == "leader",
-			Pod:        &pod,
+			Pod:        pod,
 		}
 		redisNode.IsReachable = isReachableNode(redisNode, redisCli)
 		v.Nodes[pod.Name] = redisNode
