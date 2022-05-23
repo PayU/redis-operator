@@ -21,7 +21,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/PayU/redis-operator/controllers/view"
@@ -110,6 +113,17 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	} else if err != nil {
 		r.Log.Error(err, "Could not perform reconcile loop")
 		return ctrl.Result{RequeueAfter: 20 * time.Second}, nil
+	}
+
+	if r.RedisClusterStateView != nil {
+		saveStatusOnQuit := make(chan os.Signal, 1)
+		signal.Notify(saveStatusOnQuit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGSEGV)
+		go func() {
+			<-saveStatusOnQuit
+			r.Log.Info("[WARN] reconcile loop interrupted by os signal, saving cluster state view...")
+			close(saveStatusOnQuit)
+			r.updateClusterStateView(&redisCluster)
+		}()
 	}
 
 	switch r.State {

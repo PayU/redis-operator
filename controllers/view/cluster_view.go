@@ -19,7 +19,9 @@ const (
 
 const (
 	CreateNode    NodeState = "CreateNode"
+	AddNode       NodeState = "AddNode"
 	ReplicateNode NodeState = "ReplicateNode"
+	SyncNode      NodeState = "SyncNode"
 	FailoverNode  NodeState = "FailoverNode"
 	ReshardNode   NodeState = "ReshardNode"
 	RemoveNode    NodeState = "RemoveNode"
@@ -60,7 +62,6 @@ type MissingNodeView struct {
 	CurrentMasterName string
 	CurrentMasterId   string
 	CurrentMasterIp   string
-	Pod               corev1.Pod
 }
 
 func (sv *RedisClusterStateView) CreateStateView(leaderCount int, followersPerLeaderCount int) {

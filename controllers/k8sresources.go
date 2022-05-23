@@ -278,97 +278,6 @@ func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (c
 	return service, nil
 }
 
-func (r *RedisClusterReconciler) detectMissingPods(v *view.RedisClusterView) map[string]*view.MissingNodeView {
-	missingNodesView := map[string]*view.MissingNodeView{}
-	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
-	for _, n := range r.RedisClusterStateView.Nodes {
-		wg.Add(1)
-		go func(n *view.NodeStateView) {
-			defer wg.Done()
-			if _, exists := v.Nodes[n.Name]; !exists {
-				for _, node := range v.Nodes {
-					if n.LeaderName == node.LeaderName {
-						info, _, err := r.RedisCLI.Info(node.Ip)
-						if err != nil {
-							continue
-						}
-						if info.Replication["role"] == "master" {
-							mutex.Lock()
-							missingNodesView[n.Name] = &view.MissingNodeView{
-								Name:              n.Name,
-								LeaderName:        n.LeaderName,
-								CurrentMasterName: n.Name,
-								CurrentMasterId:   node.Id,
-								CurrentMasterIp:   node.Ip,
-							}
-							mutex.Unlock()
-							return
-						}
-					}
-				}
-				missingNodesView[n.LeaderName] = &view.MissingNodeView{
-					Name:              n.Name,
-					LeaderName:        n.LeaderName,
-					CurrentMasterName: "",
-				}
-			}
-		}(n)
-	}
-	wg.Wait()
-	return missingNodesView
-}
-
-func (r *RedisClusterReconciler) reCreatePods(redisCluster *dbv1.RedisCluster, missingNodesView map[string]*view.MissingNodeView) error {
-	pods := r.createRedisPods(redisCluster, missingNodesView)
-	newPods, err := r.waitForPodNetworkInterface(pods...)
-	if err != nil {
-		r.Log.Error(err, fmt.Sprintf("Could not re create missing pods"))
-		r.deletePods(pods)
-		return err
-	}
-	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
-	for _, p := range newPods {
-		wg.Add(1)
-		go func(p corev1.Pod) {
-			defer wg.Done()
-			pod, err := r.waitForRedisPod(p)
-			if err != nil {
-				return
-			}
-			m := missingNodesView[pod.Name]
-			mutex.Lock()
-			r.RedisClusterStateView.SetNodeState(m.Name, m.LeaderName, view.ReplicateNode)
-			mutex.Unlock()
-			err = r.replicateLeader(pod.Name, pod.Status.PodIP, m.CurrentMasterIp)
-			if err != nil {
-				r.Log.Error(err, fmt.Sprintf("Could not re create pod [%s]", p.Name))
-				return
-			}
-			if m.Name == m.LeaderName {
-				mutex.Lock()
-				r.RedisClusterStateView.SetNodeState(m.Name, m.LeaderName, view.FailoverNode)
-				err = r.doFailover(p.Status.PodIP, "")
-				mutex.Unlock()
-				if err != nil {
-					r.Log.Info(fmt.Sprintf("[Warning] Attempt to failover with node ip [%s] failed", p.Status.PodIP))
-					return
-				}
-			}
-			println("Here")
-			mutex.Lock()
-			println("NodeOK")
-			r.RedisClusterStateView.SetNodeState(m.Name, m.LeaderName, view.NodeOK)
-			println("NodeOK done")
-			mutex.Unlock()
-		}(p)
-	}
-	wg.Wait()
-	r.updateClusterStateView(redisCluster)
-	return nil
-}
-
 func (r *RedisClusterReconciler) createRedisPods(redisCluster *dbv1.RedisCluster, missingNodesView map[string]*view.MissingNodeView) []corev1.Pod {
 	var pods []corev1.Pod
 	createOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
@@ -428,11 +337,17 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 		if err != nil {
 			return nil, err
 		}
+		err = ctrl.SetControllerReference(redisCluster, &pod, r.Scheme)
+		if err != nil {
+			r.Log.Error(err, fmt.Sprintf("Could not re create pod [%s]", pod.Name))
+			r.deletePod(pod)
+			return leaderPods, err
+		}
 		leaderPods = append(leaderPods, pod)
 	}
+
 	applyOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 	for _, pod := range leaderPods {
-
 		err := r.Create(context.Background(), &pod, applyOpts...)
 		if err != nil && !apierrors.IsAlreadyExists(err) && !apierrors.IsConflict(err) {
 			fmt.Printf(err.Error())
@@ -443,7 +358,7 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 	if err != nil {
 		return nil, err
 	}
-	r.Log.Info(fmt.Sprintf("New leader pods created: %v ", nodeNames))
+	r.Log.Info(fmt.Sprintf("New leader pods created: %v", nodeNames))
 	return leaderPods, nil
 }
 
@@ -512,27 +427,34 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	return readyPods, nil
 }
 
-func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) error {
+func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
+	var wg sync.WaitGroup
 	for _, p := range pods {
-		key, err := client.ObjectKeyFromObject(&p)
-		if err != nil {
-			return err
-		}
-		r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
-		if pollErr := wait.Poll(r.Config.Times.PodDeleteCheckInterval, r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
-			err := r.Get(context.Background(), key, &p)
+		wg.Add(1)
+		go func(p corev1.Pod) {
+			defer wg.Done()
+			key, err := client.ObjectKeyFromObject(&p)
 			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return true, nil
-				}
-				return false, err
+				r.Log.Error(err, "Error while getting object key for deletion process")
+				return
 			}
-			return false, nil
-		}); pollErr != nil {
-			return pollErr
-		}
+			r.Log.Info(fmt.Sprintf("Waiting for pod delete: %s", p.Name))
+			if pollErr := wait.Poll(r.Config.Times.PodDeleteCheckInterval, r.Config.Times.PodDeleteCheckTimeout, func() (bool, error) {
+				err := r.Get(context.Background(), key, &p)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						return true, nil
+					}
+					return false, err
+				}
+				return false, nil
+			}); pollErr != nil {
+				r.Log.Error(err, "Error while waiting for pod to be deleted")
+				return
+			}
+		}(p)
 	}
-	return nil
+	wg.Wait()
 }
 
 // Delete methods
@@ -546,7 +468,8 @@ func (r *RedisClusterReconciler) deleteAllRedisClusterPods() error {
 	if err != nil {
 		return err
 	}
-	return r.waitForPodDelete(deletedPods...)
+	r.waitForPodDelete(deletedPods...)
+	return nil
 }
 
 func (r *RedisClusterReconciler) deletePods(pods []corev1.Pod) ([]corev1.Pod, error) {
