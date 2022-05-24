@@ -206,6 +206,9 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	if err != nil {
 		return err
 	}
+
+	r.ensureForgetLostNodes(redisCluster, v)
+
 	complete, err := r.isClusterComplete(redisCluster, v)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is complete")
@@ -225,7 +228,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		redisCluster.Status.ClusterState = string(Updating)
 		return nil
 	}
-	r.ensureForgetLostNodes(redisCluster, v)
+
 	r.Log.Info("Cluster is healthy")
 	scale, scaleType := r.isScaleRequired(redisCluster)
 	if scale {

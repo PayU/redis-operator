@@ -292,47 +292,54 @@ func (r *RedisClusterReconciler) ensureForgetLostNodes(redisCluster *dbv1.RedisC
 // Removes all nodes the cluster node table entries with IDs of nodes not available
 // Recives the list of healthy cluster nodes (Redis is reachable and has cluster mode on)
 func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) bool {
-	healthyIps := make([]string, 0)
-	lostIds := make([]string, 0)
-	visitedById := make(map[string]bool)
-
-	// use mutexes, fix cannot run if tables not updated to remove failing rows
+	healthyIps := map[string]bool{}
+	lostIds := map[string]bool{}
+	var wg sync.WaitGroup
+	mutex := &sync.Mutex{}
+	// get pods - everything is getting slow when tables start to contain lost nodes!!! do it as first thing and add wait for k8s sync
 	for _, node := range v.Nodes {
-		podIp := node.Ip
-		nodeId := node.Id
-		clusterNodes, _, err := r.RedisCLI.ClusterNodes(podIp)
-		if err != nil {
-			lostIds = append(lostIds, nodeId)
-		} else {
-			healthyIps = append(healthyIps, podIp)
-		}
-		visitedById[nodeId] = true
-		if clusterNodes != nil {
-			for _, tableNode := range *clusterNodes {
-				isLost := strings.Contains(tableNode.Flags, "fail")
-				if _, declaredAsLost := visitedById[tableNode.ID]; !declaredAsLost && isLost {
-					lostIds = append(lostIds, tableNode.ID)
-					visitedById[tableNode.ID] = true
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			clusterNodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+			mutex.Lock()
+			if err != nil {
+				lostIds[node.Id] = true
+			} else {
+				healthyIps[node.Ip] = true
+			}
+			mutex.Unlock()
+			if clusterNodes != nil {
+				for _, tableNode := range *clusterNodes {
+					isLost := strings.Contains(tableNode.Flags, "fail")
+					mutex.Lock()
+					if _, declaredAsLost := lostIds[tableNode.ID]; !declaredAsLost && isLost {
+						lostIds[node.Id] = true
+					}
+					mutex.Unlock()
 				}
 			}
-		}
+		}()
 	}
+	wg.Wait()
 
 	if len(lostIds) > 0 {
+		r.Log.Info(fmt.Sprintf("List of healthy nodes ips: %v", healthyIps))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
-		for _, id := range lostIds {
-			var forgetByOneWG sync.WaitGroup
-			for _, ip := range healthyIps {
-				forgetByOneWG.Add(1)
+		for id, _ := range lostIds {
+			for ip, _ := range healthyIps {
+				wg.Add(1)
 				go func() {
-					defer forgetByOneWG.Done()
-					r.RedisCLI.ClusterForget(ip, id)
+					defer wg.Done()
+					_, err := r.RedisCLI.ClusterForget(ip, id)
+					if err != nil {
+						r.Log.Error(err, fmt.Sprintf("Could not forget id [%s]", id))
+					}
 				}()
 			}
-			forgetByOneWG.Wait()
+			wg.Wait()
 		}
 	}
-
 	return len(lostIds) > 0
 }
 
