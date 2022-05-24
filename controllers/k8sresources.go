@@ -90,12 +90,14 @@ func (r *RedisClusterReconciler) getClusterStateView(redisCluster *dbv1.RedisClu
 
 // Update methods
 
-func (r *RedisClusterReconciler) updateClusterStateView(redisCluster *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) updateClusterStateView(redisCluster *dbv1.RedisCluster) {
+	r.Log.Info("Updating cluster state view")
 	configMapName := r.RedisClusterStateView.Name
 	configMapNamespace := redisCluster.ObjectMeta.Namespace
 	bytes, e := json.Marshal(r.RedisClusterStateView)
 	if e != nil {
-		return e
+		r.Log.Error(e, "Error while attemting json marshal for cluster state view...")
+		return
 	}
 	data := map[string]string{
 		"data": string(bytes),
@@ -111,7 +113,11 @@ func (r *RedisClusterReconciler) updateClusterStateView(redisCluster *dbv1.Redis
 		},
 		Data: data,
 	}
-	return r.Update(context.Background(), &configMap)
+	e = r.Update(context.Background(), &configMap)
+	if e != nil {
+		r.Log.Error(e, "Error while attemting update for cluster state view...")
+		return
+	}
 }
 
 // Create/Make/Write methods
@@ -278,10 +284,15 @@ func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (c
 	return service, nil
 }
 
-func (r *RedisClusterReconciler) createRedisPods(redisCluster *dbv1.RedisCluster, missingNodesView map[string]*view.MissingNodeView) []corev1.Pod {
+func (r *RedisClusterReconciler) createRedisPods(redisCluster *dbv1.RedisCluster, missingNodesView map[string]*view.MissingNodeView, v *view.RedisClusterView) []corev1.Pod {
 	var pods []corev1.Pod
 	createOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 	for _, p := range missingNodesView {
+		_, exists := v.Nodes[p.Name]
+		if exists {
+			r.RedisClusterStateView.SetNodeState(p.Name, p.LeaderName, view.AddNode)
+			continue
+		}
 		if p.CurrentMasterName != "" {
 			preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-name", Operator: metav1.LabelSelectorOpIn, Values: []string{p.LeaderName}}}
 			var role string
