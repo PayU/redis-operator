@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -163,7 +164,11 @@ func (r *RedisClusterReconciler) updateClusterState(redisCluster *dbv1.RedisClus
 func (r *RedisClusterReconciler) updateClusterView(redisCluster *dbv1.RedisCluster) {
 	v, err := r.NewRedisClusterView(redisCluster)
 	if err != nil {
-		r.Log.Info("[Warn] Could not get view for api view update, Error: %v", err.Error())
+		if strings.Contains(err.Error(), "Non reachable node found") {
+			r.Log.Info("[Warn] Non reachable nodes found during view creation, re-attempting reconcile loop...")
+		} else {
+			r.Log.Info("[Warn] Could not get view for api view update, Error: %v", err.Error())
+		}
 		return
 	}
 	for _, n := range v.Nodes {
@@ -204,12 +209,18 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	r.Log.Info("Handling ready state...")
 	v, err := r.NewRedisClusterView(redisCluster)
 	if err != nil {
+		if strings.Contains(err.Error(), "Non reachable node found") {
+			r.Log.Info("[Warn] Non reachable nodes found during view creation, re-attempting reconcile loop...")
+			return nil
+		}
 		return err
 	}
-
-	r.ensureForgetLostNodes(redisCluster, v)
-
-	complete, err := r.isClusterComplete(redisCluster, v)
+	lostNodesDetected := r.forgetLostNodes(redisCluster, v)
+	if lostNodesDetected {
+		r.Log.Info("[Warn] Lost nodes detcted on some of the nodes tables...")
+		return nil
+	}
+	complete, err := r.isClusterHealthy(redisCluster, v)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is complete")
 		return err
@@ -229,12 +240,12 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		return nil
 	}
 
-	r.Log.Info("Cluster is healthy")
 	scale, scaleType := r.isScaleRequired(redisCluster)
 	if scale {
 		r.Log.Info(fmt.Sprintf("Scale is required, scale type: [%v]", scaleType.String()))
 		redisCluster.Status.ClusterState = string(Scale)
 	}
+	r.Log.Info("Cluster is healthy")
 	return nil
 }
 
@@ -319,7 +330,7 @@ func ClusterRebalance(c echo.Context) error {
 	reconciler.updateClusterStateView(cluster)
 	v, e := reconciler.NewRedisClusterView(cluster)
 	if e != nil {
-		return c.String(http.StatusOK, "Could not retrieve cluster view")
+		return c.String(http.StatusOK, e.Error())
 	}
 	healthyServerName := reconciler.findHealthyLeader(v)
 	if len(healthyServerName) == 0 {
@@ -327,13 +338,11 @@ func ClusterRebalance(c echo.Context) error {
 	}
 	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterRebalance
-	mutex.Unlock()
 	healthyServerIp := v.Nodes[healthyServerName].Ip
 	_, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
 	if err != nil {
 		reconciler.Log.Error(err, "Could not perform cluster rebalance")
 	}
-	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterOK
 	mutex.Unlock()
 	reconciler.updateClusterStateView(cluster)
@@ -347,7 +356,7 @@ func ClusterFix(c echo.Context) error {
 	reconciler.updateClusterStateView(cluster)
 	v, e := reconciler.NewRedisClusterView(cluster)
 	if e != nil {
-		return c.String(http.StatusOK, "Could not retrieve cluster view")
+		return c.String(http.StatusOK, e.Error())
 	}
 	healthyServerName := reconciler.findHealthyLeader(v)
 	if len(healthyServerName) == 0 {
@@ -356,12 +365,10 @@ func ClusterFix(c echo.Context) error {
 	healthyServerIp := v.Nodes[healthyServerName].Ip
 	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterFix
-	mutex.Unlock()
 	_, _, err := reconciler.RedisCLI.ClusterFix(healthyServerIp)
 	if err != nil {
 		reconciler.Log.Error(err, "Could not perform cluster fix")
 	}
-	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterOK
 	mutex.Unlock()
 	reconciler.updateClusterStateView(cluster)

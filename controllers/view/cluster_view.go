@@ -1,6 +1,7 @@
 package view
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/PayU/redis-operator/controllers/rediscli"
@@ -40,14 +41,13 @@ type RedisClusterStateView struct {
 }
 
 type NodeView struct {
-	Name        string
-	Id          string
-	Namespace   string
-	Ip          string
-	LeaderName  string
-	IsLeader    bool
-	IsReachable bool
-	Pod         corev1.Pod
+	Name       string
+	Id         string
+	Namespace  string
+	Ip         string
+	LeaderName string
+	IsLeader   bool
+	Pod        corev1.Pod
 }
 
 type NodeStateView struct {
@@ -103,7 +103,7 @@ func (sv *RedisClusterStateView) SetNodeState(name string, leaderName string, no
 	}
 }
 
-func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.RedisCLI) {
+func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.RedisCLI) error {
 	v.Nodes = make(map[string]*NodeView)
 	for _, pod := range pods {
 		redisNode := &NodeView{
@@ -115,9 +115,12 @@ func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.Redi
 			IsLeader:   pod.Labels["redis-node-role"] == "leader",
 			Pod:        pod,
 		}
-		redisNode.IsReachable = isReachableNode(redisNode, redisCli)
+		if !isReachableNode(redisNode, redisCli) {
+			return errors.New("Non reachable node found")
+		}
 		v.Nodes[pod.Name] = redisNode
 	}
+	return nil
 }
 
 func isReachableNode(n *NodeView, redisCli *rediscli.RedisCLI) bool {
