@@ -151,6 +151,12 @@ func isReachableNode(n *NodeView, redisCli *rediscli.RedisCLI) bool {
 	if n.Id, e = redisCli.MyClusterID(n.Ip); e != nil {
 		return false
 	}
+	nodes, _, err := redisCli.ClusterNodes(n.Ip)
+	if err != nil || nodes == nil {
+		return false
+	} else if len(*nodes) == 1 {
+		return true
+	}
 	if clusterInfo, _, err := redisCli.ClusterInfo(n.Ip); err != nil || clusterInfo == nil || (*clusterInfo)["cluster_state"] != "ok" {
 		return false
 	}

@@ -265,6 +265,9 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	for _, n := range r.RedisClusterStateView.Nodes {
+		if n.NodeState == view.DeleteNode || n.NodeState == view.RemoveNode || n.NodeState == view.ReshardNode {
+			continue
+		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
 			defer wg.Done()
@@ -272,8 +275,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			if exists {
 				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
 				if err != nil || nodes == nil {
-					r.deletePod(node.Pod)
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNode, mutex)
 				} else if len(*nodes) == 1 {
 					if n.Name == n.LeaderName {
 						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReshardNode, mutex)

@@ -149,8 +149,6 @@ func (h *RunTimeCommandHandler) executeCommandWithPipe(pipeArgs []string, args [
 		argLine += " " + arg
 	}
 
-	println(argLine)
-
 	cmd := exec.CommandContext(ctx, "bash", "-c", argLine)
 
 	cmd.Stdout = &stdout
