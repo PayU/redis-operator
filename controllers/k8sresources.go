@@ -275,7 +275,11 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 					r.deletePod(node.Pod)
 					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
 				} else if len(*nodes) == 1 {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
+					if n.Name == n.LeaderName {
+						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReshardNode, mutex)
+					} else {
+						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
+					}
 				}
 				return
 			}
@@ -379,12 +383,16 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 			return nil, err
 		}
 	}
-	leaderPods, err := r.waitForPodNetworkInterface(leaderPods...)
-	if err != nil {
-		return nil, err
+	newPods := []corev1.Pod{}
+	var err error
+	if len(leaderPods) > 0 {
+		newPods, err = r.waitForPodNetworkInterface(leaderPods...)
+		if err != nil {
+			return nil, err
+		}
+		r.Log.Info(fmt.Sprintf("New leader pods created: %v", nodeNames))
 	}
-	r.Log.Info(fmt.Sprintf("New leader pods created: %v", nodeNames))
-	return leaderPods, nil
+	return newPods, nil
 }
 
 func (r *RedisClusterReconciler) makeLeaderPod(redisCluster *dbv1.RedisCluster, nodeName string) (corev1.Pod, error) {

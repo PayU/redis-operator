@@ -26,6 +26,7 @@ const (
 	SyncNode      NodeState = "SyncNode"
 	FailoverNode  NodeState = "FailoverNode"
 	ReshardNode   NodeState = "ReshardNode"
+	NewEmptyNode  NodeState = "NewEmptyNode"
 	RemoveNode    NodeState = "RemoveNode"
 	DeleteNode    NodeState = "DeleteNode"
 	NodeOK        NodeState = "NodeOK"
