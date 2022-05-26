@@ -3,6 +3,7 @@ package view
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/PayU/redis-operator/controllers/rediscli"
 	corev1 "k8s.io/api/core/v1"
@@ -101,6 +102,27 @@ func (sv *RedisClusterStateView) SetNodeState(name string, leaderName string, no
 			NodeState:  nodeState,
 		}
 	}
+}
+
+func (sv *RedisClusterStateView) LockResourceAndSetNodeState(name string, leaderName string, nodeState NodeState, mutex *sync.Mutex) {
+	mutex.Lock()
+	n, exists := sv.Nodes[name]
+	if exists {
+		n.NodeState = nodeState
+	} else {
+		sv.Nodes[name] = &NodeStateView{
+			Name:       name,
+			LeaderName: leaderName,
+			NodeState:  nodeState,
+		}
+	}
+	mutex.Unlock()
+}
+
+func (sv *RedisClusterStateView) LockResourceAndRemoveFromMap(name string, mutex *sync.Mutex) {
+	mutex.Lock()
+	delete(sv.Nodes, name)
+	mutex.Unlock()
 }
 
 func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.RedisCLI) error {

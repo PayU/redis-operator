@@ -273,15 +273,9 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
 				if err != nil || nodes == nil {
 					r.deletePod(node.Pod)
-					mutex.Lock()
-					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.CreateNode)
-					mutex.Unlock()
-					return
-				}
-				if len(*nodes) == 1 {
-					mutex.Lock()
-					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.AddNode)
-					mutex.Unlock()
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
+				} else if len(*nodes) == 1 {
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
 				}
 				return
 			}
@@ -311,30 +305,32 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		}(n, &wg)
 	}
 	wg.Wait()
-	newPods, err := r.waitForPodNetworkInterface(pods...)
-	if err != nil {
-		r.Log.Error(err, fmt.Sprintf("Could not re create missing pods"))
-		r.deletePods(pods)
-		return map[string]corev1.Pod{}
-	}
 	readyPods := map[string]corev1.Pod{}
-	for _, p := range newPods {
-		wg.Add(1)
-		go func(p corev1.Pod, wg *sync.WaitGroup) {
-			defer wg.Done()
-			readyPod, err := r.waitForRedisPod(p)
-			if err != nil {
-				r.deletePod(p)
-				return
-			}
-			mutex.Lock()
-			readyPods[readyPod.Name] = readyPod
-			s := r.RedisClusterStateView.Nodes[readyPod.Name]
-			r.RedisClusterStateView.SetNodeState(s.Name, s.LeaderName, view.AddNode)
-			mutex.Unlock()
-		}(p, &wg)
+	if len(pods) > 0 {
+		newPods, err := r.waitForPodNetworkInterface(pods...)
+		if err != nil {
+			r.Log.Error(err, fmt.Sprintf("Could not re create missing pods"))
+			r.deletePods(pods)
+			return map[string]corev1.Pod{}
+		}
+		for _, p := range newPods {
+			wg.Add(1)
+			go func(p corev1.Pod, wg *sync.WaitGroup) {
+				defer wg.Done()
+				readyPod, err := r.waitForRedisPod(p)
+				if err != nil {
+					r.deletePod(p)
+					return
+				}
+				mutex.Lock()
+				readyPods[readyPod.Name] = readyPod
+				s := r.RedisClusterStateView.Nodes[readyPod.Name]
+				r.RedisClusterStateView.SetNodeState(s.Name, s.LeaderName, view.AddNode)
+				mutex.Unlock()
+			}(p, &wg)
+		}
+		wg.Wait()
 	}
-	wg.Wait()
 	return readyPods
 }
 
@@ -460,7 +456,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 	var wg sync.WaitGroup
 	for _, p := range pods {
 		wg.Add(1)
-		go func(p corev1.Pod) {
+		go func(p corev1.Pod, wg *sync.WaitGroup) {
 			defer wg.Done()
 			key, err := client.ObjectKeyFromObject(&p)
 			if err != nil {
@@ -481,7 +477,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 				r.Log.Error(err, "Error while waiting for pod to be deleted")
 				return
 			}
-		}(p)
+		}(p, &wg)
 	}
 	wg.Wait()
 }
