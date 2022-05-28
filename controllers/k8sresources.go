@@ -76,8 +76,8 @@ func (r *RedisClusterReconciler) getClusterStateView(redisCluster *dbv1.RedisClu
 
 // Update methods
 
-func (r *RedisClusterReconciler) updateClusterStateView(redisCluster *dbv1.RedisCluster) {
-	r.Log.Info("Updating cluster state view")
+func (r *RedisClusterReconciler) saveClusterStateView(redisCluster *dbv1.RedisCluster) {
+	r.Log.Info("Saving cluster state view")
 	configMapName := r.RedisClusterStateView.Name
 	configMapNamespace := redisCluster.ObjectMeta.Namespace
 	bytes, e := json.Marshal(r.RedisClusterStateView)
@@ -104,11 +104,12 @@ func (r *RedisClusterReconciler) updateClusterStateView(redisCluster *dbv1.Redis
 		r.Log.Error(e, "Error while attemting update for cluster state view...")
 		return
 	}
+	r.Log.Info("Cluster state view saved")
 }
 
 // Create/Make/Write methods
 
-func (r *RedisClusterReconciler) createClusterStateView(redisCluster *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) postNewClusterStateView(redisCluster *dbv1.RedisCluster) error {
 	configMapName := r.RedisClusterStateView.Name
 	configMapNamespace := redisCluster.ObjectMeta.Namespace
 	bytes, e := json.Marshal(r.RedisClusterStateView)
@@ -275,12 +276,12 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			if exists {
 				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
 				if err != nil || nodes == nil {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNode, mutex)
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.RemoveNode, mutex)
 				} else if len(*nodes) == 1 {
 					if n.Name == n.LeaderName {
 						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReshardNode, mutex)
 					} else {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
+						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.RemoveNode, mutex)
 					}
 				}
 				return
@@ -381,7 +382,6 @@ func (r *RedisClusterReconciler) createRedisLeaderPods(redisCluster *dbv1.RedisC
 	for _, pod := range leaderPods {
 		err := r.Create(context.Background(), &pod, applyOpts...)
 		if err != nil && !apierrors.IsAlreadyExists(err) && !apierrors.IsConflict(err) {
-			fmt.Printf(err.Error())
 			return nil, err
 		}
 	}
