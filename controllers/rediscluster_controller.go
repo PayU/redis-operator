@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/PayU/redis-operator/controllers/view"
+	"github.com/pkg/errors"
 
 	"github.com/go-logr/logr"
 	"github.com/labstack/echo/v4"
@@ -112,12 +113,8 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 			r.Log.Error(err, "Could not perform reconcile loop")
 			return ctrl.Result{RequeueAfter: 20 * time.Second}, nil
 		}
-		println("At start")
-		for _, n := range r.RedisClusterStateView.Nodes {
-			println(n.Name + ":" + string(n.NodeState))
-		}
 	}
-	// todo: scenario where cluster exists and for some reason map is missing -> trigger flow of build state view map out of existing cluster
+	// todo: scenario where cluster exists and for some reason map is missing -> trigger flow of build state view map out of existing cluster (with etry point by router), related metric
 
 	r.saveClusterStateOnSigTerm(&redisCluster)
 
@@ -144,10 +141,6 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.Log.Error(err, "Handling error")
 	}
 
-	println("At end")
-	for _, n := range r.RedisClusterStateView.Nodes {
-		println(n.Name + ":" + string(n.NodeState))
-	}
 	r.saveClusterView(&redisCluster)
 	return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
 }
@@ -155,7 +148,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.RedisCluster) {
 	if r.RedisClusterStateView != nil {
 		saveStatusOnQuit := make(chan os.Signal, 1)
-		signal.Notify(saveStatusOnQuit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGSEGV)
+		signal.Notify(saveStatusOnQuit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGSEGV, syscall.SIGKILL)
 		go func() {
 			<-saveStatusOnQuit
 			r.Log.Info("[WARN] reconcile loop interrupted by os signal, saving cluster state view...")
@@ -259,7 +252,12 @@ func (r *RedisClusterReconciler) handleScaleState(redisCluster *dbv1.RedisCluste
 
 func (r *RedisClusterReconciler) handleRecoveringState(redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("Handling cluster recovery...")
-	e := r.recoverCluster(redisCluster)
+	v, ok := r.NewRedisClusterView(redisCluster)
+	if !ok {
+		return errors.New("Could not perform redis cluster recovery, error while fetching cluster view")
+	}
+	e := r.recoverCluster(redisCluster, v)
+	r.cleanMapFromNodesToRemove(redisCluster, v)
 	if e != nil {
 		return e
 	}

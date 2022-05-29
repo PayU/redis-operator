@@ -20,16 +20,17 @@ const (
 )
 
 const (
-	CreateNode    NodeState = "CreateNode"
-	AddNode       NodeState = "AddNode"
-	ReplicateNode NodeState = "ReplicateNode"
-	SyncNode      NodeState = "SyncNode"
-	FailoverNode  NodeState = "FailoverNode"
-	ReshardNode   NodeState = "ReshardNode"
-	NewEmptyNode  NodeState = "NewEmptyNode"
-	RemoveNode    NodeState = "RemoveNode"
-	DeleteNode    NodeState = "DeleteNode"
-	NodeOK        NodeState = "NodeOK"
+	CreateNode           NodeState = "CreateNode"
+	AddNode              NodeState = "AddNode"
+	ReplicateNode        NodeState = "ReplicateNode"
+	SyncNode             NodeState = "SyncNode"
+	FailoverNode         NodeState = "FailoverNode"
+	ReshardNode          NodeState = "ReshardNode"
+	ReshardNodeKeepInMap NodeState = "ReshardNodeKeepInMap"
+	NewEmptyNode         NodeState = "NewEmptyNode"
+	DeleteNode           NodeState = "DeleteNode"
+	DeleteNodeKeepInMap  NodeState = "DeleteNodeKeepInMap"
+	NodeOK               NodeState = "NodeOK"
 )
 
 type RedisClusterView struct {
@@ -152,7 +153,7 @@ func isReachableNode(n *NodeView, redisCli *rediscli.RedisCLI) bool {
 		return false
 	}
 	nodes, _, err := redisCli.ClusterNodes(n.Ip)
-	if err != nil || nodes == nil {
+	if err != nil || nodes == nil || *nodes == nil {
 		return false
 	} else if len(*nodes) == 1 {
 		return true

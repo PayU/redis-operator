@@ -266,22 +266,32 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	for _, n := range r.RedisClusterStateView.Nodes {
-		if n.NodeState == view.DeleteNode || n.NodeState == view.RemoveNode || n.NodeState == view.ReshardNode {
+		if n.NodeState == view.DeleteNode || n.NodeState == view.ReshardNode || n.NodeState == view.DeleteNodeKeepInMap || n.NodeState == view.ReshardNodeKeepInMap {
+			continue
+		}
+		if _, existsInMap := r.RedisClusterStateView.Nodes[n.Name]; !existsInMap {
+			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.ReshardNode)
 			continue
 		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
+			mutex.Lock()
 			defer wg.Done()
+			mutex.Unlock()
 			node, exists := v.Nodes[n.Name]
 			if exists {
 				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
-				if err != nil || nodes == nil {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.RemoveNode, mutex)
+				if err != nil || nodes == nil || *nodes == nil {
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
 				} else if len(*nodes) == 1 {
 					if n.Name == n.LeaderName {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReshardNode, mutex)
+						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReshardNodeKeepInMap, mutex)
 					} else {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.RemoveNode, mutex)
+						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
+					}
+				} else {
+					if n.NodeState == view.CreateNode {
+						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReplicateNode, mutex)
 					}
 				}
 				return
@@ -323,7 +333,9 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		for _, p := range newPods {
 			wg.Add(1)
 			go func(p corev1.Pod, wg *sync.WaitGroup) {
+				mutex.Lock()
 				defer wg.Done()
+				mutex.Unlock()
 				readyPod, err := r.waitForRedisPod(p)
 				if err != nil {
 					r.deletePod(p)
@@ -467,7 +479,9 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 	for _, p := range pods {
 		wg.Add(1)
 		go func(p corev1.Pod, wg *sync.WaitGroup) {
+			mutex.Lock()
 			defer wg.Done()
+			mutex.Unlock()
 			key, err := client.ObjectKeyFromObject(&p)
 			if err != nil {
 				r.Log.Error(err, "Error while getting object key for deletion process")

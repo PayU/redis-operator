@@ -25,7 +25,7 @@ type RedisAuth struct {
 
 type CommandHandler interface {
 	buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string)
-	executeCommand(args []string) (string, string, error)
+	executeCommand(args []string, multipFactorForTimeout ...float64) (string, string, error)
 	executeCommandWithPipe(pipeArgs []string, args []string) (string, string, error)
 	buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error)
 	buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error)
@@ -75,11 +75,15 @@ func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, 
 /* Executes command and returns cmd stdout, stderr and runtime error if appears
  *  args: arguments, flags and their values, in the order they should appear as if they were executed in the cli itself
  */
-func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, error) {
+func (h *RunTimeCommandHandler) executeCommand(args []string, multipFactorForTimeout ...float64) (string, string, error) {
 
 	var stdout, stderr bytes.Buffer
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisCliTimeout)
+	multipFactor := 1.0
+	if len(multipFactorForTimeout) > 0 {
+		multipFactor = multipFactorForTimeout[0]
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(multipFactor)*defaultRedisCliTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "redis-cli", args...)
@@ -500,7 +504,7 @@ func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...
 	}
 	args = append(args, "--cluster-yes")
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand(args, 2)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}

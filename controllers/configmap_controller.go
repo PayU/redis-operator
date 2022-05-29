@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -237,7 +238,11 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	var configMap corev1.ConfigMap
 
 	if err := r.Get(context.Background(), req.NamespacedName, &configMap); err != nil {
-		r.Log.Error(err, "Failed to fetch configmap")
+		if strings.Contains(err.Error(), "cluster-state-map") {
+			r.Log.Info("[Warn] Failed to fetch config map [cluster-state-map]")
+		} else {
+			r.Log.Error(err, "Failed to fetch configmap")
+		}
 	}
 	labels := configMap.GetObjectMeta().GetLabels()
 	for label := range labels {

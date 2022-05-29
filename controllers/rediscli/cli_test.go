@@ -28,7 +28,7 @@ func (h *TestCommandHandler) buildCommand(routingPort string, args []string, aut
 	return args, argListToArgMap(args)
 }
 
-func (h *TestCommandHandler) executeCommand(args []string) (string, string, error) {
+func (h *TestCommandHandler) executeCommand(args []string, multipFactorForTimeout ...float64) (string, string, error) {
 	executedCommand := ""
 	for _, arg := range args {
 		executedCommand += arg + " "
