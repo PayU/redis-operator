@@ -260,6 +260,30 @@ func (r *RedisClusterReconciler) makeService(redisCluster *dbv1.RedisCluster) (c
 	return service, nil
 }
 
+func (r *RedisClusterReconciler) makeAndCreateRedisPod(redisCluster *dbv1.RedisCluster, n *view.NodeStateView, createOpts []client.CreateOption) (corev1.Pod, error) {
+	preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-name", Operator: metav1.LabelSelectorOpIn, Values: []string{n.LeaderName}}}
+	var role string
+	if n.Name == n.LeaderName {
+		role = "leader"
+	} else {
+		role = "follower"
+	}
+	pod := r.makeRedisPod(redisCluster, role, n.LeaderName, n.Name, preferredLabelSelectorRequirement)
+	err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme)
+	if err != nil {
+		r.Log.Error(err, fmt.Sprintf("Could not re create pod [%s]", n.Name))
+		r.deletePod(pod)
+		return pod, err
+	}
+	err = r.Create(context.Background(), &pod, createOpts...)
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		r.Log.Error(err, fmt.Sprintf("Could not re create pod [%s]", n.Name))
+		r.deletePod(pod)
+		return pod, err
+	}
+	return pod, nil
+}
+
 func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) map[string]corev1.Pod {
 	var pods []corev1.Pod
 	createOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
@@ -269,51 +293,30 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		if n.NodeState == view.DeleteNode || n.NodeState == view.ReshardNode || n.NodeState == view.DeleteNodeKeepInMap || n.NodeState == view.ReshardNodeKeepInMap {
 			continue
 		}
-		if _, existsInMap := r.RedisClusterStateView.Nodes[n.Name]; !existsInMap {
-			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.ReshardNode)
-			continue
-		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
 			mutex.Lock()
 			defer wg.Done()
 			mutex.Unlock()
 			node, exists := v.Nodes[n.Name]
-			if exists {
+			if exists && node != nil {
 				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
-				if err != nil || nodes == nil || *nodes == nil {
+				if err != nil || nodes == nil {
 					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
-				} else if len(*nodes) == 1 {
-					if n.Name == n.LeaderName {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReshardNodeKeepInMap, mutex)
-					} else {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
-					}
+				}
+				if len(*nodes) == 1 {
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
 				} else {
-					if n.NodeState == view.CreateNode {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReplicateNode, mutex)
+					n, inMap := r.RedisClusterStateView.Nodes[node.Name]
+					if !inMap || n.NodeState != view.ReplicateNode || n.NodeState != view.SyncNode {
+						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.NodeOK, mutex)
 					}
 				}
 				return
 			}
-			preferredLabelSelectorRequirement := []metav1.LabelSelectorRequirement{{Key: "leader-name", Operator: metav1.LabelSelectorOpIn, Values: []string{n.LeaderName}}}
-			var role string
-			if n.Name == n.LeaderName {
-				role = "leader"
-			} else {
-				role = "follower"
-			}
-			pod := r.makeRedisPod(redisCluster, role, n.LeaderName, n.Name, preferredLabelSelectorRequirement)
-			err := ctrl.SetControllerReference(redisCluster, &pod, r.Scheme)
+			r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
+			pod, err := r.makeAndCreateRedisPod(redisCluster, n, createOpts)
 			if err != nil {
-				r.Log.Error(err, fmt.Sprintf("Could not re create pod [%s]", n.Name))
-				r.deletePod(pod)
-				return
-			}
-			err = r.Create(context.Background(), &pod, createOpts...)
-			if err != nil && !strings.Contains(err.Error(), "already exists") {
-				r.Log.Error(err, fmt.Sprintf("Could not re create pod [%s]", n.Name))
-				r.deletePod(pod)
 				return
 			}
 			mutex.Lock()
@@ -428,7 +431,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 		if err != nil {
 			return nil, err
 		}
-		if pollErr := wait.PollImmediate(3*r.Config.Times.PodReadyCheckInterval, 10*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(2*r.Config.Times.PodReadyCheckInterval, 5*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return false, err
@@ -455,7 +458,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(3*r.Config.Times.PodNetworkCheckInterval, 20*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(2*r.Config.Times.PodNetworkCheckInterval, 10*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil

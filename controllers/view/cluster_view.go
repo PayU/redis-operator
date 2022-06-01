@@ -38,9 +38,10 @@ type RedisClusterView struct {
 }
 
 type RedisClusterStateView struct {
-	Name         string
-	ClusterState ClusterState
-	Nodes        map[string]*NodeStateView
+	Name                                   string
+	ClusterState                           ClusterState
+	NumOfReconcileLoopsSinceHealthyCluster int
+	Nodes                                  map[string]*NodeStateView
 }
 
 type NodeView struct {
@@ -70,6 +71,7 @@ type MissingNodeView struct {
 func (sv *RedisClusterStateView) CreateStateView(leaderCount int, followersPerLeaderCount int) {
 	sv.Name = "cluster-state-map"
 	sv.ClusterState = ClusterCreate
+	sv.NumOfReconcileLoopsSinceHealthyCluster = 0
 	sv.Nodes = make(map[string]*NodeStateView)
 	for l := 0; l < leaderCount; l++ {
 		name := "redis-node-" + fmt.Sprint(l)
@@ -153,7 +155,7 @@ func isReachableNode(n *NodeView, redisCli *rediscli.RedisCLI) bool {
 		return false
 	}
 	nodes, _, err := redisCli.ClusterNodes(n.Ip)
-	if err != nil || nodes == nil || *nodes == nil {
+	if err != nil || nodes == nil {
 		return false
 	} else if len(*nodes) == 1 {
 		return true

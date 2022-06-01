@@ -26,7 +26,7 @@ type RedisAuth struct {
 type CommandHandler interface {
 	buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string)
 	executeCommand(args []string, multipFactorForTimeout ...float64) (string, string, error)
-	executeCommandWithPipe(pipeArgs []string, args []string) (string, string, error)
+	executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error)
 	buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error)
 	buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error)
 }
@@ -134,11 +134,16 @@ func (h *RunTimeCommandHandler) executeCommand(args []string, multipFactorForTim
  *  pipeArgs: argument list which will start the pipe the args list will be added to
  *  args: arguments, flags and their values, in the order they should appear as if they were executed in the cli itself
  */
-func (h *RunTimeCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string) (string, string, error) {
+func (h *RunTimeCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error) {
 
 	var stdout, stderr bytes.Buffer
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*defaultRedisCliTimeout)
+	multipFactor := 1.0
+	if len(multipFactorForTimeout) > 0 {
+		multipFactor = multipFactorForTimeout[0]
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(multipFactor)*defaultRedisCliTimeout)
 	defer cancel()
 
 	argLine := ""
@@ -520,7 +525,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		"--cluster-yes",
 	}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommandWithPipe([]string{}, args)
+	stdout, stderr, err := r.Handler.executeCommandWithPipe([]string{}, args, 100)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster reshard (%v): from [%s] to [%s] stdout: %s | stderr : %s | err: %v", nodeIP, sourceId, targetId, stdout, stderr, err)
 	}
@@ -582,7 +587,7 @@ func (r *RedisCLI) ClusterFix(nodeIP string, opt ...string) (bool, string, error
 	args := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	pipeArgs := []string{"yes", "yes"}
-	stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args)
+	stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args, 60)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster fix (%v): %s | %s | %v", addressPortDecider(nodeIP, r.Port), stdout, stderr, err)
 	}
