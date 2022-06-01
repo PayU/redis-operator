@@ -100,7 +100,6 @@ func TestRedisCLI(test *testing.T) {
 	testACLLoad()
 	testACLList()
 	testClusterFix()
-	//t.Errorf("")
 }
 
 func testClusterCreate() {

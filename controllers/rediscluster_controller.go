@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -35,6 +36,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -390,4 +392,223 @@ func DoReconcile(c echo.Context) error {
 	}
 	reconciler.saveClusterStateView(cluster)
 	return c.String(http.StatusOK, "Reconcile request triggered")
+}
+
+func RunE2ETest(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster e2e test")
+	}
+	ClusterTest()
+	return c.String(http.StatusOK, "E2E test executed")
+}
+
+// Test lab
+
+var clusterHealthCheckInterval = 20 * time.Second
+var clusterHealthCheckTimeOutLimit = 5 * time.Minute
+
+func ClusterTest() {
+	isReady := waitForHealthyCluster(reconciler, cluster)
+	if !isReady {
+		return
+	}
+	test_1 := test_delete_follower(reconciler, cluster)
+	fmt.Printf("\n[TEST LAB] Test 1: delete follower result [%v]\n", test_1)
+	if !test_1 {
+		return
+	}
+	test_2 := test_delete_leader(reconciler, cluster)
+	fmt.Printf("\n[TEST LAB] Test 2: delete leader result [%v]\n", test_2)
+	if !test_2 {
+		return
+	}
+	test_3 := test_delete_leader_and_follower(reconciler, cluster)
+	fmt.Printf("\n[TEST LAB] Test 3: delete leader and follower result [%v]\n", test_3)
+	if !test_3 {
+		return
+	}
+	test_4 := test_delete_all_followers(reconciler, cluster)
+	fmt.Printf("\n[TEST LAB] Test 4: delete all followers result [%v]\n", test_4)
+	if !test_4 {
+		return
+	}
+	test_5 := test_delete_leader_and_all_its_followers(reconciler, cluster)
+	fmt.Printf("\n[TEST LAB] Test 5: delete leader and all its followers result [%v]\n", test_5)
+	if !test_5 {
+		return
+	}
+}
+
+func waitForHealthyCluster(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	if r == nil || c == nil {
+		return false
+	}
+	fmt.Printf("\n[TEST LAB] Waiting for cluster to be declared healthy...\n")
+	isHealthyCluster := false
+	if pollErr := wait.PollImmediate(clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit, func() (bool, error) {
+		isHealthyCluster := isClusterAligned(r, c)
+		return isHealthyCluster, nil
+	}); pollErr != nil {
+		fmt.Printf("\n[TEST LAB] Error while waiting for cluster to heal, probe intervals: [%v * sec], probe timeout: [%v * min]\n", clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit)
+		return false
+	}
+	return isHealthyCluster
+}
+
+func isClusterAligned(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	fmt.Printf("\n[TEST LAB] Checking if cluster aligned...")
+	v, viewIsReady := r.NewRedisClusterView(c)
+	if !viewIsReady {
+		return false
+	}
+	var wg sync.WaitGroup
+	mutex := &sync.Mutex{}
+	aligned := true
+	for _, n := range r.RedisClusterStateView.Nodes {
+		wg.Add(1)
+		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
+			mutex.Lock()
+			defer wg.Done()
+			mutex.Unlock()
+			if !aligned {
+				return
+			}
+			node, exists := v.Nodes[n.Name]
+			if !exists || node == nil {
+				mutex.Lock()
+				aligned = false
+				mutex.Unlock()
+				return
+			}
+			if node.IsLeader {
+				isMaster, e := r.checkIfMaster(node.Ip)
+				if e != nil || !isMaster {
+					mutex.Lock()
+					aligned = false
+					mutex.Unlock()
+					return
+				}
+				nodes, _, e := r.RedisCLI.ClusterNodes(node.Ip)
+				if e != nil || nodes == nil || len(*nodes) <= 1 {
+					mutex.Lock()
+					aligned = false
+					mutex.Unlock()
+					return
+				}
+			} else {
+				_, leaderExists := r.RedisClusterStateView.Nodes[n.LeaderName]
+				if !leaderExists {
+					mutex.Lock()
+					aligned = false
+					mutex.Unlock()
+					return
+				}
+				isMaster, e := r.checkIfMaster(node.Ip)
+				if e != nil || isMaster {
+					mutex.Lock()
+					aligned = false
+					mutex.Unlock()
+					return
+				}
+			}
+		}(n, &wg)
+	}
+	wg.Wait()
+	totalExpectedNodes := c.Spec.LeaderCount * (c.Spec.LeaderFollowersCount + 1)
+	return aligned && len(v.Nodes) == totalExpectedNodes && len(r.RedisClusterStateView.Nodes) == totalExpectedNodes
+}
+
+func test_delete_pods(r *RedisClusterReconciler, c *dbv1.RedisCluster, podsToDelete []string) bool {
+	v, viewIsReady := r.NewRedisClusterView(c)
+	if !viewIsReady {
+		return false
+	}
+	for _, toDelete := range podsToDelete {
+		node, exists := v.Nodes[toDelete]
+		if !exists || node == nil {
+			continue
+		}
+		r.deletePod(node.Pod)
+	}
+	return waitForHealthyCluster(r, c)
+}
+
+func pickRandomeFollower(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster) string {
+	k := rand.Intn(c.Spec.LeaderFollowersCount*c.Spec.LeaderCount - len(exclude))
+	i := 0
+	for _, n := range r.RedisClusterStateView.Nodes {
+		if _, ex := exclude[n.Name]; ex || n.Name == n.LeaderName {
+			continue
+		}
+		if i == k {
+			return n.Name
+		}
+		i++
+	}
+	return ""
+}
+
+func pickRandomeLeader(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster) string {
+	k := rand.Intn(c.Spec.LeaderFollowersCount - len(exclude))
+	i := 0
+	for _, n := range r.RedisClusterStateView.Nodes {
+		if _, ex := exclude[n.Name]; ex || n.Name != n.LeaderName {
+			continue
+		}
+		if i == k {
+			return n.Name
+		}
+		i++
+	}
+	return ""
+}
+
+func test_delete_follower(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	fmt.Printf("\n[TEST LAB] Test delete follower...")
+	randomFollower := pickRandomeFollower(map[string]bool{}, r, c)
+	return test_delete_pods(r, c, []string{randomFollower})
+}
+
+func test_delete_leader(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	fmt.Printf("\n[TEST LAB] Test delete leader...")
+	randomLeader := pickRandomeLeader(map[string]bool{}, r, c)
+	return test_delete_pods(r, c, []string{randomLeader})
+}
+
+func test_delete_leader_and_follower(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	fmt.Printf("\n[TEST LAB] Test delete leader and follower...")
+	randomFollower := pickRandomeFollower(map[string]bool{}, r, c)
+	f, exists := r.RedisClusterStateView.Nodes[randomFollower]
+	if !exists {
+		return false
+	}
+	randomLeader := pickRandomeLeader(map[string]bool{f.LeaderName: true}, r, c)
+	return test_delete_pods(r, c, []string{randomFollower, randomLeader})
+}
+
+func test_delete_all_followers(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	fmt.Printf("\n[TEST LAB] Test delete all followers...")
+	followers := []string{}
+	for _, n := range r.RedisClusterStateView.Nodes {
+		if n.Name != n.LeaderName {
+			followers = append(followers, n.Name)
+		}
+	}
+	return test_delete_pods(r, c, followers)
+}
+
+func test_delete_leader_and_all_its_followers(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	fmt.Printf("\n[TEST LAB] Test delete leader and all his followers...")
+	toDelete := []string{}
+	randomFollower := pickRandomeFollower(map[string]bool{}, r, c)
+	f, exists := r.RedisClusterStateView.Nodes[randomFollower]
+	if !exists {
+		return false
+	}
+	for _, n := range r.RedisClusterStateView.Nodes {
+		if n.LeaderName == f.LeaderName {
+			toDelete = append(toDelete, n.Name)
+		}
+	}
+	return test_delete_pods(r, c, toDelete)
 }
