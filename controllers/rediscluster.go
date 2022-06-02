@@ -479,6 +479,7 @@ func (r *RedisClusterReconciler) detectLossOfLeadersWithAllReplicas(v *view.Redi
 				return
 			}
 			missing = append(missing, n.LeaderName)
+			r.RedisClusterStateView.SetNodeState(n.LeaderName, n.LeaderName, view.CreateNode)
 			mutex.Unlock()
 		}(n, &wg)
 	}

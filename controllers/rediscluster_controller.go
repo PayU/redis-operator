@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/PayU/redis-operator/controllers/view"
+	"github.com/go-redis/redis/v8"
 	"github.com/pkg/errors"
 
 	"github.com/go-logr/logr"
@@ -215,30 +216,36 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
 	}
+	println("s1")
 	lostNodesDetected := r.forgetLostNodes(redisCluster, v)
 	if lostNodesDetected {
 		r.Log.Info("[Warn] Lost nodes detcted on some of the nodes tables...")
 		return nil
 	}
+	println("s2")
 	healthy, err := r.isClusterHealthy(redisCluster, v)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is healthy")
 		return err
 	}
+	println("s3")
 	if !healthy {
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
 	}
+	println("s4")
 	uptodate, err := r.isClusterUpToDate(redisCluster, v)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is updated")
 		redisCluster.Status.ClusterState = string(Recovering)
 		return err
 	}
+	println("s5")
 	if !uptodate {
 		redisCluster.Status.ClusterState = string(Updating)
 		return nil
 	}
+	println("s6")
 	scale, scaleType := r.isScaleRequired(redisCluster)
 	if scale {
 		r.Log.Info(fmt.Sprintf("Scale is required, scale type: [%v]", scaleType.String()))
@@ -404,61 +411,121 @@ func RunE2ETest(c echo.Context) error {
 
 // Test lab
 
-var clusterHealthCheckInterval = 20 * time.Second
+func InsertData(c echo.Context) error {
+	var ctx = context.Background()
+	node0 := redis.NewClient(&redis.Options{
+		Addr:     "10.244.5.55:6379",
+		Username: "admin",
+		Password: "adminpass",
+	})
+	key := ":myKey"
+	val := "myVal"
+	err := node0.Set(ctx, key, val, 0).Err()
+	if err != nil {
+		println("Set node0 error: " + err.Error())
+	}
+	v0, err := node0.Get(ctx, key).Result()
+	println("Get node0 result: " + string(v0))
+	if err != nil {
+		println("Get node0 error: " + err.Error())
+	}
+	node1 := redis.NewClient(&redis.Options{
+		Addr:     "10.244.6.10:6379",
+		Username: "admin",
+		Password: "adminpass",
+	})
+	v1, err := node1.Get(ctx, key).Result()
+	println("Get node1 result: " + string(v1))
+	if err != nil {
+		println("Get node1 error: " + err.Error())
+	}
+	return c.String(http.StatusOK, "OK")
+}
+
+var clusterHealthCheckInterval = 30 * time.Second
 var clusterHealthCheckTimeOutLimit = 5 * time.Minute
+var report string = "\n[TEST LAB] Cluster test report:\n"
 
 func ClusterTest() {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go test_cluster_e2e(&wg)
+	wg.Wait()
+}
+
+func test_cluster_e2e(wg *sync.WaitGroup) {
+	defer wg.Done()
 	isReady := waitForHealthyCluster(reconciler, cluster)
 	if !isReady {
+		println(report)
 		return
 	}
+	report += "\n"
 	test_1 := test_delete_follower(reconciler, cluster)
-	fmt.Printf("\n[TEST LAB] Test 1: delete follower result [%v]\n", test_1)
+	report += fmt.Sprintf("\n[TEST LAB] Test 1: delete follower result [%v]\n", test_1)
 	if !test_1 {
+		println(report)
 		return
 	}
+	time.Sleep(5 * time.Second)
 	test_2 := test_delete_leader(reconciler, cluster)
-	fmt.Printf("\n[TEST LAB] Test 2: delete leader result [%v]\n", test_2)
+	report += fmt.Sprintf("\n[TEST LAB] Test 2: delete leader result [%v]\n", test_2)
 	if !test_2 {
+		println(report)
 		return
 	}
+	time.Sleep(5 * time.Second)
 	test_3 := test_delete_leader_and_follower(reconciler, cluster)
-	fmt.Printf("\n[TEST LAB] Test 3: delete leader and follower result [%v]\n", test_3)
+	report += fmt.Sprintf("\n[TEST LAB] Test 3: delete leader and follower result [%v]\n", test_3)
 	if !test_3 {
+		println(report)
 		return
 	}
+	time.Sleep(5 * time.Second)
 	test_4 := test_delete_all_followers(reconciler, cluster)
-	fmt.Printf("\n[TEST LAB] Test 4: delete all followers result [%v]\n", test_4)
+	report += fmt.Sprintf("\n[TEST LAB] Test 4: delete all followers result [%v]\n", test_4)
 	if !test_4 {
+		println(report)
 		return
 	}
-	test_5 := test_delete_leader_and_all_its_followers(reconciler, cluster)
-	fmt.Printf("\n[TEST LAB] Test 5: delete leader and all its followers result [%v]\n", test_5)
+	time.Sleep(5 * time.Second)
+	test_5 := test_delete_all_azs_beside_one(reconciler, cluster)
+	report += fmt.Sprintf("\n[TEST LAB] Test 5: delete all pods beside one replica foreach set result [%v]\n", test_5)
 	if !test_5 {
+		println(report)
 		return
 	}
+	time.Sleep(5 * time.Second)
+	test_6 := test_delete_leader_and_all_its_followers(reconciler, cluster)
+	report += fmt.Sprintf("\n[TEST LAB] Test 6: delete leader and all its followers result [%v]\n", test_6)
+	if !test_6 {
+		println(report)
+		return
+	}
+	println(report)
 }
 
 func waitForHealthyCluster(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
 	if r == nil || c == nil {
 		return false
 	}
-	fmt.Printf("\n[TEST LAB] Waiting for cluster to be declared healthy...\n")
+	report += fmt.Sprintf("\n[TEST LAB] Waiting for cluster to be declared healthy...")
 	isHealthyCluster := false
 	if pollErr := wait.PollImmediate(clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit, func() (bool, error) {
-		isHealthyCluster := isClusterAligned(r, c)
+		isHealthyCluster = isClusterAligned(r, c)
 		return isHealthyCluster, nil
 	}); pollErr != nil {
-		fmt.Printf("\n[TEST LAB] Error while waiting for cluster to heal, probe intervals: [%v * sec], probe timeout: [%v * min]\n", clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit)
+		report += fmt.Sprintf("\n[TEST LAB] Error while waiting for cluster to heal, probe intervals: [%v * sec], probe timeout: [%v * min]\n", clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit)
 		return false
 	}
 	return isHealthyCluster
 }
 
 func isClusterAligned(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	fmt.Printf("\n[TEST LAB] Checking if cluster aligned...")
+	report += fmt.Sprintf("\n[TEST LAB] Checking if cluster aligned...")
 	v, viewIsReady := r.NewRedisClusterView(c)
 	if !viewIsReady {
+		report += fmt.Sprintf("\n[TEST LAB] Alignment check result : %v", false)
 		return false
 	}
 	var wg sync.WaitGroup
@@ -467,6 +534,7 @@ func isClusterAligned(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
 	for _, n := range r.RedisClusterStateView.Nodes {
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
+			time.Sleep(3 * time.Second)
 			mutex.Lock()
 			defer wg.Done()
 			mutex.Unlock()
@@ -511,11 +579,17 @@ func isClusterAligned(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
 					return
 				}
 			}
+			aligned = (n.NodeState == view.NodeOK)
 		}(n, &wg)
 	}
 	wg.Wait()
 	totalExpectedNodes := c.Spec.LeaderCount * (c.Spec.LeaderFollowersCount + 1)
-	return aligned && len(v.Nodes) == totalExpectedNodes && len(r.RedisClusterStateView.Nodes) == totalExpectedNodes
+	clusterOK := aligned && len(v.Nodes) == totalExpectedNodes && len(r.RedisClusterStateView.Nodes) == totalExpectedNodes
+	if clusterOK {
+		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+		report += fmt.Sprintf("\n[TEST LAB] Alignment check result : %v", clusterOK)
+	}
+	return clusterOK
 }
 
 func test_delete_pods(r *RedisClusterReconciler, c *dbv1.RedisCluster, podsToDelete []string) bool {
@@ -528,12 +602,13 @@ func test_delete_pods(r *RedisClusterReconciler, c *dbv1.RedisCluster, podsToDel
 		if !exists || node == nil {
 			continue
 		}
+		time.Sleep(3 * time.Second)
 		r.deletePod(node.Pod)
 	}
 	return waitForHealthyCluster(r, c)
 }
 
-func pickRandomeFollower(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster) string {
+func pickRandomeFollower(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster, retry int) string {
 	k := rand.Intn(c.Spec.LeaderFollowersCount*c.Spec.LeaderCount - len(exclude))
 	i := 0
 	for _, n := range r.RedisClusterStateView.Nodes {
@@ -545,11 +620,14 @@ func pickRandomeFollower(exclude map[string]bool, r *RedisClusterReconciler, c *
 		}
 		i++
 	}
-	return ""
+	if retry == 0 {
+		return ""
+	}
+	return pickRandomeFollower(exclude, r, c, retry-1)
 }
 
-func pickRandomeLeader(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster) string {
-	k := rand.Intn(c.Spec.LeaderFollowersCount - len(exclude))
+func pickRandomeLeader(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster, retry int) string {
+	k := rand.Intn(c.Spec.LeaderCount - len(exclude))
 	i := 0
 	for _, n := range r.RedisClusterStateView.Nodes {
 		if _, ex := exclude[n.Name]; ex || n.Name != n.LeaderName {
@@ -560,34 +638,37 @@ func pickRandomeLeader(exclude map[string]bool, r *RedisClusterReconciler, c *db
 		}
 		i++
 	}
-	return ""
+	if retry == 0 {
+		return ""
+	}
+	return pickRandomeLeader(exclude, r, c, retry-1)
 }
 
 func test_delete_follower(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	fmt.Printf("\n[TEST LAB] Test delete follower...")
-	randomFollower := pickRandomeFollower(map[string]bool{}, r, c)
+	report += fmt.Sprintf("\n[TEST LAB] Test delete follower...")
+	randomFollower := pickRandomeFollower(map[string]bool{}, r, c, 5)
 	return test_delete_pods(r, c, []string{randomFollower})
 }
 
 func test_delete_leader(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	fmt.Printf("\n[TEST LAB] Test delete leader...")
-	randomLeader := pickRandomeLeader(map[string]bool{}, r, c)
+	report += fmt.Sprintf("\n[TEST LAB] Test delete leader...")
+	randomLeader := pickRandomeLeader(map[string]bool{}, r, c, 5)
 	return test_delete_pods(r, c, []string{randomLeader})
 }
 
 func test_delete_leader_and_follower(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	fmt.Printf("\n[TEST LAB] Test delete leader and follower...")
-	randomFollower := pickRandomeFollower(map[string]bool{}, r, c)
+	report += fmt.Sprintf("\n[TEST LAB] Test delete leader and follower...")
+	randomFollower := pickRandomeFollower(map[string]bool{}, r, c, 5)
 	f, exists := r.RedisClusterStateView.Nodes[randomFollower]
 	if !exists {
 		return false
 	}
-	randomLeader := pickRandomeLeader(map[string]bool{f.LeaderName: true}, r, c)
+	randomLeader := pickRandomeLeader(map[string]bool{f.LeaderName: true}, r, c, 5)
 	return test_delete_pods(r, c, []string{randomFollower, randomLeader})
 }
 
 func test_delete_all_followers(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	fmt.Printf("\n[TEST LAB] Test delete all followers...")
+	report += fmt.Sprintf("\n[TEST LAB] Test delete all followers...")
 	followers := []string{}
 	for _, n := range r.RedisClusterStateView.Nodes {
 		if n.Name != n.LeaderName {
@@ -598,9 +679,9 @@ func test_delete_all_followers(r *RedisClusterReconciler, c *dbv1.RedisCluster) 
 }
 
 func test_delete_leader_and_all_its_followers(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	fmt.Printf("\n[TEST LAB] Test delete leader and all his followers...")
+	report += fmt.Sprintf("\n[TEST LAB] Test delete leader and all his followers...")
 	toDelete := []string{}
-	randomFollower := pickRandomeFollower(map[string]bool{}, r, c)
+	randomFollower := pickRandomeFollower(map[string]bool{}, r, c, 5)
 	f, exists := r.RedisClusterStateView.Nodes[randomFollower]
 	if !exists {
 		return false
@@ -608,6 +689,47 @@ func test_delete_leader_and_all_its_followers(r *RedisClusterReconciler, c *dbv1
 	for _, n := range r.RedisClusterStateView.Nodes {
 		if n.LeaderName == f.LeaderName {
 			toDelete = append(toDelete, n.Name)
+		}
+	}
+	return test_delete_pods(r, c, toDelete)
+}
+
+func test_delete_all_azs_beside_one(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
+	report += fmt.Sprintf("\n[TEST LAB] Test delete all pods beside one replica foreach set...")
+	del := map[string]bool{}
+	keep := map[string]bool{}
+	d := false
+	for _, n := range r.RedisClusterStateView.Nodes {
+		if n.Name == n.LeaderName {
+			del[n.Name] = d
+			d = !d
+		}
+	}
+	for _, n := range r.RedisClusterStateView.Nodes {
+		if n.Name != n.LeaderName {
+			delLeader, leaderInMap := del[n.LeaderName]
+			if !leaderInMap {
+				del[n.Name] = false
+				keep[n.LeaderName] = true
+			} else {
+				if delLeader {
+					_, hasReplicaToKeep := keep[n.LeaderName]
+					if hasReplicaToKeep {
+						del[n.Name] = true
+					} else {
+						del[n.Name] = false
+						keep[n.LeaderName] = true
+					}
+				} else {
+					del[n.Name] = true
+				}
+			}
+		}
+	}
+	toDelete := []string{}
+	for n, d := range del {
+		if d {
+			toDelete = append(toDelete, n)
 		}
 	}
 	return test_delete_pods(r, c, toDelete)
