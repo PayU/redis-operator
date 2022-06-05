@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,9 +27,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/PayU/redis-operator/controllers/redisclient"
+	"github.com/PayU/redis-operator/controllers/testlab"
 	"github.com/PayU/redis-operator/controllers/view"
-	"github.com/go-redis/redis/v8"
-	"github.com/pkg/errors"
 
 	"github.com/go-logr/logr"
 	"github.com/labstack/echo/v4"
@@ -100,7 +99,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	if err = r.Get(context.Background(), req.NamespacedName, &redisCluster); err != nil {
 		r.Log.Info("Unable to fetch RedisCluster resource")
-		return ctrl.Result{RequeueAfter: 15 * time.Second}, client.IgnoreNotFound(err)
+		return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, client.IgnoreNotFound(err)
 	}
 
 	r.State = RedisClusterState(redisCluster.Status.ClusterState)
@@ -114,10 +113,10 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		err = r.getClusterStateView(&redisCluster)
 		if err != nil {
 			r.Log.Error(err, "Could not perform reconcile loop")
-			return ctrl.Result{RequeueAfter: 20 * time.Second}, nil
+			return ctrl.Result{Requeue: true, RequeueAfter: 20 * time.Second}, nil
 		}
 	}
-	// todo: scenario where cluster exists and for some reason map is missing -> trigger flow of build state view map out of existing cluster (with entry point by router), related metric that will alert us if it happens?
+	// todo: ? scenario where cluster exists and for some reason map is missing -> trigger flow of build state view map out of existing cluster (with entry point by router), alert if it happens?
 
 	r.saveClusterStateOnSigTerm(&redisCluster)
 
@@ -145,7 +144,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	}
 
 	r.saveClusterView(&redisCluster)
-	return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, nil
+	return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, err
 }
 
 func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.RedisCluster) {
@@ -161,7 +160,7 @@ func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.Re
 	}
 }
 
-func (r *RedisClusterReconciler) saveClusterState(redisCluster *dbv1.RedisCluster) {
+func (r *RedisClusterReconciler) saveOperatorState(redisCluster *dbv1.RedisCluster) {
 	r.Status().Update(context.Background(), redisCluster)
 	operatorState := redisCluster.Status.ClusterState
 	r.Client.Status()
@@ -185,7 +184,7 @@ func (r *RedisClusterReconciler) saveClusterView(redisCluster *dbv1.RedisCluster
 	data, _ := json.MarshalIndent(v, "", "")
 	clusterData.SaveRedisClusterView(data)
 	clusterData.SaveRedisClusterState(redisCluster.Status.ClusterState)
-	r.saveClusterState(redisCluster)
+	r.saveOperatorState(redisCluster)
 }
 
 func (r *RedisClusterReconciler) handleInitializingCluster(redisCluster *dbv1.RedisCluster) error {
@@ -216,36 +215,30 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
 	}
-	println("s1")
 	lostNodesDetected := r.forgetLostNodes(redisCluster, v)
 	if lostNodesDetected {
 		r.Log.Info("[Warn] Lost nodes detcted on some of the nodes tables...")
 		return nil
 	}
-	println("s2")
 	healthy, err := r.isClusterHealthy(redisCluster, v)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is healthy")
 		return err
 	}
-	println("s3")
 	if !healthy {
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
 	}
-	println("s4")
 	uptodate, err := r.isClusterUpToDate(redisCluster, v)
 	if err != nil {
 		r.Log.Info("Could not check if cluster is updated")
 		redisCluster.Status.ClusterState = string(Recovering)
 		return err
 	}
-	println("s5")
 	if !uptodate {
 		redisCluster.Status.ClusterState = string(Updating)
 		return nil
 	}
-	println("s6")
 	scale, scaleType := r.isScaleRequired(redisCluster)
 	if scale {
 		r.Log.Info(fmt.Sprintf("Scale is required, scale type: [%v]", scaleType.String()))
@@ -269,7 +262,7 @@ func (r *RedisClusterReconciler) handleRecoveringState(redisCluster *dbv1.RedisC
 	r.Log.Info("Handling cluster recovery...")
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if !ok {
-		return errors.New("Could not perform redis cluster recovery, error while fetching cluster view")
+		return nil
 	}
 	e := r.recoverCluster(redisCluster, v)
 	r.cleanMapFromNodesToRemove(redisCluster, v)
@@ -330,7 +323,7 @@ func DoResetCluster(c echo.Context) error {
 		return c.String(http.StatusOK, "Could not perform cluster reset action")
 	}
 	cluster.Status.ClusterState = string(Reset)
-	reconciler.saveClusterState(cluster)
+	reconciler.saveOperatorState(cluster)
 	return c.String(http.StatusOK, "Set cluster state to reset mode")
 }
 
@@ -388,7 +381,7 @@ func ClusterFix(c echo.Context) error {
 	return c.String(http.StatusOK, "Cluster fix attempt executed")
 }
 
-func DoReconcile(c echo.Context) error {
+func ForceReconcile(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster reconcile action")
 	}
@@ -397,340 +390,88 @@ func DoReconcile(c echo.Context) error {
 	if err != nil {
 		reconciler.Log.Error(err, "Could not perform reconcile trigger")
 	}
-	reconciler.saveClusterStateView(cluster)
-	return c.String(http.StatusOK, "Reconcile request triggered")
+	return c.String(http.StatusOK, "Force Reconcile request triggered, direct reconcile trigger might run the loop without enqueue it again causing the operator to not scheduling another run within requested time.\nIn case of need run eforced reconcile manually several times until recovery is complete, and restart manager when cluster is stable")
 }
 
-func RunE2ETest(c echo.Context) error {
+func ClusterTest(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster e2e test")
+		return c.String(http.StatusOK, "Could not perform cluster test")
 	}
-	ClusterTest()
-	return c.String(http.StatusOK, "E2E test executed")
-}
-
-// Test lab
-
-func InsertData(c echo.Context) error {
-	var ctx = context.Background()
-	node0 := redis.NewClient(&redis.Options{
-		Addr:     "10.244.5.55:6379",
-		Username: "admin",
-		Password: "adminpass",
-	})
-	key := ":myKey"
-	val := "myVal"
-	err := node0.Set(ctx, key, val, 0).Err()
-	if err != nil {
-		println("Set node0 error: " + err.Error())
+	t := &testlab.TestLab{
+		Client:             reconciler.Client,
+		RedisCLI:           reconciler.RedisCLI,
+		Cluster:            cluster,
+		RedisClusterClient: nil,
+		Log:                reconciler.Log,
+		Report:             "",
 	}
-	v0, err := node0.Get(ctx, key).Result()
-	println("Get node0 result: " + string(v0))
-	if err != nil {
-		println("Get node0 error: " + err.Error())
-	}
-	node1 := redis.NewClient(&redis.Options{
-		Addr:     "10.244.6.10:6379",
-		Username: "admin",
-		Password: "adminpass",
-	})
-	v1, err := node1.Get(ctx, key).Result()
-	println("Get node1 result: " + string(v1))
-	if err != nil {
-		println("Get node1 error: " + err.Error())
-	}
-	return c.String(http.StatusOK, "OK")
-}
-
-var clusterHealthCheckInterval = 30 * time.Second
-var clusterHealthCheckTimeOutLimit = 5 * time.Minute
-var report string = "\n[TEST LAB] Cluster test report:\n"
-
-func ClusterTest() {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go test_cluster_e2e(&wg)
+	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
 	wg.Wait()
+	return c.String(http.StatusOK, t.Report)
 }
 
-func test_cluster_e2e(wg *sync.WaitGroup) {
-	defer wg.Done()
-	isReady := waitForHealthyCluster(reconciler, cluster)
-	if !isReady {
-		println(report)
-		return
+func ClusterTestData(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster test")
 	}
-	report += "\n"
-	test_1 := test_delete_follower(reconciler, cluster)
-	report += fmt.Sprintf("\n[TEST LAB] Test 1: delete follower result [%v]\n", test_1)
-	if !test_1 {
-		println(report)
-		return
-	}
-	time.Sleep(5 * time.Second)
-	test_2 := test_delete_leader(reconciler, cluster)
-	report += fmt.Sprintf("\n[TEST LAB] Test 2: delete leader result [%v]\n", test_2)
-	if !test_2 {
-		println(report)
-		return
-	}
-	time.Sleep(5 * time.Second)
-	test_3 := test_delete_leader_and_follower(reconciler, cluster)
-	report += fmt.Sprintf("\n[TEST LAB] Test 3: delete leader and follower result [%v]\n", test_3)
-	if !test_3 {
-		println(report)
-		return
-	}
-	time.Sleep(5 * time.Second)
-	test_4 := test_delete_all_followers(reconciler, cluster)
-	report += fmt.Sprintf("\n[TEST LAB] Test 4: delete all followers result [%v]\n", test_4)
-	if !test_4 {
-		println(report)
-		return
-	}
-	time.Sleep(5 * time.Second)
-	test_5 := test_delete_all_azs_beside_one(reconciler, cluster)
-	report += fmt.Sprintf("\n[TEST LAB] Test 5: delete all pods beside one replica foreach set result [%v]\n", test_5)
-	if !test_5 {
-		println(report)
-		return
-	}
-	time.Sleep(5 * time.Second)
-	test_6 := test_delete_leader_and_all_its_followers(reconciler, cluster)
-	report += fmt.Sprintf("\n[TEST LAB] Test 6: delete leader and all its followers result [%v]\n", test_6)
-	if !test_6 {
-		println(report)
-		return
-	}
-	println(report)
-}
+	var report string = ""
+	var cl *redisclient.RedisClusterClient = nil
 
-func waitForHealthyCluster(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	if r == nil || c == nil {
-		return false
+	v, ok := reconciler.NewRedisClusterView(cluster)
+	if ok && v != nil {
+		cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
+		cl.FlushAllData()
 	}
-	report += fmt.Sprintf("\n[TEST LAB] Waiting for cluster to be declared healthy...")
-	isHealthyCluster := false
-	if pollErr := wait.PollImmediate(clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit, func() (bool, error) {
-		isHealthyCluster = isClusterAligned(r, c)
-		return isHealthyCluster, nil
-	}); pollErr != nil {
-		report += fmt.Sprintf("\n[TEST LAB] Error while waiting for cluster to heal, probe intervals: [%v * sec], probe timeout: [%v * min]\n", clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit)
-		return false
-	}
-	return isHealthyCluster
-}
+	report += "\n[TEST LAB] Creating mock data\n"
 
-func isClusterAligned(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	report += fmt.Sprintf("\n[TEST LAB] Checking if cluster aligned...")
-	v, viewIsReady := r.NewRedisClusterView(c)
-	if !viewIsReady {
-		report += fmt.Sprintf("\n[TEST LAB] Alignment check result : %v", false)
-		return false
-	}
-	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
-	aligned := true
-	for _, n := range r.RedisClusterStateView.Nodes {
-		wg.Add(1)
-		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
-			time.Sleep(3 * time.Second)
-			mutex.Lock()
-			defer wg.Done()
-			mutex.Unlock()
-			if !aligned {
-				return
-			}
-			node, exists := v.Nodes[n.Name]
-			if !exists || node == nil {
-				mutex.Lock()
-				aligned = false
-				mutex.Unlock()
-				return
-			}
-			if node.IsLeader {
-				isMaster, e := r.checkIfMaster(node.Ip)
-				if e != nil || !isMaster {
-					mutex.Lock()
-					aligned = false
-					mutex.Unlock()
-					return
-				}
-				nodes, _, e := r.RedisCLI.ClusterNodes(node.Ip)
-				if e != nil || nodes == nil || len(*nodes) <= 1 {
-					mutex.Lock()
-					aligned = false
-					mutex.Unlock()
-					return
-				}
-			} else {
-				_, leaderExists := r.RedisClusterStateView.Nodes[n.LeaderName]
-				if !leaderExists {
-					mutex.Lock()
-					aligned = false
-					mutex.Unlock()
-					return
-				}
-				isMaster, e := r.checkIfMaster(node.Ip)
-				if e != nil || isMaster {
-					mutex.Lock()
-					aligned = false
-					mutex.Unlock()
-					return
-				}
-			}
-			aligned = (n.NodeState == view.NodeOK)
-		}(n, &wg)
-	}
-	wg.Wait()
-	totalExpectedNodes := c.Spec.LeaderCount * (c.Spec.LeaderFollowersCount + 1)
-	clusterOK := aligned && len(v.Nodes) == totalExpectedNodes && len(r.RedisClusterStateView.Nodes) == totalExpectedNodes
-	if clusterOK {
-		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
-		report += fmt.Sprintf("\n[TEST LAB] Alignment check result : %v", clusterOK)
-	}
-	return clusterOK
-}
-
-func test_delete_pods(r *RedisClusterReconciler, c *dbv1.RedisCluster, podsToDelete []string) bool {
-	v, viewIsReady := r.NewRedisClusterView(c)
-	if !viewIsReady {
-		return false
-	}
-	for _, toDelete := range podsToDelete {
-		node, exists := v.Nodes[toDelete]
-		if !exists || node == nil {
-			continue
+	data := map[string]string{}
+	total := 30
+	sw := 0
+	for i := 0; i < total; i++ {
+		key := "key" + fmt.Sprintf("%v", i)
+		val := "val" + fmt.Sprintf("%v", i)
+		err := cl.Set(key, val, 3)
+		if err == nil {
+			sw++
+			data[key] = val
 		}
 		time.Sleep(3 * time.Second)
-		r.deletePod(node.Pod)
 	}
-	return waitForHealthyCluster(r, c)
-}
-
-func pickRandomeFollower(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster, retry int) string {
-	k := rand.Intn(c.Spec.LeaderFollowersCount*c.Spec.LeaderCount - len(exclude))
-	i := 0
-	for _, n := range r.RedisClusterStateView.Nodes {
-		if _, ex := exclude[n.Name]; ex || n.Name == n.LeaderName {
-			continue
+	sr := 0
+	if sw > 0 {
+		time.Sleep(10 * time.Second)
+		wait.PollImmediate(3*time.Second, 2*time.Minute, func() (bool, error) {
+			return cluster.Status.ClusterState == string(Ready), nil
+		})
+		v, ok = reconciler.NewRedisClusterView(cluster)
+		if ok && v != nil {
+			cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
 		}
-		if i == k {
-			return n.Name
-		}
-		i++
-	}
-	if retry == 0 {
-		return ""
-	}
-	return pickRandomeFollower(exclude, r, c, retry-1)
-}
-
-func pickRandomeLeader(exclude map[string]bool, r *RedisClusterReconciler, c *dbv1.RedisCluster, retry int) string {
-	k := rand.Intn(c.Spec.LeaderCount - len(exclude))
-	i := 0
-	for _, n := range r.RedisClusterStateView.Nodes {
-		if _, ex := exclude[n.Name]; ex || n.Name != n.LeaderName {
-			continue
-		}
-		if i == k {
-			return n.Name
-		}
-		i++
-	}
-	if retry == 0 {
-		return ""
-	}
-	return pickRandomeLeader(exclude, r, c, retry-1)
-}
-
-func test_delete_follower(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	report += fmt.Sprintf("\n[TEST LAB] Test delete follower...")
-	randomFollower := pickRandomeFollower(map[string]bool{}, r, c, 5)
-	return test_delete_pods(r, c, []string{randomFollower})
-}
-
-func test_delete_leader(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	report += fmt.Sprintf("\n[TEST LAB] Test delete leader...")
-	randomLeader := pickRandomeLeader(map[string]bool{}, r, c, 5)
-	return test_delete_pods(r, c, []string{randomLeader})
-}
-
-func test_delete_leader_and_follower(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	report += fmt.Sprintf("\n[TEST LAB] Test delete leader and follower...")
-	randomFollower := pickRandomeFollower(map[string]bool{}, r, c, 5)
-	f, exists := r.RedisClusterStateView.Nodes[randomFollower]
-	if !exists {
-		return false
-	}
-	randomLeader := pickRandomeLeader(map[string]bool{f.LeaderName: true}, r, c, 5)
-	return test_delete_pods(r, c, []string{randomFollower, randomLeader})
-}
-
-func test_delete_all_followers(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	report += fmt.Sprintf("\n[TEST LAB] Test delete all followers...")
-	followers := []string{}
-	for _, n := range r.RedisClusterStateView.Nodes {
-		if n.Name != n.LeaderName {
-			followers = append(followers, n.Name)
-		}
-	}
-	return test_delete_pods(r, c, followers)
-}
-
-func test_delete_leader_and_all_its_followers(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	report += fmt.Sprintf("\n[TEST LAB] Test delete leader and all his followers...")
-	toDelete := []string{}
-	randomFollower := pickRandomeFollower(map[string]bool{}, r, c, 5)
-	f, exists := r.RedisClusterStateView.Nodes[randomFollower]
-	if !exists {
-		return false
-	}
-	for _, n := range r.RedisClusterStateView.Nodes {
-		if n.LeaderName == f.LeaderName {
-			toDelete = append(toDelete, n.Name)
-		}
-	}
-	return test_delete_pods(r, c, toDelete)
-}
-
-func test_delete_all_azs_beside_one(r *RedisClusterReconciler, c *dbv1.RedisCluster) bool {
-	report += fmt.Sprintf("\n[TEST LAB] Test delete all pods beside one replica foreach set...")
-	del := map[string]bool{}
-	keep := map[string]bool{}
-	d := false
-	for _, n := range r.RedisClusterStateView.Nodes {
-		if n.Name == n.LeaderName {
-			del[n.Name] = d
-			d = !d
-		}
-	}
-	for _, n := range r.RedisClusterStateView.Nodes {
-		if n.Name != n.LeaderName {
-			delLeader, leaderInMap := del[n.LeaderName]
-			if !leaderInMap {
-				del[n.Name] = false
-				keep[n.LeaderName] = true
-			} else {
-				if delLeader {
-					_, hasReplicaToKeep := keep[n.LeaderName]
-					if hasReplicaToKeep {
-						del[n.Name] = true
-					} else {
-						del[n.Name] = false
-						keep[n.LeaderName] = true
-					}
-				} else {
-					del[n.Name] = true
+		for k, expected_v := range data {
+			actual_v, err := cl.Get(k, 3)
+			if err == nil {
+				if expected_v == actual_v {
+					sr++
 				}
 			}
 		}
 	}
-	toDelete := []string{}
-	for n, d := range del {
-		if d {
-			toDelete = append(toDelete, n)
-		}
+
+	report += fmt.Sprintf("\n[TEST LAB] Toal writes         : [%v]", total)
+	report += fmt.Sprintf("\n[TEST LAB] Successful writes   : [%v]", sw)
+	report += fmt.Sprintf("\n[TEST LAB] Writes success rate : [%v%v]", (sw * 100 / total), "%")
+	report += fmt.Sprintf("\n[TEST LAB] Successful reads    : [%v]", sw)
+	if sw > 0 {
+		report += fmt.Sprintf("\n[TEST LAB] Reads success rate  : [%v%v]", (sr * 100 / sw), "%")
+	} else {
+		report += fmt.Sprintf("\n[TEST LAB] Reads success rate  : [%v%v]", 0, "%")
 	}
-	return test_delete_pods(r, c, toDelete)
+	v, ok = reconciler.NewRedisClusterView(cluster)
+	if ok && v != nil {
+		cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
+	}
+	cl.FlushAllData()
+	return c.String(http.StatusOK, report)
 }

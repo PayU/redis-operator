@@ -303,9 +303,11 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
 				if err != nil || nodes == nil {
 					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
+					return
 				}
 				if len(*nodes) == 1 {
 					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
+					return
 				} else {
 					n, inMap := r.RedisClusterStateView.Nodes[node.Name]
 					if !inMap {
@@ -433,10 +435,10 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 		if err != nil {
 			return nil, err
 		}
-		if pollErr := wait.PollImmediate(2*r.Config.Times.PodReadyCheckInterval, 5*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(r.Config.Times.PodReadyCheckInterval, r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
-				return false, err
+				return true, err
 			}
 			if pod.Status.Phase != corev1.PodRunning {
 				return false, nil
@@ -460,7 +462,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 	var readyPods []corev1.Pod
 	for _, pod := range pods {
 		key, err := client.ObjectKeyFromObject(&pod)
-		if pollErr := wait.PollImmediate(2*r.Config.Times.PodNetworkCheckInterval, 10*r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(r.Config.Times.PodNetworkCheckInterval, r.Config.Times.PodNetworkCheckTimeout, func() (bool, error) {
 			if err = r.Get(context.Background(), key, &pod); err != nil {
 				if apierrors.IsNotFound(err) {
 					return false, nil
