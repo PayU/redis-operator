@@ -497,8 +497,8 @@ func PopulateClusterWithData(c echo.Context) error {
 		println(n.Name + ": " + info.Memory["used_memory_human"])
 	}
 
-	total := 9000000
-	init := 0
+	total := 24000000
+	init := 9000000
 	sw := 0
 
 	println("populating: ")

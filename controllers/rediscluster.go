@@ -41,7 +41,6 @@ func (r *RedisClusterReconciler) NewRedisClusterView(redisCluster *dbv1.RedisClu
 	if e != nil {
 		if strings.Contains(e.Error(), "Non reachable node found") {
 			r.Log.Info("[Warn] Non reachable nodes found during view creation, re-attempting reconcile loop...")
-			r.forgetLostNodes(redisCluster, v)
 		} else {
 			r.Log.Info("[Warn] Could not get view for api view update, Error: %v", e.Error())
 		}
@@ -276,47 +275,36 @@ func (r *RedisClusterReconciler) waitForAllNodesAgreeAboutSlotsConfiguration(v *
 			v = newView
 		}
 	}
-	var wg sync.WaitGroup
-	msg := ""
-	mutex := &sync.Mutex{}
-	for _, n := range v.Nodes {
-		if n == nil {
-			continue
+	nonResponsive := map[string]bool{}
+	agreed := map[string]bool{}
+	if pollErr := wait.PollImmediate(r.Config.Times.RedisNodesAgreeAboutSlotsConfigCheckInterval, r.Config.Times.RedisNodesAgreeAboutSlotsConfigTimeout, func() (bool, error) {
+		dissagreement := false
+		for _, n := range v.Nodes {
+			if n == nil {
+				continue
+			}
+			if _, nr := nonResponsive[n.Name]; nr {
+				continue
+			}
+			if _, agree := agreed[n.Name]; agree {
+				continue
+			}
+			stdout, err := r.RedisCLI.ClusterCheck(n.Ip)
+			if err != nil {
+				nonResponsive[n.Name] = true
+				continue
+			}
+			if strings.Contains(stdout, "[OK] All nodes agree about slots configuration") {
+				agreed[n.Name] = true
+			} else {
+				dissagreement = true
+			}
 		}
-		wg.Add(1)
-		go func(n *view.NodeView, wg *sync.WaitGroup) {
-			mutex.Lock()
-			defer wg.Done()
-			mutex.Unlock()
-			nodes, _, err := r.RedisCLI.ClusterNodes(n.Ip)
-			if err != nil || nodes == nil || len(*nodes) <= 1 {
-				return
-			}
-			if pollErr := wait.PollImmediate(r.Config.Times.RedisNodesAgreeAboutSlotsConfigCheckInterval, r.Config.Times.RedisNodesAgreeAboutSlotsConfigTimeout, func() (bool, error) {
-				stdout, err := r.RedisCLI.ClusterCheck(n.Ip)
-				if err != nil {
-					return false, err
-				}
-				if strings.Contains(stdout, "[OK] All nodes agree about slots configuration") {
-					return true, nil
-				}
-				return false, nil
-			}); pollErr != nil {
-				mutex.Lock()
-				if msg == "" {
-					msg = "[Warn] Error occured during waiting for cluster nodes to agree about slots configuration, performing CLUSTER REBALANCE might need to be followed by CLUSTER FIX"
-				}
-				mutex.Unlock()
-				return
-			}
-		}(n, &wg)
-	}
-	wg.Wait()
-	if len(msg) > 0 {
-		r.Log.Info(msg)
+		return !dissagreement, nil
+	}); pollErr != nil {
+		r.Log.Info("[Warn] Error occured during waiting for cluster nodes to agree about slots configuration, performing CLUSTER REBALANCE might need to be followed by CLUSTER FIX")
 	}
 }
-
 func (r *RedisClusterReconciler) addLeaderNodes(redisCluster *dbv1.RedisCluster, healthyServerIp string, leaderNames []string, v *view.RedisClusterView) error {
 	if len(leaderNames) == 0 {
 		return nil
@@ -422,10 +410,16 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 	if len(lostIds) > 0 {
 		r.Log.Info(fmt.Sprintf("List of healthy nodes: %v", healthyNodes))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
+		var wg sync.WaitGroup
 		for id, _ := range lostIds {
 			for _, ip := range healthyNodes {
-				r.RedisCLI.ClusterForget(ip, id)
+				wg.Add(1)
+				go func(ip string, id string, wg *sync.WaitGroup) {
+					defer wg.Done()
+					r.RedisCLI.ClusterForget(ip, id)
+				}(ip, id, &wg)
 			}
+			wg.Wait()
 		}
 		r.Log.Info(fmt.Sprintf("Cluster FORGET sent for [%v] lost nodes", len(lostIds)))
 	}
@@ -663,9 +657,9 @@ func (r *RedisClusterReconciler) recoverNodes(redisCluster *dbv1.RedisCluster, v
 		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
-			mutex.Lock()
+			//mutex.Lock()
 			defer wg.Done()
-			mutex.Unlock()
+			//mutex.Unlock()
 			pod, proceed := r.retrievePodForProcessing(n.Name, n.LeaderName, pods, v, mutex)
 			if !proceed {
 				return
@@ -874,39 +868,40 @@ func (r *RedisClusterReconciler) detectNodeTableMissalignments(v *view.RedisClus
 		if node.IsLeader {
 			continue
 		}
+		leaderNode, leaderPodExists := v.Nodes[node.LeaderName]
+		if !leaderPodExists || leaderNode == nil {
+			continue
+		}
 		wg.Add(1)
 		go func(node *view.NodeView, wg *sync.WaitGroup) {
 			mutex.Lock()
 			defer wg.Done()
 			mutex.Unlock()
-			leaderNode, leaderPodExists := v.Nodes[node.LeaderName]
-			if leaderPodExists && leaderNode != nil {
-				followerNodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
-				if err != nil || followerNodes == nil || len(*followerNodes) == 1 {
-					return
-				}
-				isFollowerMaster, err := r.checkIfMaster(node.Ip)
-				if err != nil || !isFollowerMaster {
-					return
-				}
-				leaderNodes, _, err := r.RedisCLI.ClusterNodes(leaderNode.Ip)
-				if err != nil || leaderNodes == nil || len(*leaderNodes) == 1 {
-					return
-				}
-				isLeaderMaster, err := r.checkIfMaster(leaderNode.Ip)
-				if err != nil {
-					return
-				}
-				if !isLeaderMaster {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(node.LeaderName, node.LeaderName, view.FailoverNode, mutex)
-					return
-				}
-				// At this point: pod which we concider follower, serves as master in the context of the cluster, as well its leader exists and serves as master in the context of cluster
-				// This is an indication for corner case of rebalance request that accidentally included the follower into the rebalance before the decision about its role was made (probably interrupt during cluster meet)
-				mutex.Lock()
-				missalignments = append(missalignments, node.Name)
-				mutex.Unlock()
+			followerNodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+			if err != nil || followerNodes == nil || len(*followerNodes) == 1 {
+				return
 			}
+			isFollowerMaster, err := r.checkIfMaster(node.Ip)
+			if err != nil || !isFollowerMaster {
+				return
+			}
+			leaderNodes, _, err := r.RedisCLI.ClusterNodes(leaderNode.Ip)
+			if err != nil || leaderNodes == nil || len(*leaderNodes) == 1 {
+				return
+			}
+			isLeaderMaster, err := r.checkIfMaster(leaderNode.Ip)
+			if err != nil {
+				return
+			}
+			if !isLeaderMaster {
+				r.RedisClusterStateView.LockResourceAndSetNodeState(node.LeaderName, node.LeaderName, view.FailoverNode, mutex)
+				return
+			}
+			// At this point: pod which we concider follower, serves as master in the context of the cluster, as well its leader exists and serves as master in the context of cluster
+			// This is an indication for corner case of rebalance request that accidentally included the follower into the rebalance before the decision about its role was made (probably interrupt during cluster meet)
+			mutex.Lock()
+			missalignments = append(missalignments, node.Name)
+			mutex.Unlock()
 		}(node, &wg)
 	}
 	wg.Wait()

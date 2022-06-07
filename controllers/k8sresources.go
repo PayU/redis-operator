@@ -307,31 +307,31 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			}
 			continue
 		}
+		node, exists := v.Nodes[n.Name]
+		if exists && node != nil {
+			nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+			if err != nil || nodes == nil {
+				r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
+				continue
+			}
+			if len(*nodes) == 1 {
+				r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
+				continue
+			} else {
+				n, inMap := r.RedisClusterStateView.Nodes[node.Name]
+				if !inMap {
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReplicateNode, mutex)
+				} else if n.NodeState != view.ReplicateNode && n.NodeState != view.SyncNode {
+					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.NodeOK, mutex)
+				}
+			}
+			continue
+		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
 			mutex.Lock()
 			defer wg.Done()
 			mutex.Unlock()
-			node, exists := v.Nodes[n.Name]
-			if exists && node != nil {
-				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
-				if err != nil || nodes == nil {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
-					return
-				}
-				if len(*nodes) == 1 {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
-					return
-				} else {
-					n, inMap := r.RedisClusterStateView.Nodes[node.Name]
-					if !inMap {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReplicateNode, mutex)
-					} else if n.NodeState != view.ReplicateNode && n.NodeState != view.SyncNode {
-						r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.NodeOK, mutex)
-					}
-				}
-				return
-			}
 			r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
 			pod, err := r.makeAndCreateRedisPod(redisCluster, n, createOpts)
 			if err != nil {
