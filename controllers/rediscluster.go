@@ -399,8 +399,6 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 	r.Log.Info("Forgetting lost nodes...")
 	healthyNodes := map[string]string{}
 	lostIds := map[string]bool{}
-	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	for _, node := range v.Nodes {
 		if node == nil {
 			continue
@@ -408,28 +406,19 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		if _, declaredLost := lostIds[node.Id]; declaredLost {
 			continue
 		}
-		wg.Add(1)
-		go func(node *view.NodeView, wg *sync.WaitGroup) {
-			mutex.Lock()
-			defer wg.Done()
-			mutex.Unlock()
-			clusterNodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
-			if err != nil || clusterNodes == nil {
-				return
+		clusterNodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+		if err != nil || clusterNodes == nil {
+			continue
+		}
+		mutex.Lock()
+		healthyNodes[node.Id] = node.Ip
+		mutex.Unlock()
+		for _, tableNode := range *clusterNodes {
+			if strings.Contains(tableNode.Flags, "fail") {
+				lostIds[tableNode.ID] = true
 			}
-			mutex.Lock()
-			healthyNodes[node.Id] = node.Ip
-			mutex.Unlock()
-			for _, tableNode := range *clusterNodes {
-				if strings.Contains(tableNode.Flags, "fail") {
-					mutex.Lock()
-					lostIds[tableNode.ID] = true
-					mutex.Unlock()
-				}
-			}
-		}(node, &wg)
+		}
 	}
-	wg.Wait()
 	if len(lostIds) > 0 {
 		r.Log.Info(fmt.Sprintf("List of healthy nodes: %v", healthyNodes))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
