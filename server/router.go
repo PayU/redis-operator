@@ -14,4 +14,5 @@ func Register(e *echo.Echo) {
 	e.POST("/forceReconcile", controllers.ForceReconcile)
 	e.POST("/test", controllers.ClusterTest)
 	e.POST("/testData", controllers.ClusterTestData)
+	e.POST("/populateData", controllers.PopulateClusterWithData)
 }

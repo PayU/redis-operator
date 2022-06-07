@@ -179,7 +179,9 @@ func (r *RedisClusterReconciler) saveClusterView(redisCluster *dbv1.RedisCluster
 		return
 	}
 	for _, n := range v.Nodes {
-		n.Pod = corev1.Pod{}
+		if n != nil {
+			n.Pod = corev1.Pod{}
+		}
 	}
 	data, _ := json.MarshalIndent(v, "", "")
 	clusterData.SaveRedisClusterView(data)
@@ -422,7 +424,7 @@ func ClusterTestData(c echo.Context) error {
 	v, ok := reconciler.NewRedisClusterView(cluster)
 	if ok && v != nil {
 		cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
-		cl.FlushAllData()
+		//cl.FlushAllData()
 	}
 	report += "\n[TEST LAB] Creating mock data\n"
 
@@ -472,6 +474,63 @@ func ClusterTestData(c echo.Context) error {
 	if ok && v != nil {
 		cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
 	}
-	cl.FlushAllData()
+	//cl.FlushAllData()
 	return c.String(http.StatusOK, report)
+}
+
+func PopulateClusterWithData(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster popluate data")
+	}
+	var cl *redisclient.RedisClusterClient = nil
+	v, ok := reconciler.NewRedisClusterView(cluster)
+	if !ok || v == nil {
+		return c.String(http.StatusOK, "Could not perform cluster populate data")
+	}
+	cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
+
+	for _, n := range v.Nodes {
+		info, _, err := reconciler.RedisCLI.Info(n.Ip)
+		if err != nil || info == nil {
+			continue
+		}
+		println(n.Name + ": " + info.Memory["used_memory_human"])
+	}
+
+	total := 9000000
+	init := 7500000
+	sw := 0
+
+	println("populating: ")
+	println(total)
+
+	for i := init; i < init+total; i++ {
+		key := "key" + fmt.Sprintf("%v", i)
+		val := "val" + fmt.Sprintf("%v", i)
+		err := cl.Set(key, val, 3)
+		if err == nil {
+			sw++
+		}
+	}
+
+	for _, n := range v.Nodes {
+		info, _, err := reconciler.RedisCLI.Info(n.Ip)
+		if err != nil || info == nil {
+			continue
+		}
+		println(n.Name + ": " + info.Memory["used_memory_human"])
+	}
+
+	//println("flushing")
+	// cl.FlushAllData()
+	// time.Sleep(10 * time.Second)
+	// for _, n := range v.Nodes {
+	// info, _, err := reconciler.RedisCLI.Info(n.Ip)
+	// if err != nil || info == nil {
+	// continue
+	// }
+	// println(n.Name + ": " + info.Memory["used_memory_human"])
+	// }
+
+	return c.String(http.StatusOK, "Cluster populated with data")
 }

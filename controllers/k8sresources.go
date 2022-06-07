@@ -293,6 +293,20 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		if n.NodeState == view.DeleteNode || n.NodeState == view.ReshardNode || n.NodeState == view.DeleteNodeKeepInMap || n.NodeState == view.ReshardNodeKeepInMap {
 			continue
 		}
+		if _, isLeaderReported := r.RedisClusterStateView.Nodes[n.LeaderName]; !isLeaderReported {
+			node, exists := v.Nodes[n.Name]
+			if exists && node != nil {
+				isMaster, err := r.checkIfMaster(node.Ip)
+				if err != nil || !isMaster {
+					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNode)
+				} else {
+					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.ReshardNode)
+				}
+			} else {
+				r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNode)
+			}
+			continue
+		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
 			mutex.Lock()
@@ -435,7 +449,7 @@ func (r *RedisClusterReconciler) waitForPodReady(pods ...corev1.Pod) ([]corev1.P
 		if err != nil {
 			return nil, err
 		}
-		if pollErr := wait.PollImmediate(r.Config.Times.PodReadyCheckInterval, r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
+		if pollErr := wait.PollImmediate(r.Config.Times.PodReadyCheckInterval, 4*r.Config.Times.PodReadyCheckTimeout, func() (bool, error) {
 			err := r.Get(context.Background(), key, &pod)
 			if err != nil {
 				return true, err

@@ -119,14 +119,14 @@ func (t *TestLab) analyzeDataResults(total int, successfulWrites int, successful
 	t.Report += fmt.Sprintf("[TEST LAB] Successful writes   : [%v]\n", successfulWrites)
 	t.Report += fmt.Sprintf("[TEST LAB] Successful reads    : [%v]\n", successfulReads)
 	t.Report += fmt.Sprintf("[TEST LAB] Writes success rate : [%v%v]\n", writeSuccessRate, "%")
-	t.Report += fmt.Sprintf("[TEST LAB] Read success rate   : [%v%v]\n", readSuccessRate, "%")
+	t.Report += fmt.Sprintf("[TEST LAB] Reads success rate  : [%v%v]\n", readSuccessRate, "%")
 }
 
 func (t *TestLab) test_delete_follower_with_data(nodes *map[string]*view.NodeStateView, testNum int) bool {
 	if t.RedisClusterClient == nil {
 		return false
 	}
-	t.RedisClusterClient.FlushAllData()
+	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	result := false
@@ -166,7 +166,7 @@ func (t *TestLab) test_delete_leader_with_data(nodes *map[string]*view.NodeState
 	if t.RedisClusterClient == nil {
 		return false
 	}
-	t.RedisClusterClient.FlushAllData()
+	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	result := false
@@ -206,7 +206,7 @@ func (t *TestLab) test_delete_leader_and_follower_with_data(nodes *map[string]*v
 	if t.RedisClusterClient == nil {
 		return false
 	}
-	t.RedisClusterClient.FlushAllData()
+	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	result := false
@@ -251,7 +251,7 @@ func (t *TestLab) test_delete_all_followers_with_data(nodes *map[string]*view.No
 	if t.RedisClusterClient == nil {
 		return false
 	}
-	t.RedisClusterClient.FlushAllData()
+	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	result := false
@@ -296,7 +296,7 @@ func (t *TestLab) test_delete_leader_and_all_its_followers_with_data(nodes *map[
 	if t.RedisClusterClient == nil {
 		return false
 	}
-	t.RedisClusterClient.FlushAllData()
+	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	result := false
@@ -346,7 +346,7 @@ func (t *TestLab) test_delete_all_azs_beside_one_with_data(nodes *map[string]*vi
 	if t.RedisClusterClient == nil {
 		return false
 	}
-	t.RedisClusterClient.FlushAllData()
+	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	result := false
@@ -506,7 +506,7 @@ func (t *TestLab) waitForHealthyCluster(nodes *map[string]*view.NodeStateView) b
 		}
 		return false, nil
 	}); pollErr != nil {
-		t.Report += fmt.Sprintf("\n[TEST LAB] Error while waiting for cluster to heal, probe intervals: [%v], probe timeout: [%v]\n", clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit)
+		t.Report += fmt.Sprintf("\n[TEST LAB] Error while waiting for cluster to heal, probe intervals: [%v], probe timeout: [%v]", clusterHealthCheckInterval, clusterHealthCheckTimeOutLimit)
 		return false
 	}
 	return isHealthyCluster

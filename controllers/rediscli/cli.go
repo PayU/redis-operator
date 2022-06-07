@@ -344,7 +344,7 @@ func (r *RedisCLI) AddFollower(newNodeAddr string, existingNodeAddr string, lead
 func (r *RedisCLI) AddLeader(newNodeAddr string, existingNodeAddr string, opt ...string) (string, error) {
 	args := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port)}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand(args, 2)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s): %s | %s | %v", newNodeAddr, existingNodeAddr, stdout, stderr, err)
 	}
@@ -509,7 +509,7 @@ func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...
 	}
 	args = append(args, "--cluster-yes")
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args, 2)
+	stdout, stderr, err := r.Handler.executeCommand(args, 5)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
