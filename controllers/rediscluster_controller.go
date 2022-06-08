@@ -501,7 +501,7 @@ func PopulateClusterWithData(c echo.Context) error {
 	}
 
 	total := 24000000
-	init := 9800000
+	init := 0
 	sw := 0
 
 	println("populating: ")

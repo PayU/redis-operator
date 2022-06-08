@@ -31,7 +31,7 @@ var fetchViewInterval = 10 * time.Second
 var fetchViewTimeOut = 2 * time.Minute
 
 var clusterHealthCheckInterval = 20 * time.Second
-var clusterHealthCheckTimeOutLimit = 3 * time.Minute
+var clusterHealthCheckTimeOutLimit = 4 * time.Minute
 
 var randomChoiceRetries int = 4
 

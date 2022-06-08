@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
+	rediscli "github.com/PayU/redis-operator/controllers/rediscli"
 	view "github.com/PayU/redis-operator/controllers/view"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -309,7 +311,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		}
 		node, exists := v.Nodes[n.Name]
 		if exists && node != nil {
-			nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+			nodes, err := r.ClusterNodesWaitForRedisLoadDataSetInMemory(node.Ip)
 			if err != nil || nodes == nil {
 				r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
 				continue
@@ -575,4 +577,21 @@ func (r *RedisClusterReconciler) deleteClusterStateView(redisCluster *dbv1.Redis
 		return r.Delete(context.Background(), &configMap)
 	}
 	return nil
+}
+
+func (r *RedisClusterReconciler) ClusterNodesWaitForRedisLoadDataSetInMemory(ip string) (nodes *rediscli.RedisClusterNodes, err error) {
+	if pollErr := wait.PollImmediate(2*time.Second, 10*time.Second, func() (bool, error) {
+		nodes, _, err = r.RedisCLI.ClusterNodes(ip)
+		if err != nil {
+			if strings.Contains(err.Error(), "Redis is loading the dataset in memory") {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, err
+	}); pollErr != nil {
+		return nil, pollErr
+	}
+
+	return nodes, err
 }
