@@ -85,7 +85,8 @@ type RedisClusterReconciler struct {
 
 var reconciler *RedisClusterReconciler
 var cluster *dbv1.RedisCluster
-var mutex *sync.Mutex = &sync.Mutex{}
+
+//var mutex *sync.Mutex = &sync.Mutex{}
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters/status,verbs=get;update;patch
@@ -343,6 +344,7 @@ func ClusterRebalance(c echo.Context) error {
 	if !found {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the rebalance request")
 	}
+	mutex := &sync.Mutex{}
 	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterRebalance
 	healthyServerIp := v.Nodes[healthyServerName].Ip
@@ -371,6 +373,7 @@ func ClusterFix(c echo.Context) error {
 		return c.String(http.StatusOK, "Could not find healthy server to serve the fix request")
 	}
 	healthyServerIp := v.Nodes[healthyServerName].Ip
+	mutex := &sync.Mutex{}
 	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterFix
 	_, _, err := reconciler.RedisCLI.ClusterFix(healthyServerIp)
@@ -429,7 +432,7 @@ func ClusterTestData(c echo.Context) error {
 	report += "\n[TEST LAB] Creating mock data\n"
 
 	data := map[string]string{}
-	total := 30
+	total := 200
 	sw := 0
 	for i := 0; i < total; i++ {
 		key := "key" + fmt.Sprintf("%v", i)
@@ -439,7 +442,7 @@ func ClusterTestData(c echo.Context) error {
 			sw++
 			data[key] = val
 		}
-		time.Sleep(3 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 	sr := 0
 	if sw > 0 {
@@ -498,7 +501,7 @@ func PopulateClusterWithData(c echo.Context) error {
 	}
 
 	total := 24000000
-	init := 9000000
+	init := 9800000
 	sw := 0
 
 	println("populating: ")
@@ -520,17 +523,28 @@ func PopulateClusterWithData(c echo.Context) error {
 		}
 		println(n.Name + ": " + info.Memory["used_memory_human"])
 	}
-
-	//println("flushing")
-	// cl.FlushAllData()
-	// time.Sleep(10 * time.Second)
-	// for _, n := range v.Nodes {
-	// info, _, err := reconciler.RedisCLI.Info(n.Ip)
-	// if err != nil || info == nil {
-	// continue
-	// }
-	// println(n.Name + ": " + info.Memory["used_memory_human"])
-	// }
-
 	return c.String(http.StatusOK, "Cluster populated with data")
+}
+
+func FlushClusterData(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster popluate data")
+	}
+	var cl *redisclient.RedisClusterClient = nil
+	v, ok := reconciler.NewRedisClusterView(cluster)
+	if !ok || v == nil {
+		return c.String(http.StatusOK, "Could not perform cluster flush data")
+	}
+	cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
+	println("flushing")
+	cl.FlushAllData()
+	time.Sleep(10 * time.Second)
+	for _, n := range v.Nodes {
+		info, _, err := reconciler.RedisCLI.Info(n.Ip)
+		if err != nil || info == nil {
+			continue
+		}
+		println(n.Name + ": " + info.Memory["used_memory_human"])
+	}
+	return c.String(http.StatusOK, "Cluster dta flushed")
 }

@@ -497,6 +497,7 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 
 func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 	var wg sync.WaitGroup
+	mutex := &sync.Mutex{}
 	for _, p := range pods {
 		wg.Add(1)
 		go func(p corev1.Pod, wg *sync.WaitGroup) {

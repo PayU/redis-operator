@@ -509,7 +509,7 @@ func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...
 	}
 	args = append(args, "--cluster-yes")
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args, 5)
+	stdout, stderr, err := r.Handler.executeCommand(args, 50)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -525,7 +525,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		"--cluster-yes",
 	}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommandWithPipe([]string{}, args, 100)
+	stdout, stderr, err := r.Handler.executeCommandWithPipe([]string{}, args, 50)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster reshard (%v): from [%s] to [%s] stdout: %s | stderr : %s | err: %v", nodeIP, sourceId, targetId, stdout, stderr, err)
 	}
@@ -587,7 +587,7 @@ func (r *RedisCLI) ClusterFix(nodeIP string, opt ...string) (bool, string, error
 	args := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	pipeArgs := []string{"yes", "yes"}
-	stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args, 60)
+	stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args, 50)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster fix (%v): %s | %s | %v", addressPortDecider(nodeIP, r.Port), stdout, stderr, err)
 	}

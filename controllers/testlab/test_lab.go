@@ -42,9 +42,9 @@ var sleepPerHealthCheck time.Duration = 10 * time.Second
 var dataWriteRetries int = 5
 var dataReadRetries int = 5
 
-var intervalsBetweenWrites time.Duration = 2 * time.Second
+var intervalsBetweenWrites time.Duration = 1 * time.Second
 
-var totalDataWrites int = 20
+var totalDataWrites int = 200
 
 func (t *TestLab) RunTest(wg *sync.WaitGroup, nodes *map[string]*view.NodeStateView) {
 	defer wg.Done()

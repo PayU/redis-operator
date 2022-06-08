@@ -166,7 +166,7 @@ func (r *RedisClusterReconciler) cleanMapFromNodesToRemove(redisCluster *dbv1.Re
 	podsToDelete := []corev1.Pod{}
 	toDeleteFromMap := []string{}
 
-	// first remove all followers (followers get errored when forgetting masters)
+	// first remove followers (followers get errored when forgetting masters)
 	for _, n := range r.RedisClusterStateView.Nodes {
 		if n.Name != n.LeaderName {
 			node, exists := v.Nodes[n.Name]
@@ -187,7 +187,7 @@ func (r *RedisClusterReconciler) cleanMapFromNodesToRemove(redisCluster *dbv1.Re
 		}
 	}
 
-	// second remove all leaders from cluster
+	// second remove leaders
 	for _, n := range r.RedisClusterStateView.Nodes {
 		if n.Name == n.LeaderName {
 			node, exists := v.Nodes[n.Name]
@@ -398,9 +398,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		if err != nil || clusterNodes == nil {
 			continue
 		}
-		mutex.Lock()
 		healthyNodes[node.Id] = node.Ip
-		mutex.Unlock()
 		for _, tableNode := range *clusterNodes {
 			if strings.Contains(tableNode.Flags, "fail") {
 				lostIds[tableNode.ID] = true
@@ -657,14 +655,14 @@ func (r *RedisClusterReconciler) recoverNodes(redisCluster *dbv1.RedisCluster, v
 		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
-			//mutex.Lock()
+			mutex.Lock()
 			defer wg.Done()
-			//mutex.Unlock()
+			mutex.Unlock()
 			pod, proceed := r.retrievePodForProcessing(n.Name, n.LeaderName, pods, v, mutex)
 			if !proceed {
 				return
 			}
-			op := r.handleInterruptedClusterHealthFlow(redisCluster, n, pod, v)
+			op := r.handleInterruptedClusterHealthFlow(redisCluster, n, pod, v, mutex)
 			if op {
 				mutex.Lock()
 				actionRequired = true
@@ -708,7 +706,7 @@ func (r *RedisClusterReconciler) handleInterruptedScaleFlows(redisCluster *dbv1.
 	return actionRequired
 }
 
-func (r *RedisClusterReconciler) handleInterruptedClusterHealthFlow(redisCluster *dbv1.RedisCluster, n *view.NodeStateView, pod corev1.Pod, v *view.RedisClusterView) bool {
+func (r *RedisClusterReconciler) handleInterruptedClusterHealthFlow(redisCluster *dbv1.RedisCluster, n *view.NodeStateView, pod corev1.Pod, v *view.RedisClusterView, mutex *sync.Mutex) bool {
 
 	promotedMasterReplica, hasPromotedReplica := r.findPromotedMasterReplica(n.LeaderName, v)
 	if !hasPromotedReplica || promotedMasterReplica == nil {
@@ -1327,50 +1325,37 @@ func (r *RedisClusterReconciler) checkIfNodeAligned(n *view.NodeStateView, node 
 }
 
 func (r *RedisClusterReconciler) findHealthyLeader(v *view.RedisClusterView, exclude ...map[string]bool) (name string, found bool) {
-	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
-	name = ""
-	found = false
 	for _, node := range v.Nodes {
 		if node == nil {
 			continue
 		}
-		wg.Add(1)
-		go func(node *view.NodeView, wg *sync.WaitGroup) {
-			mutex.Lock()
-			defer wg.Done()
-			mutex.Unlock()
-			if found {
-				return
-			}
-			if len(exclude) > 0 {
-				skipNode := false
-				for _, excludeMap := range exclude {
-					if _, excludeNode := excludeMap[node.Name]; excludeNode {
-						skipNode = true
-						break
-					}
-				}
-				if skipNode {
-					return
+		if len(exclude) > 0 {
+			skipNode := false
+			for _, excludeMap := range exclude {
+				if _, excludeNode := excludeMap[node.Name]; excludeNode {
+					skipNode = true
+					break
 				}
 			}
-			if n, exists := r.RedisClusterStateView.Nodes[node.Name]; exists && n.NodeState == view.NodeOK {
-				isMaster, err := r.checkIfMaster(node.Ip)
-				if err != nil {
-					return
-				}
-				if isMaster {
-					mutex.Lock()
-					name = n.Name
-					found = true
-					mutex.Unlock()
-				}
+			if skipNode {
+				continue
 			}
-		}(node, &wg)
+		}
+		if n, exists := r.RedisClusterStateView.Nodes[node.Name]; exists && n.NodeState == view.NodeOK {
+			isMaster, err := r.checkIfMaster(node.Ip)
+			if err != nil {
+				continue
+			}
+			if isMaster {
+				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+				if err != nil || nodes == nil || len(*nodes) <= 1 {
+					continue
+				}
+				return node.Name, len(node.Name) > 0
+			}
+		}
 	}
-	wg.Wait()
-	return name, found
+	return "", false
 }
 
 func (r *RedisClusterReconciler) isScaleRequired(redisCluster *dbv1.RedisCluster) (bool, ScaleType) {
