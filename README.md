@@ -87,7 +87,7 @@ go test -count=1 ./controllers/rediscli/
 Test cluster feature is a set of tests implemented to run asynchrounously to the operator manager loop, they simulates:
 * Loss of random follower in cluster
 * Loss of random leader in cluster
-* Loss of random follower and random leader (that own different set of slots)
+* Loss of random follower and random leader (that owns different set of slots)
 * Loss of all followers
 * Loss of all nodes beside one replica for each set of slots range, randomely chosen - somethines the survivor is follower and sometimes it is leader (actual scenario for example is loss of all az's beside one)
 * Loss of leader and all of its followrs
@@ -100,7 +100,7 @@ The report reflects:
 * How many reads succeded with ratio to the number of successful writes
 * Both values in terms of: Actual amount and Success rate
 
-Running the flow:
+Run the test:
 * Port forward the manager to some local port (8080 for example)
 * ```Curl -X POST localhost:<forwarded port for example 8080>/test```
 
