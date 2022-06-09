@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 
 	"github.com/PayU/redis-operator/controllers/rediscli"
 	"github.com/PayU/redis-operator/controllers/view"
@@ -32,12 +31,10 @@ func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *Re
 			clients: map[string]*redis.Client{},
 		}
 	}
-	mutex := &sync.Mutex{}
 	for _, n := range v.Nodes {
 		if n == nil {
 			continue
 		}
-		mutex.Lock()
 		nodes, _, err := cli.ClusterNodes(n.Ip)
 		if err != nil || nodes == nil || len(*nodes) <= 1 {
 			continue
@@ -48,7 +45,6 @@ func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *Re
 			Username: "admin",
 			Password: "adminpass",
 		})
-		mutex.Unlock()
 	}
 	return clusterClient
 }
@@ -71,10 +67,7 @@ func (c *RedisClusterClient) set(ctx context.Context, key string, val interface{
 	if lookups == 0 {
 		return errors.New(fmt.Sprintf("Could not write data row [%v, %v]", key, val))
 	}
-	mutex := &sync.Mutex{}
-	mutex.Lock()
 	client, exists := c.clients[addr]
-	mutex.Unlock()
 	if !exists || client == nil {
 		return errors.New(fmt.Sprintf("Client [%v] doesnt exists", addr))
 	}
@@ -110,10 +103,7 @@ func (c *RedisClusterClient) get(ctx context.Context, key string, addr string, l
 	if lookups == 0 {
 		return "", errors.New(fmt.Sprintf("Could not extract key [%v]", key))
 	}
-	mutex := &sync.Mutex{}
-	mutex.Lock()
 	client, exists := c.clients[addr]
-	mutex.Unlock()
 	if !exists || client == nil {
 		return "", errors.New(fmt.Sprintf("Client [%v] doesnt exists", addr))
 	}
