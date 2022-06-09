@@ -86,8 +86,6 @@ type RedisClusterReconciler struct {
 var reconciler *RedisClusterReconciler
 var cluster *dbv1.RedisCluster
 
-//var mutex *sync.Mutex = &sync.Mutex{}
-
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=*,resources=pods;services;configmaps,verbs=create;update;patch;get;list;watch;delete
@@ -151,7 +149,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.RedisCluster) {
 	if r.RedisClusterStateView != nil {
 		saveStatusOnQuit := make(chan os.Signal, 1)
-		signal.Notify(saveStatusOnQuit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGSEGV, syscall.SIGKILL)
+		signal.Notify(saveStatusOnQuit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
 		go func() {
 			<-saveStatusOnQuit
 			close(saveStatusOnQuit)
@@ -500,8 +498,8 @@ func PopulateClusterWithData(c echo.Context) error {
 		println(n.Name + ": " + info.Memory["used_memory_human"])
 	}
 
-	total := 24000000
-	init := 0
+	total := 48000000
+	init := 42000000
 	sw := 0
 
 	println("populating: ")

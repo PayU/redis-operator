@@ -593,3 +593,13 @@ func (r *RedisCLI) ClusterFix(nodeIP string, opt ...string) (bool, string, error
 	}
 	return true, stdout, nil
 }
+
+func (r *RedisCLI) Role(nodeIP string) (string, error) {
+	args := []string{"-h", nodeIP, "role"}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth)
+	stdout, stderr, err := r.Handler.executeCommand(args)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute Role (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return stdout, nil
+}

@@ -331,9 +331,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
-			mutex.Lock()
 			defer wg.Done()
-			mutex.Unlock()
 			r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
 			pod, err := r.makeAndCreateRedisPod(redisCluster, n, createOpts)
 			if err != nil {
@@ -356,9 +354,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		for _, p := range newPods {
 			wg.Add(1)
 			go func(p corev1.Pod, wg *sync.WaitGroup) {
-				mutex.Lock()
 				defer wg.Done()
-				mutex.Unlock()
 				readyPod, err := r.waitForRedisPod(p)
 				if err != nil {
 					r.deletePod(p)
@@ -499,13 +495,10 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 
 func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	for _, p := range pods {
 		wg.Add(1)
 		go func(p corev1.Pod, wg *sync.WaitGroup) {
-			mutex.Lock()
 			defer wg.Done()
-			mutex.Unlock()
 			key, err := client.ObjectKeyFromObject(&p)
 			if err != nil {
 				r.Log.Error(err, "Error while getting object key for deletion process")

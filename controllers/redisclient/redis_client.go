@@ -32,32 +32,24 @@ func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *Re
 			clients: map[string]*redis.Client{},
 		}
 	}
-	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
 	for _, n := range v.Nodes {
 		if n == nil {
 			continue
 		}
-		wg.Add(1)
-		go func(n *view.NodeView, wg *sync.WaitGroup) {
-			mutex.Lock()
-			defer wg.Done()
-			mutex.Unlock()
-			nodes, _, err := cli.ClusterNodes(n.Ip)
-			if err != nil || nodes == nil || len(*nodes) <= 1 {
-				return
-			}
-			addr := n.Ip + ":" + cli.Port
-			mutex.Lock()
-			clusterClient.clients[addr] = redis.NewClient(&redis.Options{
-				Addr:     addr,
-				Username: "admin",
-				Password: "adminpass",
-			})
-			mutex.Unlock()
-		}(n, &wg)
+		mutex.Lock()
+		nodes, _, err := cli.ClusterNodes(n.Ip)
+		if err != nil || nodes == nil || len(*nodes) <= 1 {
+			continue
+		}
+		addr := n.Ip + ":" + cli.Port
+		clusterClient.clients[addr] = redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Username: "admin",
+			Password: "adminpass",
+		})
+		mutex.Unlock()
 	}
-	wg.Wait()
 	return clusterClient
 }
 
@@ -79,7 +71,10 @@ func (c *RedisClusterClient) set(ctx context.Context, key string, val interface{
 	if lookups == 0 {
 		return errors.New(fmt.Sprintf("Could not write data row [%v, %v]", key, val))
 	}
+	mutex := &sync.Mutex{}
+	mutex.Lock()
 	client, exists := c.clients[addr]
+	mutex.Unlock()
 	if !exists || client == nil {
 		return errors.New(fmt.Sprintf("Client [%v] doesnt exists", addr))
 	}
@@ -100,6 +95,7 @@ func (c *RedisClusterClient) Get(key string, retries int) (value string, err err
 	if retries == 0 {
 		return "", errors.New(fmt.Sprintf("Could not extract key [%v]", key))
 	}
+
 	ctx := context.Background()
 	for addr := range c.clients {
 		v, e := c.get(ctx, key, addr, lookups)
@@ -114,7 +110,10 @@ func (c *RedisClusterClient) get(ctx context.Context, key string, addr string, l
 	if lookups == 0 {
 		return "", errors.New(fmt.Sprintf("Could not extract key [%v]", key))
 	}
+	mutex := &sync.Mutex{}
+	mutex.Lock()
 	client, exists := c.clients[addr]
+	mutex.Unlock()
 	if !exists || client == nil {
 		return "", errors.New(fmt.Sprintf("Client [%v] doesnt exists", addr))
 	}

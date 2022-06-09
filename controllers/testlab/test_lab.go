@@ -30,14 +30,14 @@ type TestLab struct {
 var fetchViewInterval = 10 * time.Second
 var fetchViewTimeOut = 2 * time.Minute
 
-var clusterHealthCheckInterval = 20 * time.Second
+var clusterHealthCheckInterval = 5 * time.Second
 var clusterHealthCheckTimeOutLimit = 4 * time.Minute
 
 var randomChoiceRetries int = 4
 
 var sleepPerTest time.Duration = 10 * time.Second
 var sleepPerPodCheck time.Duration = 2 * time.Second
-var sleepPerHealthCheck time.Duration = 10 * time.Second
+var sleepPerHealthCheck time.Duration = 5 * time.Second
 
 var dataWriteRetries int = 5
 var dataReadRetries int = 5
@@ -128,22 +128,17 @@ func (t *TestLab) test_delete_follower_with_data(nodes *map[string]*view.NodeSta
 	}
 	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	result := false
 	sw := 0
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		result = t.test_delete_follower(nodes, testNum)
 	}(&wg)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		sw, data = t.testDataWrites(totalDataWrites)
 	}(&wg)
 	wg.Wait()
@@ -168,22 +163,17 @@ func (t *TestLab) test_delete_leader_with_data(nodes *map[string]*view.NodeState
 	}
 	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	result := false
 	sw := 0
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		result = t.test_delete_leader(nodes, testNum)
 	}(&wg)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		sw, data = t.testDataWrites(totalDataWrites)
 	}(&wg)
 	wg.Wait()
@@ -208,22 +198,17 @@ func (t *TestLab) test_delete_leader_and_follower_with_data(nodes *map[string]*v
 	}
 	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	result := false
 	sw := 0
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		result = t.test_delete_leader_and_follower(nodes, testNum)
 	}(&wg)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		sw, data = t.testDataWrites(totalDataWrites)
 	}(&wg)
 	wg.Wait()
@@ -253,22 +238,17 @@ func (t *TestLab) test_delete_all_followers_with_data(nodes *map[string]*view.No
 	}
 	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	result := false
 	sw := 0
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		result = t.test_delete_all_followers(nodes, testNum)
 	}(&wg)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		sw, data = t.testDataWrites(totalDataWrites)
 	}(&wg)
 	wg.Wait()
@@ -298,22 +278,17 @@ func (t *TestLab) test_delete_leader_and_all_its_followers_with_data(nodes *map[
 	}
 	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	result := false
 	sw := 0
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		result = t.test_delete_leader_and_all_its_followers(nodes, testNum)
 	}(&wg)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		sw, data = t.testDataWrites(totalDataWrites)
 	}(&wg)
 	wg.Wait()
@@ -348,22 +323,17 @@ func (t *TestLab) test_delete_all_azs_beside_one_with_data(nodes *map[string]*vi
 	}
 	//t.RedisClusterClient.FlushAllData()
 	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
 	result := false
 	sw := 0
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		result = t.test_delete_all_azs_beside_one(nodes, testNum)
 	}(&wg)
 	go func(wg *sync.WaitGroup) {
-		mutex.Lock()
 		defer wg.Done()
-		mutex.Unlock()
 		sw, data = t.testDataWrites(totalDataWrites)
 	}(&wg)
 	wg.Wait()
@@ -512,52 +482,30 @@ func (t *TestLab) waitForHealthyCluster(nodes *map[string]*view.NodeStateView) b
 	return isHealthyCluster
 }
 
-func (t *TestLab) isClusterAligned(nodes *map[string]*view.NodeStateView) bool {
+func (t *TestLab) isClusterAligned(expectedNodes *map[string]*view.NodeStateView) bool {
 	v := t.WaitForClusterView()
 	if v == nil {
 		return false
 	}
 	t.Log.Info("[TEST LAB] Checking if cluster is ready...")
-	var wg sync.WaitGroup
-	mutex := &sync.Mutex{}
-	aligned := true
-	for _, n := range *nodes {
-		wg.Add(1)
-		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
-			time.Sleep(sleepPerPodCheck)
-			mutex.Lock()
-			defer wg.Done()
-			mutex.Unlock()
-			if !aligned {
-				return
+	for _, n := range *expectedNodes {
+		time.Sleep(sleepPerPodCheck)
+		node, exists := v.Nodes[n.Name]
+		if !exists || node == nil {
+			return false
+		}
+		if node.IsLeader {
+			if !t.isLeaderAligned(node) {
+				return false
 			}
-			node, exists := v.Nodes[n.Name]
-			if !exists || node == nil {
-				mutex.Lock()
-				aligned = false
-				mutex.Unlock()
-				return
+		} else {
+			if !t.isFollowerAligned(node, expectedNodes) {
+				return false
 			}
-			if node.IsLeader {
-				if !t.isLeaderAligned(node) {
-					mutex.Lock()
-					aligned = false
-					mutex.Unlock()
-					return
-				}
-			} else {
-				if !t.isFollowerAligned(node, nodes) {
-					mutex.Lock()
-					aligned = false
-					mutex.Unlock()
-					return
-				}
-			}
-		}(n, &wg)
+		}
 	}
-	wg.Wait()
 	totalExpectedNodes := t.Cluster.Spec.LeaderCount * (t.Cluster.Spec.LeaderFollowersCount + 1)
-	clusterOK := aligned && len(v.Nodes) == totalExpectedNodes && len(*nodes) == totalExpectedNodes
+	clusterOK := len(v.Nodes) == totalExpectedNodes && len(*expectedNodes) == totalExpectedNodes
 	if clusterOK {
 		t.RedisClusterClient = redisclient.GetRedisClusterClient(v, t.RedisCLI)
 	}

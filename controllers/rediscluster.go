@@ -149,10 +149,7 @@ func (r *RedisClusterReconciler) doFailover(promotedNodeIp string, opt ...string
 	if err != nil {
 		return err
 	}
-	if err := r.waitForManualFailover(promotedNodeIp); err != nil {
-		return err
-	}
-	return nil
+	return r.waitForManualFailover(promotedNodeIp)
 }
 
 func (r *RedisClusterReconciler) cleanMapFromNodesToRemove(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) {
@@ -324,9 +321,7 @@ func (r *RedisClusterReconciler) addLeaderNodes(redisCluster *dbv1.RedisCluster,
 	for _, leader := range leaders {
 		wg.Add(1)
 		go func(leader corev1.Pod, wg *sync.WaitGroup) {
-			mutex.Lock()
 			defer wg.Done()
-			mutex.Unlock()
 			if r.preperNewRedisNode(leader, mutex) {
 				mutex.Lock()
 				readyNodes = append(readyNodes, leader)
@@ -477,9 +472,7 @@ func (r *RedisClusterReconciler) detectLossOfLeadersWithAllReplicas(v *view.Redi
 		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
-			mutex.Lock()
 			defer wg.Done()
-			mutex.Unlock()
 			_, exists := v.Nodes[n.Name]
 			if exists || n.NodeState == view.DeleteNode || n.NodeState == view.ReshardNode || n.NodeState == view.DeleteNodeKeepInMap || n.NodeState == view.ReshardNodeKeepInMap {
 				return
@@ -658,9 +651,7 @@ func (r *RedisClusterReconciler) recoverNodes(redisCluster *dbv1.RedisCluster, v
 		}
 		wg.Add(1)
 		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
-			mutex.Lock()
 			defer wg.Done()
-			mutex.Unlock()
 			pod, proceed := r.retrievePodForProcessing(n.Name, n.LeaderName, pods, v, mutex)
 			if !proceed {
 				return
@@ -876,9 +867,7 @@ func (r *RedisClusterReconciler) detectNodeTableMissalignments(v *view.RedisClus
 		}
 		wg.Add(1)
 		go func(node *view.NodeView, wg *sync.WaitGroup) {
-			mutex.Lock()
 			defer wg.Done()
-			mutex.Unlock()
 			followerNodes, err := r.ClusterNodesWaitForRedisLoadDataSetInMemory(node.Ip)
 			if err != nil || followerNodes == nil || len(*followerNodes) == 1 {
 				return
