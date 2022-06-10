@@ -143,7 +143,7 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 
 	wg.Add(len(rdcPods.Items))
 	for i := range rdcPods.Items {
-		go func(failSignal *bool, pod *corev1.Pod, wg *sync.WaitGroup) {
+		go func(failSignal *bool, pod *corev1.Pod) {
 			defer wg.Done()
 			if _, e := r.RedisCLI.Ping(pod.Status.PodIP); e != nil {
 				r.Log.Info(fmt.Sprintf("[Warn] ACL config sync is not ready yet for pod: [%v]", pod.Name))
@@ -198,7 +198,7 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 					}
 				}
 			}
-		}(&syncFail, &rdcPods.Items[i], &wg)
+		}(&syncFail, &rdcPods.Items[i])
 	}
 
 	wg.Wait()

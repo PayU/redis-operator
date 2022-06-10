@@ -390,25 +390,15 @@ func (r *RedisCLI) Info(nodeIP string, opt ...string) (*RedisInfo, string, error
 	return c, stdout, e
 }
 
-func (r *RedisCLI) DBSIZE(nodeIP string, opt ...string) (int, string, error) {
+func (r *RedisCLI) DBSIZE(nodeIP string, opt ...string) (int64, string, error) {
 	args := []string{"-h", nodeIP, "DBSIZE"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
-		return 0, "", errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+		return 0, stdout, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
-	resultFormat := "\\(integer\\)\\s*(\\d+)"
-	comp := regexp.MustCompile(resultFormat)
-	matchingSubstrings := comp.FindAllStringSubmatch(stdout, -1)
-	if len(matchingSubstrings) > 1 {
-		result := matchingSubstrings[0][1]
-		dbsize, err := strconv.Atoi(result)
-		if err != nil {
-			return dbsize, stdout, nil
-		}
-		return 0, stdout, err
-	}
-	return 0, stdout, errors.New("redis-cli DBSIZE command errorred for unsupported result format: " + stdout)
+	dbsize, err := strconv.ParseInt(stdout, 10, 64)
+	return dbsize, stdout, err
 }
 
 // https://redis.io/commands/ping

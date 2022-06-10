@@ -276,9 +276,7 @@ func (r *RedisClusterReconciler) handleRecoveringState(redisCluster *dbv1.RedisC
 func (r *RedisClusterReconciler) handleUpdatingState(redisCluster *dbv1.RedisCluster) error {
 	var err error = nil
 	r.Log.Info("Handling rolling update...")
-	if err = r.updateCluster(redisCluster); err != nil {
-		r.Log.Info("Rolling update failed")
-	}
+	r.updateCluster(redisCluster)
 	redisCluster.Status.ClusterState = string(Recovering)
 	return err
 }

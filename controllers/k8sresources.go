@@ -311,12 +311,13 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		}
 		node, exists := v.Nodes[n.Name]
 		if exists && node != nil {
-			nodes, err := r.ClusterNodesWaitForRedisLoadDataSetInMemory(node.Ip)
-			if err != nil || nodes == nil {
+			ipsToNodes, err := r.ClusterNodesWaitForRedisLoadDataSetInMemory(node.Ip)
+			nodesTable, exists := ipsToNodes[node.Ip]
+			if !exists || err != nil || nodesTable == nil || len(*nodesTable) < 1 {
 				r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
 				continue
 			}
-			if len(*nodes) == 1 {
+			if len(*nodesTable) == 1 {
 				r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
 				continue
 			} else {
@@ -330,7 +331,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			continue
 		}
 		wg.Add(1)
-		go func(n *view.NodeStateView, wg *sync.WaitGroup) {
+		go func(n *view.NodeStateView) {
 			defer wg.Done()
 			r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
 			pod, err := r.makeAndCreateRedisPod(redisCluster, n, createOpts)
@@ -340,7 +341,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			mutex.Lock()
 			pods = append(pods, pod)
 			mutex.Unlock()
-		}(n, &wg)
+		}(n)
 	}
 	wg.Wait()
 	readyPods := map[string]corev1.Pod{}
@@ -353,7 +354,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 		}
 		for _, p := range newPods {
 			wg.Add(1)
-			go func(p corev1.Pod, wg *sync.WaitGroup) {
+			go func(p corev1.Pod) {
 				defer wg.Done()
 				readyPod, err := r.waitForRedisPod(p)
 				if err != nil {
@@ -365,7 +366,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 				s := r.RedisClusterStateView.Nodes[readyPod.Name]
 				r.RedisClusterStateView.SetNodeState(s.Name, s.LeaderName, view.AddNode)
 				mutex.Unlock()
-			}(p, &wg)
+			}(p)
 		}
 		wg.Wait()
 	}
@@ -497,7 +498,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 	var wg sync.WaitGroup
 	for _, p := range pods {
 		wg.Add(1)
-		go func(p corev1.Pod, wg *sync.WaitGroup) {
+		go func(p corev1.Pod) {
 			defer wg.Done()
 			key, err := client.ObjectKeyFromObject(&p)
 			if err != nil {
@@ -518,7 +519,7 @@ func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 				r.Log.Error(err, "Error while waiting for pod to be deleted")
 				return
 			}
-		}(p, &wg)
+		}(p)
 	}
 	wg.Wait()
 }
@@ -572,19 +573,26 @@ func (r *RedisClusterReconciler) deleteClusterStateView(redisCluster *dbv1.Redis
 	return nil
 }
 
-func (r *RedisClusterReconciler) ClusterNodesWaitForRedisLoadDataSetInMemory(ip string) (nodes *rediscli.RedisClusterNodes, err error) {
+func (r *RedisClusterReconciler) ClusterNodesWaitForRedisLoadDataSetInMemory(ips ...string) (ipsToNodes map[string]*rediscli.RedisClusterNodes, err error) {
+	if len(ips) == 0 {
+		return nil, nil
+	}
+	ipsToNodes = map[string]*rediscli.RedisClusterNodes{}
 	if pollErr := wait.PollImmediate(2*time.Second, 10*time.Second, func() (bool, error) {
-		nodes, _, err = r.RedisCLI.ClusterNodes(ip)
-		if err != nil {
-			if strings.Contains(err.Error(), "Redis is loading the dataset in memory") {
-				return false, nil
+		for _, ip := range ips {
+			nodes, _, err := r.RedisCLI.ClusterNodes(ip)
+			if err != nil {
+				if strings.Contains(err.Error(), "Redis is loading the dataset in memory") {
+					return false, nil
+				}
+				return false, err
 			}
-			return false, err
+			ipsToNodes[ip] = nodes
 		}
 		return true, err
 	}); pollErr != nil {
 		return nil, pollErr
 	}
 
-	return nodes, err
+	return ipsToNodes, err
 }

@@ -27,7 +27,7 @@ type TestLab struct {
 	Report             string
 }
 
-var fetchViewInterval = 10 * time.Second
+var fetchViewInterval = 5 * time.Second
 var fetchViewTimeOut = 2 * time.Minute
 
 var clusterHealthCheckInterval = 5 * time.Second
@@ -35,7 +35,7 @@ var clusterHealthCheckTimeOutLimit = 4 * time.Minute
 
 var randomChoiceRetries int = 4
 
-var sleepPerTest time.Duration = 10 * time.Second
+var sleepPerTest time.Duration = 5 * time.Second
 var sleepPerPodCheck time.Duration = 2 * time.Second
 var sleepPerHealthCheck time.Duration = 5 * time.Second
 
@@ -133,14 +133,14 @@ func (t *TestLab) test_delete_follower_with_data(nodes *map[string]*view.NodeSta
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		defer wg.Done()
 		result = t.test_delete_follower(nodes, testNum)
-	}(&wg)
-	go func(wg *sync.WaitGroup) {
+	}()
+	go func() {
 		defer wg.Done()
 		sw, data = t.testDataWrites(totalDataWrites)
-	}(&wg)
+	}()
 	wg.Wait()
 	sr = t.testDataReads(data)
 	t.analyzeDataResults(totalDataWrites, sw, sr)
@@ -168,14 +168,14 @@ func (t *TestLab) test_delete_leader_with_data(nodes *map[string]*view.NodeState
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		defer wg.Done()
 		result = t.test_delete_leader(nodes, testNum)
-	}(&wg)
-	go func(wg *sync.WaitGroup) {
+	}()
+	go func() {
 		defer wg.Done()
 		sw, data = t.testDataWrites(totalDataWrites)
-	}(&wg)
+	}()
 	wg.Wait()
 	sr = t.testDataReads(data)
 	t.analyzeDataResults(totalDataWrites, sw, sr)
@@ -203,14 +203,14 @@ func (t *TestLab) test_delete_leader_and_follower_with_data(nodes *map[string]*v
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		defer wg.Done()
 		result = t.test_delete_leader_and_follower(nodes, testNum)
-	}(&wg)
-	go func(wg *sync.WaitGroup) {
+	}()
+	go func() {
 		defer wg.Done()
 		sw, data = t.testDataWrites(totalDataWrites)
-	}(&wg)
+	}()
 	wg.Wait()
 	sr = t.testDataReads(data)
 	t.analyzeDataResults(totalDataWrites, sw, sr)
@@ -243,14 +243,14 @@ func (t *TestLab) test_delete_all_followers_with_data(nodes *map[string]*view.No
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		defer wg.Done()
 		result = t.test_delete_all_followers(nodes, testNum)
-	}(&wg)
-	go func(wg *sync.WaitGroup) {
+	}()
+	go func() {
 		defer wg.Done()
 		sw, data = t.testDataWrites(totalDataWrites)
-	}(&wg)
+	}()
 	wg.Wait()
 	sr = t.testDataReads(data)
 	t.analyzeDataResults(totalDataWrites, sw, sr)
@@ -283,14 +283,14 @@ func (t *TestLab) test_delete_leader_and_all_its_followers_with_data(nodes *map[
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		defer wg.Done()
 		result = t.test_delete_leader_and_all_its_followers(nodes, testNum)
-	}(&wg)
-	go func(wg *sync.WaitGroup) {
+	}()
+	go func() {
 		defer wg.Done()
 		sw, data = t.testDataWrites(totalDataWrites)
-	}(&wg)
+	}()
 	wg.Wait()
 	sr = t.testDataReads(data)
 	t.analyzeDataResults(totalDataWrites, sw, sr)
@@ -328,14 +328,14 @@ func (t *TestLab) test_delete_all_azs_beside_one_with_data(nodes *map[string]*vi
 	sr := 0
 	data := map[string]string{}
 	wg.Add(2)
-	go func(wg *sync.WaitGroup) {
+	go func() {
 		defer wg.Done()
 		result = t.test_delete_all_azs_beside_one(nodes, testNum)
-	}(&wg)
-	go func(wg *sync.WaitGroup) {
+	}()
+	go func() {
 		defer wg.Done()
 		sw, data = t.testDataWrites(totalDataWrites)
-	}(&wg)
+	}()
 	wg.Wait()
 	sr = t.testDataReads(data)
 	t.analyzeDataResults(totalDataWrites, sw, sr)
