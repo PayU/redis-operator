@@ -31,7 +31,7 @@ var fetchViewInterval = 5 * time.Second
 var fetchViewTimeOut = 2 * time.Minute
 
 var clusterHealthCheckInterval = 5 * time.Second
-var clusterHealthCheckTimeOutLimit = 4 * time.Minute
+var clusterHealthCheckTimeOutLimit = 5 * time.Minute
 
 var randomChoiceRetries int = 4
 
@@ -42,7 +42,7 @@ var sleepPerHealthCheck time.Duration = 5 * time.Second
 var dataWriteRetries int = 5
 var dataReadRetries int = 5
 
-var intervalsBetweenWrites time.Duration = 1 * time.Second
+var intervalsBetweenWrites time.Duration = 500 * time.Millisecond
 
 var totalDataWrites int = 200
 

@@ -117,6 +117,8 @@ type OperatorConfigTimes struct {
 	RedisNodesAgreeAboutSlotsConfigCheckInterval time.Duration `yaml:"RedisNodesAgreeAboutSlotsConfigCheckInterval"`
 	RedisRemoveNodeCheckInterval                 time.Duration `yaml:"RedisRemoveNodeCheckInterval"`
 	RedisRemoveNodeTimeout                       time.Duration `yaml:"RedisRemoveNodeTimeout"`
+	WaitForRedisLoadDataSetInMemoryCheckInterval time.Duration `yaml:"WaitForRedisLoadDataSetInMemoryCheckInterval"`
+	WaitForRedisLoadDataSetInMemoryTimeout       time.Duration `yaml:"WaitForRedisLoadDataSetInMemoryTimeout"`
 }
 
 type OperatorConfig struct {
@@ -175,6 +177,8 @@ func DefaultRedisOperatorConfig(logger logr.Logger) *RedisOperatorConfig {
 				RedisNodesAgreeAboutSlotsConfigTimeout:       12 * 1000 * time.Millisecond,
 				RedisRemoveNodeCheckInterval:                 2 * 1000 * time.Millisecond,
 				RedisRemoveNodeTimeout:                       12 * 1000 * time.Millisecond,
+				WaitForRedisLoadDataSetInMemoryCheckInterval: 2 * 1000 * time.Millisecond,
+				WaitForRedisLoadDataSetInMemoryTimeout:       10 * 1000 * time.Millisecond,
 			},
 		},
 	}

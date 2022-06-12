@@ -426,6 +426,21 @@ func ClusterTest(c echo.Context) error {
 	wg.Add(1)
 	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
 	wg.Wait()
+	println("test 1")
+	wg.Add(1)
+	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
+	wg.Wait()
+	println("test 2")
+	wg.Add(1)
+	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
+	wg.Wait()
+	println("test 3")
+	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
+	wg.Wait()
+	println("test 4")
+	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
+	wg.Wait()
+	println("test 5")
 	return c.String(http.StatusOK, t.Report)
 }
 
@@ -513,7 +528,7 @@ func PopulateClusterWithData(c echo.Context) error {
 	}
 
 	total := 50000000
-	init := 48000000
+	init := 0
 	sw := 0
 
 	println("populating: ")

@@ -28,6 +28,11 @@ const (
 	ScaleDownFollowers
 )
 
+var (
+	memorySizeFormat = "\\s*(\\d+\\.*\\d*)\\w+"
+	comp             = regexp.MustCompile(memorySizeFormat)
+)
+
 func (s ScaleType) String() string {
 	return [...]string{"ScaleUpLeaders", "ScaleUpFollowers", "ScaleDownLeaders", "ScaleDownFollowers"}[s]
 }
@@ -338,7 +343,7 @@ func (r *RedisClusterReconciler) addLeaderNodes(redisCluster *dbv1.RedisCluster,
 		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
 		r.joindNewLeaderToCluster(leader, healthyServerIp, mutex)
 	}
-	r.waitForAllNodesAgreeAboutSlotsConfiguration(v, redisCluster)
+	r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
 	return nil
 }
 
@@ -548,7 +553,7 @@ func (r *RedisClusterReconciler) findPromotedMasterReplica(leaderName string, v 
 	return nil, false
 }
 
-func (r *RedisClusterReconciler) retrievePodForProcessing(name string, leaderName string, pods map[string]corev1.Pod, v *view.RedisClusterView, mutex *sync.Mutex) (corev1.Pod, bool) {
+func (r *RedisClusterReconciler) retrievePodForProcessing(name string, leaderName string, pods map[string]corev1.Pod, v *view.RedisClusterView) (corev1.Pod, bool) {
 	pod := corev1.Pod{}
 	newPod, justCreated := pods[name]
 	existingNode, exists := v.Nodes[name]
@@ -683,7 +688,7 @@ func (r *RedisClusterReconciler) recoverNodes(redisCluster *dbv1.RedisCluster, v
 		wg.Add(1)
 		go func(n *view.NodeStateView) {
 			defer wg.Done()
-			pod, proceed := r.retrievePodForProcessing(n.Name, n.LeaderName, pods, v, mutex)
+			pod, proceed := r.retrievePodForProcessing(n.Name, n.LeaderName, pods, v)
 			if !proceed {
 				return
 			}
@@ -824,9 +829,7 @@ func (r *RedisClusterReconciler) recoverFromAddNode(p corev1.Pod, m *view.Missin
 			return err
 		}
 		r.Log.Info(fmt.Sprintf("Waiting for master node [%s] to meet [%s]", m.CurrentMasterName, m.Name))
-		mutex.Lock()
 		err = r.waitForRedisMeet(newPodIp)
-		mutex.Unlock()
 		if err != nil {
 			r.Log.Error(err, fmt.Sprintf("Error while waiting for cluster to meet [%s]", m.Name))
 			r.Log.Info(warnMsg)
@@ -981,7 +984,7 @@ func (r *RedisClusterReconciler) waitForNonReachablePodsTermination(redisCluster
 			continue
 		}
 		clusterInfo, _, e := r.RedisCLI.ClusterInfo(pod.Status.PodIP)
-		if e != nil || (*clusterInfo) == nil || (*clusterInfo)["cluster_state"] != "ok" {
+		if e != nil || (*clusterInfo) == nil {
 			nonReachablePods = append(nonReachablePods, pod)
 			continue
 		}
@@ -1108,8 +1111,6 @@ func (r *RedisClusterReconciler) waitForClusterCreate(leaderIPs []string) error 
 // Safe to be called with both followers and leaders, the call on a leader will be ignored
 func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeIP string) error {
 	r.Log.Info(fmt.Sprintf("Waiting for SYNC to start on [%s:%s]", m.Name, nodeIP))
-	memorySizeFormat := "\\s*(\\d+\\.*\\d*)\\w+"
-	comp := regexp.MustCompile(memorySizeFormat)
 	return wait.PollImmediate(r.Config.Times.SyncCheckInterval, r.Config.Times.SyncCheckTimeout, func() (bool, error) {
 		stdoutF, err := r.RedisCLI.Role(nodeIP)
 		if err != nil {

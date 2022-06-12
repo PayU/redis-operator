@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
 	rediscli "github.com/PayU/redis-operator/controllers/rediscli"
@@ -315,18 +314,18 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			ipsToNodes, err := r.ClusterNodesWaitForRedisLoadDataSetInMemory(node.Ip)
 			nodesTable, exists := ipsToNodes[node.Ip]
 			if !exists || err != nil || nodesTable == nil || len(*nodesTable) < 1 {
-				r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap, mutex)
+				r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
 				continue
 			}
 			if len(*nodesTable) == 1 {
-				r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.AddNode, mutex)
+				r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.AddNode)
 				continue
 			} else {
 				n, inMap := r.RedisClusterStateView.Nodes[node.Name]
 				if !inMap {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.ReplicateNode, mutex)
+					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.ReplicateNode)
 				} else if n.NodeState != view.ReplicateNode && n.NodeState != view.SyncNode {
-					r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.NodeOK, mutex)
+					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
 				}
 			}
 			continue
@@ -335,10 +334,10 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			continue
 		}
 		handledNodesCounter++
+		r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.CreateNode)
 		wg.Add(1)
 		go func(n *view.NodeStateView) {
 			defer wg.Done()
-			r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.CreateNode, mutex)
 			pod, err := r.makeAndCreateRedisPod(redisCluster, n, createOpts)
 			if err != nil {
 				return
@@ -585,7 +584,7 @@ func (r *RedisClusterReconciler) ClusterNodesWaitForRedisLoadDataSetInMemory(ips
 		return nil, nil
 	}
 	ipsToNodes = map[string]*rediscli.RedisClusterNodes{}
-	if pollErr := wait.PollImmediate(2*time.Second, 10*time.Second, func() (bool, error) {
+	if pollErr := wait.PollImmediate(r.Config.Times.WaitForRedisLoadDataSetInMemoryCheckInterval, r.Config.Times.WaitForRedisLoadDataSetInMemoryTimeout, func() (bool, error) {
 		for _, ip := range ips {
 			nodes, _, err := r.RedisCLI.ClusterNodes(ip)
 			if err != nil {
