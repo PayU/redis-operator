@@ -60,6 +60,7 @@ const ACLFileLoadDuration time.Duration = time.Millisecond * 500
 const redisConfigLabelKey string = "redis-cluster"
 const handleACLConfigErrorMessage = "Failed to handle ACL configuration"
 const operatorConfigLabelKey string = "redis-operator"
+const RedisClusterStateMapName string = "redis-cluster-state-map"
 
 func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
 	time.Sleep(ACLFilePropagationDuration)
@@ -238,8 +239,8 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	var configMap corev1.ConfigMap
 
 	if err := r.Get(context.Background(), req.NamespacedName, &configMap); err != nil {
-		if strings.Contains(err.Error(), "cluster-state-map") {
-			r.Log.Info("[Warn] Failed to fetch config map [cluster-state-map]")
+		if strings.Contains(err.Error(), RedisClusterStateMapName) {
+			r.Log.Info("[Warn] Failed to fetch config map [" + RedisClusterStateMapName + "]")
 		} else {
 			r.Log.Error(err, "Failed to fetch configmap")
 		}

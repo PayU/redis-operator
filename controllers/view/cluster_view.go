@@ -41,6 +41,7 @@ type RedisClusterStateView struct {
 	Name                                   string
 	ClusterState                           ClusterState
 	NumOfReconcileLoopsSinceHealthyCluster int
+	NumOfHealthyReconcileLoopsInRow        int
 	Nodes                                  map[string]*NodeStateView
 }
 
@@ -69,9 +70,9 @@ type MissingNodeView struct {
 }
 
 func (sv *RedisClusterStateView) CreateStateView(leaderCount int, followersPerLeaderCount int) {
-	sv.Name = "cluster-state-map"
 	sv.ClusterState = ClusterCreate
 	sv.NumOfReconcileLoopsSinceHealthyCluster = 0
+	sv.NumOfHealthyReconcileLoopsInRow = 0
 	sv.Nodes = make(map[string]*NodeStateView)
 	for l := 0; l < leaderCount; l++ {
 		name := "redis-node-" + fmt.Sprint(l)

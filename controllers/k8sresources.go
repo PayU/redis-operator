@@ -290,6 +290,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 	var pods []corev1.Pod
 	createOpts := []client.CreateOption{client.FieldOwner("redis-operator-controller")}
 	var wg sync.WaitGroup
+	handledNodesCounter := 0
 	mutex := &sync.Mutex{}
 	for _, n := range r.RedisClusterStateView.Nodes {
 		if n.NodeState == view.DeleteNode || n.NodeState == view.ReshardNode || n.NodeState == view.DeleteNodeKeepInMap || n.NodeState == view.ReshardNodeKeepInMap {
@@ -330,6 +331,10 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			}
 			continue
 		}
+		if handledNodesCounter >= r.Config.Thresholds.MaxToleratedPodsRecoverAtOnce {
+			continue
+		}
+		handledNodesCounter++
 		wg.Add(1)
 		go func(n *view.NodeStateView) {
 			defer wg.Done()
@@ -552,9 +557,11 @@ func (r *RedisClusterReconciler) deletePods(pods []corev1.Pod) ([]corev1.Pod, er
 }
 
 func (r *RedisClusterReconciler) deletePod(pod corev1.Pod) error {
-	if err := r.Delete(context.Background(), &pod); err != nil && apierrors.IsNotFound(err) {
-		r.Log.Error(err, "Could not delete pod: "+pod.Name)
-		return err
+	if err := r.Delete(context.Background(), &pod); err != nil {
+		if !strings.Contains(err.Error(), "not found") {
+			r.Log.Error(err, "Could not delete pod: "+pod.Name)
+			return err
+		}
 	}
 	return nil
 }

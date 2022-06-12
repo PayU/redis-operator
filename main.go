@@ -103,7 +103,7 @@ func startManager() {
 		RedisCLI:              getRedisCLI(&rdcLogger),
 		Config:                &operatorConfig.Config,
 		State:                 controllers.NotExists,
-		RedisClusterStateView: &view.RedisClusterStateView{Name: "cluster-state-map"},
+		RedisClusterStateView: &view.RedisClusterStateView{Name: controllers.RedisClusterStateMapName},
 	}).SetupWithManager(mgr); err != nil {
 		setupLogger.Error(err, "unable to create controller", "controller", "RedisCluster")
 		os.Exit(1)

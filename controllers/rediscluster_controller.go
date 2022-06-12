@@ -118,7 +118,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	// todo: ? scenario where cluster exists and for some reason map is missing -> trigger flow of build state view map out of existing cluster (with entry point by router), alert if it happens?
 
 	r.saveClusterStateOnSigTerm(&redisCluster)
-
+	println(r.State)
 	switch r.State {
 	case NotExists:
 		err = r.handleInitializingCluster(&redisCluster)
@@ -148,13 +148,16 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.RedisCluster) {
 	if r.RedisClusterStateView != nil {
+		mutex := &sync.Mutex{}
 		saveStatusOnQuit := make(chan os.Signal, 1)
 		signal.Notify(saveStatusOnQuit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
 		go func() {
 			<-saveStatusOnQuit
 			close(saveStatusOnQuit)
 			r.Log.Info("[WARN] reconcile loop interrupted by os signal, saving cluster state view...")
+			mutex.Lock()
 			r.saveClusterStateView(redisCluster)
+			mutex.Unlock()
 		}()
 	}
 }
@@ -213,39 +216,51 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if !ok {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster++
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
 	}
 	lostNodesDetected := r.forgetLostNodes(redisCluster, v)
 	if lostNodesDetected {
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		r.Log.Info("[Warn] Lost nodes detcted on some of the nodes tables...")
 		return nil
 	}
 	healthy, err := r.isClusterHealthy(redisCluster, v)
 	if err != nil {
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		r.Log.Info("Could not check if cluster is healthy")
 		return err
 	}
 	if !healthy {
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
 	}
 	uptodate, err := r.isClusterUpToDate(redisCluster, v)
 	if err != nil {
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		r.Log.Info("Could not check if cluster is updated")
 		redisCluster.Status.ClusterState = string(Recovering)
 		return err
 	}
 	if !uptodate {
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		redisCluster.Status.ClusterState = string(Updating)
 		return nil
 	}
 	scale, scaleType := r.isScaleRequired(redisCluster)
 	if scale {
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		r.Log.Info(fmt.Sprintf("Scale is required, scale type: [%v]", scaleType.String()))
 		redisCluster.Status.ClusterState = string(Scale)
 	}
 	r.Log.Info("Cluster is healthy")
+	if r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow < 10 {
+		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow++
+	} else {
+		r.Log.Info("[OK] Cluster is in finalized state")
+	}
 	return nil
 }
 
@@ -278,6 +293,7 @@ func (r *RedisClusterReconciler) handleUpdatingState(redisCluster *dbv1.RedisClu
 	r.Log.Info("Handling rolling update...")
 	r.updateCluster(redisCluster)
 	redisCluster.Status.ClusterState = string(Recovering)
+	reconciler.saveOperatorState(cluster)
 	return err
 }
 

@@ -2,11 +2,13 @@ package controllers
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -207,7 +209,7 @@ func (r *RedisClusterReconciler) cleanMapFromNodesToRemove(redisCluster *dbv1.Re
 	}
 
 	// third delete pods
-	r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+	r.waitForAllNodesAgreeAboutSlotsConfiguration(v, redisCluster)
 	deletedPods, err := r.deletePods(podsToDelete)
 	if err != nil {
 		r.Log.Error(err, "Error while attempting to delete removed pods")
@@ -224,7 +226,7 @@ func (r *RedisClusterReconciler) cleanMapFromNodesToRemove(redisCluster *dbv1.Re
 					r.deletePod(node.Pod)
 					return
 				}
-				r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+				r.waitForAllNodesAgreeAboutSlotsConfiguration(v, redisCluster)
 				r.scaleDownSingleUnit(node.Name, map[string]bool{node.Name: true}, v)
 				r.RedisClusterStateView.ClusterState = view.ClusterRebalance
 			}
@@ -306,6 +308,7 @@ func (r *RedisClusterReconciler) waitForAllNodesAgreeAboutSlotsConfiguration(v *
 		r.Log.Info("[Warn] Error occured during waiting for cluster nodes to agree about slots configuration, performing CLUSTER REBALANCE might need to be followed by CLUSTER FIX")
 	}
 }
+
 func (r *RedisClusterReconciler) addLeaderNodes(redisCluster *dbv1.RedisCluster, healthyServerIp string, leaderNames []string, v *view.RedisClusterView) error {
 	if len(leaderNames) == 0 {
 		return nil
@@ -408,31 +411,43 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 	if len(lostIds) > 0 {
 		r.Log.Info(fmt.Sprintf("List of healthy nodes: %v", healthyNodes))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
-		var wg sync.WaitGroup
-		for id, _ := range lostIds {
-			for _, ip := range healthyNodes {
-				wg.Add(1)
-				go func(ip string, id string) {
-					defer wg.Done()
-					_, err := r.RedisCLI.ClusterForget(ip, id)
-					if err != nil {
-						if strings.Contains(err.Error(), "Can't forget my master") {
-							println("ip: " + ip + " cant forget master ")
-							// for _, n := range v.Nodes {
-							// if n.Ip == ip {
-							// todo: if master reshard
-							// r.deletePod(n.Pod)
-							// }
-							// }
-						}
-					}
-				}(ip, id)
-			}
-		}
-		wg.Wait()
+		r.runForget(lostIds, healthyNodes, r.Config.Thresholds.AttemptsForgetNode)
 		r.Log.Info(fmt.Sprintf("Cluster FORGET sent for [%v] lost nodes", len(lostIds)))
 	}
 	return len(lostIds) > 0
+}
+
+func (r *RedisClusterReconciler) runForget(lostIds map[string]bool, healthyNodes map[string]string, retries int) {
+	println(retries)
+	if retries <= 0 {
+		return
+	}
+	missalignment := false
+	var wg sync.WaitGroup
+	for id, _ := range lostIds {
+		for _, ip := range healthyNodes {
+			wg.Add(1)
+			go func(ip string, id string) {
+				defer wg.Done()
+				if missalignment {
+					return
+				}
+				_, err := r.RedisCLI.ClusterForget(ip, id)
+				if err != nil {
+					if strings.Contains(err.Error(), "Can't forget my master") {
+						missalignment = true
+					}
+				}
+			}(ip, id)
+		}
+	}
+	wg.Wait()
+	if missalignment {
+		sleepDuration := r.Config.Times.SleepDuringTablesAlignProcess
+		r.Log.Info(fmt.Sprintf("[Warn] Redis tables for some nodes not aligned yet with other tables, redis tables update takes part every 10 seconds. Sleeping [%v]...", sleepDuration))
+		time.Sleep(sleepDuration)
+		r.runForget(lostIds, healthyNodes, retries-1)
+	}
 }
 
 func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
@@ -771,12 +786,9 @@ func (r *RedisClusterReconciler) recoverFromNewEmptyNode(name string, v *view.Re
 	if n, exists := v.Nodes[name]; exists && n != nil {
 		ipsToNodesTables, err := r.ClusterNodesWaitForRedisLoadDataSetInMemory(n.Ip)
 		nodesTable, exists := ipsToNodesTables[n.Ip]
-		if err != nil || !exists || nodesTable == nil {
+		if err != nil || !exists || nodesTable == nil || len(*nodesTable) <= 1 {
 			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
 			return
-		}
-		if len(*nodesTable) == 1 {
-			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
 		}
 		for _, tableNode := range *nodesTable {
 			if tableNode.ID == n.Id {
@@ -995,11 +1007,13 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	r.Log.Info("Updating Cluster Pods...")
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if !ok {
-		redisCluster.Status.ClusterState = string(Recovering)
 		return errors.New("Could not perform redis cluster update")
 	}
-
+	updatingPodsAtOnc := 0
 	for _, n := range v.Nodes {
+		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsRecoverAtOnce {
+			return nil
+		}
 		if n == nil {
 			continue
 		}
@@ -1009,46 +1023,34 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 				continue
 			}
 			if !podUpToDate {
+				updatingPodsAtOnc++
 				promotedReplica, err := r.failOverToReplica(n.Name, v)
 				if err != nil || promotedReplica == nil {
 					continue
 				}
 				r.deletePod(n.Pod)
-				redisCluster.Status.ClusterState = string(Recovering)
-				return nil
 			}
-			println("pod " + n.Name + " up to date")
 		}
 	}
+	if updatingPodsAtOnc > 0 {
+		return nil
+	}
 
-	println("starting updating followers: ")
 	for _, n := range v.Nodes {
+		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsRecoverAtOnce {
+			return nil
+		}
 		if n == nil {
 			continue
 		}
 		if n.Name != n.LeaderName {
-			println("follower name: " + n.Name)
 			podUpToDate, err := r.isPodUpToDate(redisCluster, n.Pod)
 			if err != nil {
-				println("err is not nil: " + err.Error())
 				continue
 			}
 			if !podUpToDate {
-				println("is not up to date " + n.Name)
-				for _, replica := range v.Nodes {
-					if replica.LeaderName == n.LeaderName {
-						println("replica with same leader name: " + replica.Name)
-						isMaster, err := r.checkIfMaster(replica.Ip)
-						println("is master? ")
-						println(isMaster)
-						if err != nil || !isMaster {
-							println("deleted replica: " + replica.Name)
-							r.deletePod(replica.Pod)
-						}
-					}
-				}
-				redisCluster.Status.ClusterState = string(Recovering)
-				return nil
+				r.deletePod(n.Pod)
+				updatingPodsAtOnc++
 			}
 		}
 	}
@@ -1108,9 +1110,7 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 	r.Log.Info(fmt.Sprintf("Waiting for SYNC to start on [%s:%s]", m.Name, nodeIP))
 	memorySizeFormat := "\\s*(\\d+\\.*\\d*)\\w+"
 	comp := regexp.MustCompile(memorySizeFormat)
-	var threshold int64 = 85
 	return wait.PollImmediate(r.Config.Times.SyncCheckInterval, r.Config.Times.SyncCheckTimeout, func() (bool, error) {
-		println("new follower")
 		stdoutF, err := r.RedisCLI.Role(nodeIP)
 		if err != nil {
 			return false, err
@@ -1158,16 +1158,20 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 			return false, err
 		}
 
-		if dbsizeL == 0 || memL == 0 {
-			return false, nil
+		var dbSizeMatch int64 = 100
+		var memSizeMatch float64 = 100.0
+
+		if dbsizeL > 0 {
+			dbSizeMatch = (dbsizeF * 100) / dbsizeL
 		}
 
-		dbSizeMatch := (dbsizeF * 100) / dbsizeL
-		memSizeMatch := (memF * 100) / memL
+		if memL > 0 {
+			memSizeMatch = (memF * 100) / memL
+			memSizeMatch = roundFloatToPercision(memSizeMatch, 3)
+		}
 
 		r.Log.Info(fmt.Sprintf("Checking sync on master [%v] to replica [%v]: Memory size (%v, %v, %v%v), DB size (%v, %v, %v%v)", m.CurrentMasterIp, nodeIP, memorySizeL, memorySizeF, memSizeMatch, "% match", dbsizeL, dbsizeF, dbSizeMatch, "% match"))
-
-		return dbSizeMatch >= threshold && memSizeMatch >= float64(threshold), nil
+		return dbSizeMatch >= int64(r.Config.Thresholds.SyncMatchThreshold) && memSizeMatch >= float64(r.Config.Thresholds.SyncMatchThreshold), nil
 	})
 }
 
@@ -1693,4 +1697,13 @@ func (r *RedisClusterReconciler) numOfFollowersPerLeader(v *view.RedisClusterVie
 		}
 	}
 	return followersPerLeader
+}
+
+func roundFloatToPercision(num float64, percision int) float64 {
+	o := math.Pow(10, float64(percision))
+	return float64(round(num*o)) / o
+}
+
+func round(num float64) int {
+	return int(num + math.Copysign(0.5, num))
 }
