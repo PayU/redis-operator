@@ -1108,10 +1108,16 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 	return wait.PollImmediate(r.Config.Times.SyncCheckInterval, r.Config.Times.SyncCheckTimeout, func() (bool, error) {
 		stdoutF, err := r.RedisCLI.Role(nodeIP)
 		if err != nil {
+			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+				return false, nil
+			}
 			return false, err
 		}
 		stdoutL, err := r.RedisCLI.Role(m.CurrentMasterIp)
 		if err != nil {
+			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+				return false, nil
+			}
 			return false, err
 		}
 		if !strings.Contains(stdoutF, m.CurrentMasterIp) || !strings.Contains(stdoutL, nodeIP) {
@@ -1119,10 +1125,16 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 		}
 		infoF, _, err := reconciler.RedisCLI.Info(nodeIP)
 		if err != nil || infoF == nil {
+			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+				return false, nil
+			}
 			return false, err
 		}
 		infoL, _, err := reconciler.RedisCLI.Info(m.CurrentMasterIp)
 		if err != nil || infoL == nil {
+			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+				return false, nil
+			}
 			return false, err
 		}
 		memorySizeF := infoF.Memory["used_memory_human"]

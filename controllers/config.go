@@ -172,8 +172,8 @@ func DefaultRedisOperatorConfig(logger logr.Logger) *RedisOperatorConfig {
 				MaxToleratedPodsUpdateAtOnce:  5,
 			},
 			Times: OperatorConfigTimes{
-				SyncCheckInterval:                            3 * 1000 * time.Millisecond,
-				SyncCheckTimeout:                             20 * 1000 * time.Millisecond,
+				SyncCheckInterval:                            5 * 1000 * time.Millisecond,
+				SyncCheckTimeout:                             30 * 1000 * time.Millisecond,
 				SleepDuringTablesAlignProcess:                12 * 1000 * time.Millisecond,
 				ClusterCreateInterval:                        5 * 1000 * time.Millisecond,
 				ClusterCreateTimeout:                         90 * 1000 * time.Millisecond,
