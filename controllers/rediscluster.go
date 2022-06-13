@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -327,8 +326,8 @@ func (r *RedisClusterReconciler) addLeaderNodes(redisCluster *dbv1.RedisCluster,
 	readyNodes := []corev1.Pod{}
 	var wg sync.WaitGroup
 	mutex := &sync.Mutex{}
+	wg.Add(len(leaders))
 	for _, leader := range leaders {
-		wg.Add(1)
 		go func(leader corev1.Pod) {
 			defer wg.Done()
 			if r.preperNewRedisNode(leader, mutex) {
@@ -406,7 +405,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 		if err != nil || !exists || nodesTable == nil {
 			continue
 		}
-		healthyNodes[node.Id] = node.Ip
+		healthyNodes[node.Name] = node.Ip
 		for _, tableNode := range *nodesTable {
 			if strings.Contains(tableNode.Flags, "fail") {
 				lostIds[tableNode.ID] = true
@@ -416,42 +415,37 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 	if len(lostIds) > 0 {
 		r.Log.Info(fmt.Sprintf("List of healthy nodes: %v", healthyNodes))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
-		r.runForget(lostIds, healthyNodes, r.Config.Thresholds.AttemptsForgetNode)
+		r.runForget(lostIds, healthyNodes, v)
 		r.Log.Info(fmt.Sprintf("Cluster FORGET sent for [%v] lost nodes", len(lostIds)))
 	}
 	return len(lostIds) > 0
 }
 
-func (r *RedisClusterReconciler) runForget(lostIds map[string]bool, healthyNodes map[string]string, retries int) {
-	println(retries)
-	if retries <= 0 {
-		return
-	}
-	missalignment := false
+func (r *RedisClusterReconciler) runForget(lostIds map[string]bool, healthyNodes map[string]string, v *view.RedisClusterView) {
+	podsToDelete := []corev1.Pod{}
 	var wg sync.WaitGroup
+	wg.Add(len(lostIds) * len(healthyNodes))
 	for id, _ := range lostIds {
-		for _, ip := range healthyNodes {
-			wg.Add(1)
+		for name, ip := range healthyNodes {
 			go func(ip string, id string) {
 				defer wg.Done()
-				if missalignment {
-					return
-				}
 				_, err := r.RedisCLI.ClusterForget(ip, id)
 				if err != nil {
 					if strings.Contains(err.Error(), "Can't forget my master") {
-						missalignment = true
+						node, exists := v.Nodes[name]
+						if exists && node != nil {
+							podsToDelete = append(podsToDelete, node.Pod)
+						}
 					}
 				}
 			}(ip, id)
 		}
 	}
 	wg.Wait()
-	if missalignment {
-		sleepDuration := r.Config.Times.SleepDuringTablesAlignProcess
-		r.Log.Info(fmt.Sprintf("[Warn] Redis tables for some nodes not aligned yet with other tables, redis tables update takes part every 10 seconds. Sleeping [%v]...", sleepDuration))
-		time.Sleep(sleepDuration)
-		r.runForget(lostIds, healthyNodes, retries-1)
+	if len(podsToDelete) > 0 {
+		for _, p := range podsToDelete {
+			r.deletePod(p)
+		}
 	}
 }
 
@@ -1014,7 +1008,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	}
 	updatingPodsAtOnc := 0
 	for _, n := range v.Nodes {
-		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsRecoverAtOnce {
+		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
 			return nil
 		}
 		if n == nil {
@@ -1040,7 +1034,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	}
 
 	for _, n := range v.Nodes {
-		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsRecoverAtOnce {
+		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
 			return nil
 		}
 		if n == nil {
@@ -1123,7 +1117,6 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 		if !strings.Contains(stdoutF, m.CurrentMasterIp) || !strings.Contains(stdoutL, nodeIP) {
 			return false, nil
 		}
-
 		infoF, _, err := reconciler.RedisCLI.Info(nodeIP)
 		if err != nil || infoF == nil {
 			return false, err
@@ -1149,7 +1142,6 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 				memL, _ = strconv.ParseFloat(match[1], 64)
 			}
 		}
-
 		dbsizeF, stdoutF, err := r.RedisCLI.DBSIZE(nodeIP)
 		if err != nil {
 			return false, err

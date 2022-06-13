@@ -118,7 +118,6 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	// todo: ? scenario where cluster exists and for some reason map is missing -> trigger flow of build state view map out of existing cluster (with entry point by router), alert if it happens?
 
 	r.saveClusterStateOnSigTerm(&redisCluster)
-	println(r.State)
 	switch r.State {
 	case NotExists:
 		err = r.handleInitializingCluster(&redisCluster)
@@ -426,21 +425,6 @@ func ClusterTest(c echo.Context) error {
 	wg.Add(1)
 	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
 	wg.Wait()
-	println("test 1")
-	wg.Add(1)
-	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
-	wg.Wait()
-	println("test 2")
-	wg.Add(1)
-	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
-	wg.Wait()
-	println("test 3")
-	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
-	wg.Wait()
-	println("test 4")
-	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
-	wg.Wait()
-	println("test 5")
 	return c.String(http.StatusOK, t.Report)
 }
 
@@ -528,7 +512,7 @@ func PopulateClusterWithData(c echo.Context) error {
 	}
 
 	total := 50000000
-	init := 0
+	init := 20000000
 	sw := 0
 
 	println("populating: ")

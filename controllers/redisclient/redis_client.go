@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/PayU/redis-operator/controllers/rediscli"
 	"github.com/PayU/redis-operator/controllers/view"
@@ -18,19 +19,18 @@ type RedisClusterClient struct {
 
 var clusterClient *RedisClusterClient = nil
 
-var format string
-var comp *regexp.Regexp
-
 var lookups int = 5
 
+var format string = "MOVED\\s*\\d+\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)"
+var comp *regexp.Regexp = regexp.MustCompile(format)
+
 func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *RedisClusterClient {
-	format = "MOVED\\s*\\d+\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)"
-	comp = regexp.MustCompile(format)
 	if clusterClient == nil {
 		clusterClient = &RedisClusterClient{
 			clients: map[string]*redis.Client{},
 		}
 	}
+	mutex := &sync.Mutex{}
 	for _, n := range v.Nodes {
 		if n == nil {
 			continue
@@ -40,11 +40,13 @@ func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *Re
 			continue
 		}
 		addr := n.Ip + ":" + cli.Port
+		mutex.Lock()
 		clusterClient.clients[addr] = redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Username: "admin",
 			Password: "adminpass",
 		})
+		mutex.Unlock()
 	}
 	return clusterClient
 }
@@ -54,8 +56,9 @@ func (c *RedisClusterClient) Set(key string, val interface{}, retries int) error
 		return errors.New(fmt.Sprintf("Could not set key [%v], val [%v] into cluster, all nodes errored during attempt", key, val))
 	}
 	ctx := context.Background()
+	mutex := &sync.Mutex{}
 	for addr := range c.clients {
-		e := c.set(ctx, key, val, addr, lookups)
+		e := c.set(ctx, key, val, addr, lookups, mutex)
 		if e == nil {
 			return nil
 		}
@@ -63,22 +66,28 @@ func (c *RedisClusterClient) Set(key string, val interface{}, retries int) error
 	return c.Set(key, val, retries-1)
 }
 
-func (c *RedisClusterClient) set(ctx context.Context, key string, val interface{}, addr string, lookups int) error {
+func (c *RedisClusterClient) set(ctx context.Context, key string, val interface{}, addr string, lookups int, mutex *sync.Mutex) error {
 	if lookups == 0 {
 		return errors.New(fmt.Sprintf("Could not write data row [%v, %v]", key, val))
 	}
+	mutex.Lock()
 	client, exists := c.clients[addr]
+	mutex.Unlock()
 	if !exists || client == nil {
 		return errors.New(fmt.Sprintf("Client [%v] doesnt exists", addr))
 	}
+	mutex.Lock()
 	_, err := client.Set(ctx, key, val, 0).Result()
+	mutex.Unlock()
 	if err != nil {
 		if strings.Contains(err.Error(), "MOVED") {
 			a := c.extractAddress(err.Error())
-			return c.set(ctx, key, val, a, lookups-1)
+			return c.set(ctx, key, val, a, lookups-1, mutex)
 		}
 		if strings.Contains(err.Error(), "i/o timeout") {
+			mutex.Lock()
 			c.clients[addr] = nil
+			mutex.Unlock()
 		}
 	}
 	return err
@@ -88,10 +97,10 @@ func (c *RedisClusterClient) Get(key string, retries int) (value string, err err
 	if retries == 0 {
 		return "", errors.New(fmt.Sprintf("Could not extract key [%v]", key))
 	}
-
+	mutex := &sync.Mutex{}
 	ctx := context.Background()
 	for addr := range c.clients {
-		v, e := c.get(ctx, key, addr, lookups)
+		v, e := c.get(ctx, key, addr, lookups, mutex)
 		if e == nil {
 			return v, nil
 		}
@@ -99,25 +108,31 @@ func (c *RedisClusterClient) Get(key string, retries int) (value string, err err
 	return c.Get(key, retries-1)
 }
 
-func (c *RedisClusterClient) get(ctx context.Context, key string, addr string, lookups int) (value string, err error) {
+func (c *RedisClusterClient) get(ctx context.Context, key string, addr string, lookups int, mutex *sync.Mutex) (value string, err error) {
 	if lookups == 0 {
 		return "", errors.New(fmt.Sprintf("Could not extract key [%v]", key))
 	}
+	mutex.Lock()
 	client, exists := c.clients[addr]
+	mutex.Unlock()
 	if !exists || client == nil {
 		return "", errors.New(fmt.Sprintf("Client [%v] doesnt exists", addr))
 	}
+	mutex.Lock()
 	value, err = client.Get(ctx, key).Result()
+	mutex.Unlock()
 	if err != nil {
 		if strings.Contains(err.Error(), "nil") {
 			err = nil
 		} else {
 			if strings.Contains(err.Error(), "MOVED") {
 				a := c.extractAddress(err.Error())
-				return c.get(ctx, key, a, lookups-1)
+				return c.get(ctx, key, a, lookups-1, mutex)
 			}
 			if strings.Contains(err.Error(), "i/o timeout") {
+				mutex.Lock()
 				c.clients[addr] = nil
+				mutex.Unlock()
 				return value, err
 			}
 			return value, err

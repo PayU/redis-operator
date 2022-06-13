@@ -85,8 +85,8 @@ type RedisOperatorConfig struct {
 
 type OperatorConfigThresholds struct {
 	SyncMatchThreshold            int `yaml:"SyncMatchThreshold"`
-	AttemptsForgetNode            int `yaml:"AttemptsForgetNode"`
 	MaxToleratedPodsRecoverAtOnce int `yaml:"MaxToleratedPodsRecoverAtOnce"`
+	MaxToleratedPodsUpdateAtOnce  int `yaml:"MaxToleratedPodsUpdateAtOnce"`
 }
 
 type OperatorConfigTimes struct {
@@ -146,8 +146,8 @@ func DefaultRedisOperatorConfig(logger logr.Logger) *RedisOperatorConfig {
 		Config: OperatorConfig{
 			Thresholds: OperatorConfigThresholds{
 				SyncMatchThreshold:            85,
-				AttemptsForgetNode:            3,
-				MaxToleratedPodsRecoverAtOnce: 20,
+				MaxToleratedPodsRecoverAtOnce: 15,
+				MaxToleratedPodsUpdateAtOnce:  5,
 			},
 			Times: OperatorConfigTimes{
 				SyncCheckInterval:                            3 * 1000 * time.Millisecond,

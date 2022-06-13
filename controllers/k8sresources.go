@@ -356,8 +356,8 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 			r.deletePods(pods)
 			return map[string]corev1.Pod{}
 		}
+		wg.Add(len(newPods))
 		for _, p := range newPods {
-			wg.Add(1)
 			go func(p corev1.Pod) {
 				defer wg.Done()
 				readyPod, err := r.waitForRedisPod(p)
@@ -500,8 +500,8 @@ func (r *RedisClusterReconciler) waitForPodNetworkInterface(pods ...corev1.Pod) 
 
 func (r *RedisClusterReconciler) waitForPodDelete(pods ...corev1.Pod) {
 	var wg sync.WaitGroup
+	wg.Add(len(pods))
 	for _, p := range pods {
-		wg.Add(1)
 		go func(p corev1.Pod) {
 			defer wg.Done()
 			key, err := client.ObjectKeyFromObject(&p)
