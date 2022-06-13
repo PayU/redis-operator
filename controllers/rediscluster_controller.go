@@ -36,7 +36,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -402,7 +401,7 @@ func ForceReconcile(c echo.Context) error {
 		return c.String(http.StatusOK, "Could not perform cluster reconcile action")
 	}
 	reconciler.saveClusterStateView(cluster)
-	_, err := reconciler.Reconcile(ctrl.Request{types.NamespacedName{Name: "dev-rdc", Namespace: "default"}})
+	_, err := reconciler.Reconcile(ctrl.Request{types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
 	if err != nil {
 		reconciler.Log.Error(err, "Could not perform reconcile trigger")
 	}
@@ -428,70 +427,6 @@ func ClusterTest(c echo.Context) error {
 	return c.String(http.StatusOK, t.Report)
 }
 
-func ClusterTestData(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster test")
-	}
-	var report string = ""
-	var cl *redisclient.RedisClusterClient = nil
-
-	v, ok := reconciler.NewRedisClusterView(cluster)
-	if ok && v != nil {
-		cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
-		//cl.FlushAllData()
-	}
-	report += "\n[TEST LAB] Creating mock data\n"
-
-	data := map[string]string{}
-	total := 200
-	sw := 0
-	for i := 0; i < total; i++ {
-		key := "key" + fmt.Sprintf("%v", i)
-		val := "val" + fmt.Sprintf("%v", i)
-		err := cl.Set(key, val, 3)
-		if err == nil {
-			sw++
-			data[key] = val
-		}
-		time.Sleep(1 * time.Second)
-	}
-	sr := 0
-	if sw > 0 {
-		time.Sleep(10 * time.Second)
-		wait.PollImmediate(3*time.Second, 2*time.Minute, func() (bool, error) {
-			return cluster.Status.ClusterState == string(Ready), nil
-		})
-		v, ok = reconciler.NewRedisClusterView(cluster)
-		if ok && v != nil {
-			cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
-		}
-		for k, expected_v := range data {
-			actual_v, err := cl.Get(k, 3)
-			if err == nil {
-				if expected_v == actual_v {
-					sr++
-				}
-			}
-		}
-	}
-
-	report += fmt.Sprintf("\n[TEST LAB] Toal writes         : [%v]", total)
-	report += fmt.Sprintf("\n[TEST LAB] Successful writes   : [%v]", sw)
-	report += fmt.Sprintf("\n[TEST LAB] Writes success rate : [%v%v]", (sw * 100 / total), "%")
-	report += fmt.Sprintf("\n[TEST LAB] Successful reads    : [%v]", sw)
-	if sw > 0 {
-		report += fmt.Sprintf("\n[TEST LAB] Reads success rate  : [%v%v]", (sr * 100 / sw), "%")
-	} else {
-		report += fmt.Sprintf("\n[TEST LAB] Reads success rate  : [%v%v]", 0, "%")
-	}
-	v, ok = reconciler.NewRedisClusterView(cluster)
-	if ok && v != nil {
-		cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
-	}
-	//cl.FlushAllData()
-	return c.String(http.StatusOK, report)
-}
-
 func PopulateClusterWithData(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster popluate data")
@@ -512,7 +447,7 @@ func PopulateClusterWithData(c echo.Context) error {
 	}
 
 	total := 50000000
-	init := 20000000
+	init := 30000000
 	sw := 0
 
 	println("populating: ")
@@ -557,5 +492,5 @@ func FlushClusterData(c echo.Context) error {
 		}
 		println(n.Name + ": " + info.Memory["used_memory_human"])
 	}
-	return c.String(http.StatusOK, "Cluster dta flushed")
+	return c.String(http.StatusOK, "Cluster data flushed")
 }
