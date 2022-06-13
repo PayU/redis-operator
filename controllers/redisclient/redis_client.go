@@ -25,12 +25,13 @@ var format string = "MOVED\\s*\\d+\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)"
 var comp *regexp.Regexp = regexp.MustCompile(format)
 
 func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *RedisClusterClient {
+	mutex := &sync.Mutex{}
+	mutex.Lock()
 	if clusterClient == nil {
 		clusterClient = &RedisClusterClient{
 			clients: map[string]*redis.Client{},
 		}
 	}
-	mutex := &sync.Mutex{}
 	for _, n := range v.Nodes {
 		if n == nil {
 			continue
@@ -40,14 +41,14 @@ func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *Re
 			continue
 		}
 		addr := n.Ip + ":" + cli.Port
-		mutex.Lock()
 		clusterClient.clients[addr] = redis.NewClient(&redis.Options{
 			Addr:     addr,
 			Username: "admin",
 			Password: "adminpass",
 		})
-		mutex.Unlock()
+
 	}
+	mutex.Unlock()
 	return clusterClient
 }
 

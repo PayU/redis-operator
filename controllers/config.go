@@ -11,23 +11,41 @@ import (
 )
 
 /*
+# The thresholds value sets definite bounderies for the operator to perform during running concurrent operations
+# and during decision making based on given stated values
+
+# During new node initialization, a request for data replication is sent, and each new node is being sampled and watched untill threshold is reached
+# in order to make sure the sync process is being performed properly
+# SyncMatchThreshold
+
+# During recovery process, missing pods will be recreated asynchronously,
+# this value set the maximum unhealthy nodes that will be recovered by operator at once per reconcile loop
+# MaxToleratedPodsRecoverAtOnce
+
+# During updating process, pods get failed-over, removed, and recreated so the new ones will hold
+# the new requested updated form in terms of the new spec.
+# this value set the maximum number of nodes to be deleted at once per update loop
+# MaxToleratedPodsUpdateAtOnce
+
+*/
+
+/*
 # The wait times are defined by an interval value - how often the check is done
 # and a timeout value, total amount of time to wait before considering the
 # operation failed.
 
-# Wait duration for the SYNC operation.
+# Wait values for the SYNC operation.
 # SyncCheckInterval
 # SyncCheckTimeout
 
-# Wait duration for the LOAD operation. This time should be set reasonably high
-# because it depends on the size of the DB shards and network latency. Make sure
-# the time is high enough to allow for the data transfer between two nodes.
-# The LOAD and SYNC operations are important during the recreation of a lost
-# node, when the data from a leader is loaded on a replica.
-# https://redis.io/topics/replication
-# The operator uses the INFO message from Redis to get information about the
-# status of SYNC (master_sync_in_progress) and LOAD (loading_eta_Seconds)
-# https://redis.io/commands/info
+# Wait values for redis cluster configuration alignment.
+# SleepDuringTablesAlignProcess
+# RedisNodesAgreeAboutSlotsConfigCheckInterval
+# RedisNodesAgreeAboutSlotsConfigTimeout
+
+# Wait duration of the '--cluster create' command.
+# ClusterCreateInterval
+# ClusterCreateTimeout
 
 # The estimated time it takes for volume mounted configmaps to be updated on the
 # pods. After a configmap is changed, the configmap controller will update a
@@ -36,10 +54,6 @@ import (
 
 # The estimated time it takes for Redis to load the new config map from disk.
 # ACLFileLoadDuration
-
-# Wait duration of the '--cluster create' command.
-# ClusterCreateInterval
-# ClusterCreateTimeout
 
 # Wait duration for a pod to be in ready state - pod is in Ready state and
 # the containers passed all conditions.
@@ -54,6 +68,10 @@ import (
 # PodDeleteCheckInterval
 # PodDeleteCheckTimeout
 
+# Wait duration for the removal of node id from other nodes tables
+# RedisRemoveNodeCheckInterval
+# RedisRemoveNodeTimeout
+
 # Duration of the PING command.
 # RedisPingCheckInterval
 # RedisPingCheckTimeout
@@ -61,6 +79,10 @@ import (
 # Wait duration of the 'cluster replicas' command.
 # RedisClusterReplicationCheckInterval
 # RedisClusterReplicationCheckTimeout
+
+# Wait duration for nodes to load dataset to their memory
+# WaitForRedisLoadDataSetInMemoryCheckInterval
+# WaitForRedisLoadDataSetInMemoryTimeout
 
 # Wait duration of the MEET command.
 # RedisClusterMeetCheckInterval

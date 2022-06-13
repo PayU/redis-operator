@@ -27,15 +27,15 @@ type TestLab struct {
 	Report             string
 }
 
-var fetchViewInterval = 5 * time.Second
-var fetchViewTimeOut = 2 * time.Minute
+var fetchViewInterval = 10 * time.Second
+var fetchViewTimeOut = 1 * time.Minute
 
-var clusterHealthCheckInterval = 5 * time.Second
+var clusterHealthCheckInterval = 10 * time.Second
 var clusterHealthCheckTimeOutLimit = 5 * time.Minute
 
 var randomChoiceRetries int = 4
 
-var sleepPerTest time.Duration = 5 * time.Second
+var sleepPerTest time.Duration = 2 * time.Second
 var sleepPerPodCheck time.Duration = 2 * time.Second
 var sleepPerHealthCheck time.Duration = 5 * time.Second
 
@@ -46,35 +46,70 @@ var intervalsBetweenWrites time.Duration = 500 * time.Millisecond
 
 var totalDataWrites int = 200
 
-func (t *TestLab) RunTest(wg *sync.WaitGroup, nodes *map[string]*view.NodeStateView) {
-	defer wg.Done()
-	t.Report = "\n[TEST LAB] Cluster test report:\n"
+var mutex = &sync.Mutex{}
+
+func (t *TestLab) RunTest(nodes *map[string]*view.NodeStateView, withData bool) {
+	t.Report = "\n[TEST LAB] Cluster test report:\n\n"
 	isReady := t.waitForHealthyCluster(nodes)
 	if !isReady {
 		return
 	}
-	t.Report += "\n"
-	test_1 := t.test_delete_follower_with_data(nodes, 1)
+	if withData {
+		t.testSuitWithData(nodes)
+	} else {
+		t.testSuit(nodes)
+	}
+}
+
+func (t *TestLab) testSuit(nodes *map[string]*view.NodeStateView) {
+	test_1 := t.runTest(nodes, 1)
 	if !test_1 {
 		return
 	}
-	test_2 := t.test_delete_leader_with_data(nodes, 2)
+	test_2 := t.runTest(nodes, 2)
 	if !test_2 {
 		return
 	}
-	test_3 := t.test_delete_leader_and_follower_with_data(nodes, 3)
+	test_3 := t.runTest(nodes, 3)
 	if !test_3 {
 		return
 	}
-	test_4 := t.test_delete_all_followers_with_data(nodes, 4)
+	test_4 := t.runTest(nodes, 4)
 	if !test_4 {
 		return
 	}
-	test_5 := t.test_delete_all_azs_beside_one_with_data(nodes, 5)
+	test_5 := t.runTest(nodes, 5)
 	if !test_5 {
 		return
 	}
-	test_6 := t.test_delete_leader_and_all_its_followers_with_data(nodes, 6)
+	test_6 := t.runTest(nodes, 6)
+	if !test_6 {
+		return
+	}
+}
+
+func (t *TestLab) testSuitWithData(nodes *map[string]*view.NodeStateView) {
+	test_1 := t.runTestWithData(nodes, 1)
+	if !test_1 {
+		return
+	}
+	test_2 := t.runTestWithData(nodes, 2)
+	if !test_2 {
+		return
+	}
+	test_3 := t.runTestWithData(nodes, 3)
+	if !test_3 {
+		return
+	}
+	test_4 := t.runTestWithData(nodes, 4)
+	if !test_4 {
+		return
+	}
+	test_5 := t.runTestWithData(nodes, 5)
+	if !test_5 {
+		return
+	}
+	test_6 := t.runTestWithData(nodes, 6)
 	if !test_6 {
 		return
 	}
@@ -122,11 +157,38 @@ func (t *TestLab) analyzeDataResults(total int, successfulWrites int, successful
 	t.Report += fmt.Sprintf("[TEST LAB] Reads success rate  : [%v%v]\n", readSuccessRate, "%")
 }
 
-func (t *TestLab) test_delete_follower_with_data(nodes *map[string]*view.NodeStateView, testNum int) bool {
+func (t *TestLab) runTest(nodes *map[string]*view.NodeStateView, testNum int) bool {
 	if t.RedisClusterClient == nil {
 		return false
 	}
-	//t.RedisClusterClient.FlushAllData()
+	result := false
+	switch testNum {
+	case 1:
+		result = t.test_delete_follower(nodes, testNum)
+		break
+	case 2:
+		result = t.test_delete_leader(nodes, testNum)
+		break
+	case 3:
+		result = t.test_delete_leader_and_follower(nodes, testNum)
+		break
+	case 4:
+		result = t.test_delete_all_followers(nodes, testNum)
+		break
+	case 5:
+		result = t.test_delete_all_azs_beside_one(nodes, testNum)
+		break
+	case 6:
+		result = t.test_delete_leader_and_all_its_followers(nodes, testNum)
+		break
+	}
+	return result
+}
+
+func (t *TestLab) runTestWithData(nodes *map[string]*view.NodeStateView, testNum int) bool {
+	if t.RedisClusterClient == nil {
+		return false
+	}
 	var wg sync.WaitGroup
 	result := false
 	sw := 0
@@ -135,7 +197,26 @@ func (t *TestLab) test_delete_follower_with_data(nodes *map[string]*view.NodeSta
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		result = t.test_delete_follower(nodes, testNum)
+		switch testNum {
+		case 1:
+			result = t.test_delete_follower(nodes, testNum)
+			break
+		case 2:
+			result = t.test_delete_leader(nodes, testNum)
+			break
+		case 3:
+			result = t.test_delete_leader_and_follower(nodes, testNum)
+			break
+		case 4:
+			result = t.test_delete_all_followers(nodes, testNum)
+			break
+		case 5:
+			result = t.test_delete_all_azs_beside_one(nodes, testNum)
+			break
+		case 6:
+			result = t.test_delete_leader_and_all_its_followers(nodes, testNum)
+			break
+		}
 	}()
 	go func() {
 		defer wg.Done()
@@ -157,31 +238,6 @@ func (t *TestLab) test_delete_follower(nodes *map[string]*view.NodeStateView, te
 	return result
 }
 
-func (t *TestLab) test_delete_leader_with_data(nodes *map[string]*view.NodeStateView, testNum int) bool {
-	if t.RedisClusterClient == nil {
-		return false
-	}
-	//t.RedisClusterClient.FlushAllData()
-	var wg sync.WaitGroup
-	result := false
-	sw := 0
-	sr := 0
-	data := map[string]string{}
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		result = t.test_delete_leader(nodes, testNum)
-	}()
-	go func() {
-		defer wg.Done()
-		sw, data = t.testDataWrites(totalDataWrites)
-	}()
-	wg.Wait()
-	sr = t.testDataReads(data)
-	t.analyzeDataResults(totalDataWrites, sw, sr)
-	return result
-}
-
 func (t *TestLab) test_delete_leader(nodes *map[string]*view.NodeStateView, testNum int) bool {
 	time.Sleep(sleepPerTest)
 	t.Log.Info("[TEST LAB] Running test: Delete leader...")
@@ -189,31 +245,6 @@ func (t *TestLab) test_delete_leader(nodes *map[string]*view.NodeStateView, test
 	randomLeader := t.PickRandomeLeader(map[string]bool{}, nodes, randomChoiceRetries)
 	result := t.test_delete_pods([]string{randomLeader}, nodes)
 	t.Report += fmt.Sprintf("\n[TEST LAB] Test %v: delete leader result [%v]\n", testNum, result)
-	return result
-}
-
-func (t *TestLab) test_delete_leader_and_follower_with_data(nodes *map[string]*view.NodeStateView, testNum int) bool {
-	if t.RedisClusterClient == nil {
-		return false
-	}
-	//t.RedisClusterClient.FlushAllData()
-	var wg sync.WaitGroup
-	result := false
-	sw := 0
-	sr := 0
-	data := map[string]string{}
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		result = t.test_delete_leader_and_follower(nodes, testNum)
-	}()
-	go func() {
-		defer wg.Done()
-		sw, data = t.testDataWrites(totalDataWrites)
-	}()
-	wg.Wait()
-	sr = t.testDataReads(data)
-	t.analyzeDataResults(totalDataWrites, sw, sr)
 	return result
 }
 
@@ -232,31 +263,6 @@ func (t *TestLab) test_delete_leader_and_follower(nodes *map[string]*view.NodeSt
 	return result
 }
 
-func (t *TestLab) test_delete_all_followers_with_data(nodes *map[string]*view.NodeStateView, testNum int) bool {
-	if t.RedisClusterClient == nil {
-		return false
-	}
-	//t.RedisClusterClient.FlushAllData()
-	var wg sync.WaitGroup
-	result := false
-	sw := 0
-	sr := 0
-	data := map[string]string{}
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		result = t.test_delete_all_followers(nodes, testNum)
-	}()
-	go func() {
-		defer wg.Done()
-		sw, data = t.testDataWrites(totalDataWrites)
-	}()
-	wg.Wait()
-	sr = t.testDataReads(data)
-	t.analyzeDataResults(totalDataWrites, sw, sr)
-	return result
-}
-
 func (t *TestLab) test_delete_all_followers(nodes *map[string]*view.NodeStateView, testNum int) bool {
 	time.Sleep(sleepPerTest)
 	t.Log.Info("[TEST LAB] Running test: Delete all followers...")
@@ -269,31 +275,6 @@ func (t *TestLab) test_delete_all_followers(nodes *map[string]*view.NodeStateVie
 	}
 	result := t.test_delete_pods(followers, nodes)
 	t.Report += fmt.Sprintf("\n[TEST LAB] Test %v: delete all followers result [%v]\n", testNum, result)
-	return result
-}
-
-func (t *TestLab) test_delete_leader_and_all_its_followers_with_data(nodes *map[string]*view.NodeStateView, testNum int) bool {
-	if t.RedisClusterClient == nil {
-		return false
-	}
-	//t.RedisClusterClient.FlushAllData()
-	var wg sync.WaitGroup
-	result := false
-	sw := 0
-	sr := 0
-	data := map[string]string{}
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		result = t.test_delete_leader_and_all_its_followers(nodes, testNum)
-	}()
-	go func() {
-		defer wg.Done()
-		sw, data = t.testDataWrites(totalDataWrites)
-	}()
-	wg.Wait()
-	sr = t.testDataReads(data)
-	t.analyzeDataResults(totalDataWrites, sw, sr)
 	return result
 }
 
@@ -314,31 +295,6 @@ func (t *TestLab) test_delete_leader_and_all_its_followers(nodes *map[string]*vi
 	}
 	result := t.test_delete_pods(toDelete, nodes)
 	t.Report += fmt.Sprintf("\n[TEST LAB] Test %v: delete leader and all his followers result [%v]\n", testNum, result)
-	return result
-}
-
-func (t *TestLab) test_delete_all_azs_beside_one_with_data(nodes *map[string]*view.NodeStateView, testNum int) bool {
-	if t.RedisClusterClient == nil {
-		return false
-	}
-	//t.RedisClusterClient.FlushAllData()
-	var wg sync.WaitGroup
-	result := false
-	sw := 0
-	sr := 0
-	data := map[string]string{}
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		result = t.test_delete_all_azs_beside_one(nodes, testNum)
-	}()
-	go func() {
-		defer wg.Done()
-		sw, data = t.testDataWrites(totalDataWrites)
-	}()
-	wg.Wait()
-	sr = t.testDataReads(data)
-	t.analyzeDataResults(totalDataWrites, sw, sr)
 	return result
 }
 
@@ -424,7 +380,9 @@ func (t *TestLab) PickRandomeLeader(exclude map[string]bool, nodes *map[string]*
 }
 
 func (t *TestLab) checkIfMaster(nodeIP string) (bool, error) {
+	mutex.Lock()
 	info, _, err := t.RedisCLI.Info(nodeIP)
+	mutex.Unlock()
 	if err != nil || info == nil {
 		return false, err
 	}
@@ -529,7 +487,9 @@ func (t *TestLab) isLeaderAligned(n *view.NodeView) bool {
 	if e != nil || !isMaster {
 		return false
 	}
+	mutex.Lock()
 	nodes, _, e := t.RedisCLI.ClusterNodes(n.Ip)
+	mutex.Unlock()
 	if e != nil || nodes == nil || len(*nodes) <= 1 {
 		return false
 	}

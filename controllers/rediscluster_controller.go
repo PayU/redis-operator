@@ -412,18 +412,45 @@ func ClusterTest(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster test")
 	}
+	cli := rediscli.NewRedisCLI(&reconciler.Log)
+	user := os.Getenv("REDIS_USERNAME")
+	if user != "" {
+		cli.Auth = &rediscli.RedisAuth{
+			User: user,
+		}
+	}
 	t := &testlab.TestLab{
 		Client:             reconciler.Client,
-		RedisCLI:           reconciler.RedisCLI,
+		RedisCLI:           cli,
 		Cluster:            cluster,
 		RedisClusterClient: nil,
 		Log:                reconciler.Log,
 		Report:             "",
 	}
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go t.RunTest(&wg, &reconciler.RedisClusterStateView.Nodes)
-	wg.Wait()
+	t.RunTest(&reconciler.RedisClusterStateView.Nodes, false)
+	return c.String(http.StatusOK, t.Report)
+}
+
+func ClusterTestWithData(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster test")
+	}
+	cli := rediscli.NewRedisCLI(&reconciler.Log)
+	user := os.Getenv("REDIS_USERNAME")
+	if user != "" {
+		cli.Auth = &rediscli.RedisAuth{
+			User: user,
+		}
+	}
+	t := &testlab.TestLab{
+		Client:             reconciler.Client,
+		RedisCLI:           cli,
+		Cluster:            cluster,
+		RedisClusterClient: nil,
+		Log:                reconciler.Log,
+		Report:             "",
+	}
+	t.RunTest(&reconciler.RedisClusterStateView.Nodes, true)
 	return c.String(http.StatusOK, t.Report)
 }
 
@@ -436,7 +463,14 @@ func PopulateClusterWithData(c echo.Context) error {
 	if !ok || v == nil {
 		return c.String(http.StatusOK, "Could not perform cluster populate data")
 	}
-	cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
+	rcli := rediscli.NewRedisCLI(&reconciler.Log)
+	user := os.Getenv("REDIS_USERNAME")
+	if user != "" {
+		rcli.Auth = &rediscli.RedisAuth{
+			User: user,
+		}
+	}
+	cl = redisclient.GetRedisClusterClient(v, rcli)
 
 	for _, n := range v.Nodes {
 		info, _, err := reconciler.RedisCLI.Info(n.Ip)
@@ -447,11 +481,14 @@ func PopulateClusterWithData(c echo.Context) error {
 	}
 
 	total := 50000000
-	init := 30000000
+	init := 0
 	sw := 0
 
 	println("populating: ")
 	println(total)
+
+	updateClientPer := 15000
+	loopsBeforeClientUpdate := 0
 
 	for i := init; i < init+total; i++ {
 		key := "key" + fmt.Sprintf("%v", i)
@@ -460,6 +497,15 @@ func PopulateClusterWithData(c echo.Context) error {
 		if err == nil {
 			sw++
 		}
+		loopsBeforeClientUpdate++
+		if loopsBeforeClientUpdate == updateClientPer {
+			v, ok := reconciler.NewRedisClusterView(cluster)
+			if ok && v != nil {
+				cl = redisclient.GetRedisClusterClient(v, rcli)
+				loopsBeforeClientUpdate = 0
+			}
+		}
+
 	}
 
 	for _, n := range v.Nodes {
