@@ -43,3 +43,4 @@ USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 
 ENTRYPOINT ["/manager"]
+CMD bash
