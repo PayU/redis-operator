@@ -1,5 +1,5 @@
 # should build the redis binary with the same image that the operator will run
-FROM golang:1.15
+FROM golang:1.16
 
 ARG DEBIAN_FRONTEND=noninteractive
 

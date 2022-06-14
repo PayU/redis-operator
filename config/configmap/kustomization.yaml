@@ -7,16 +7,16 @@ configMapgenerator:
     - ../configfiles/redis.conf
   options:
     labels:
-      redis-cluster: rdc-test
+      redis-cluster: dev-rdc
 - name: users-acl
   files:
     - ../configfiles/users.acl
   options:
     labels:
-      redis-cluster: rdc-test
+      redis-cluster: dev-rdc
 - name: operator-config
   files:
     - ../configfiles/operator.conf
   options:
     labels:
-      redis-operator: rdc-test
+      redis-operator: dev-rdc

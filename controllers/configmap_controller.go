@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,9 +60,9 @@ const ACLFileLoadDuration time.Duration = time.Millisecond * 500
 const redisConfigLabelKey string = "redis-cluster"
 const handleACLConfigErrorMessage = "Failed to handle ACL configuration"
 const operatorConfigLabelKey string = "redis-operator"
+const RedisClusterStateMapName string = "redis-cluster-state-map"
 
 func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
-
 	time.Sleep(ACLFilePropagationDuration)
 
 	for _, pod := range redisPods {
@@ -141,10 +142,15 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 	configMapACLHash := fmt.Sprintf("%x", sha256.Sum256([]byte(acl.String())))
 	r.Log.Info(fmt.Sprintf("Computed hash: %s", configMapACLHash))
 
+	wg.Add(len(rdcPods.Items))
 	for i := range rdcPods.Items {
-		wg.Add(1)
-		go func(failSignal *bool, pod *corev1.Pod, wg *sync.WaitGroup) {
+		go func(failSignal *bool, pod *corev1.Pod) {
 			defer wg.Done()
+			if _, e := r.RedisCLI.Ping(pod.Status.PodIP); e != nil {
+				r.Log.Info(fmt.Sprintf("[Warn] ACL config sync is not ready yet for pod: [%v]", pod.Name))
+				*failSignal = true
+				return
+			}
 			redisNodeConfigHash, err := r.getACLConfigHash(pod)
 			if err != nil {
 				r.Log.Error(err, "Failed to get the config for %s(%s)", pod.Name, pod.Status.PodIP)
@@ -193,7 +199,7 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 					}
 				}
 			}
-		}(&syncFail, &rdcPods.Items[i], &wg)
+		}(&syncFail, &rdcPods.Items[i])
 	}
 
 	wg.Wait()
@@ -233,7 +239,11 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 	var configMap corev1.ConfigMap
 
 	if err := r.Get(context.Background(), req.NamespacedName, &configMap); err != nil {
-		r.Log.Error(err, "Failed to fetch configmap")
+		if strings.Contains(err.Error(), RedisClusterStateMapName) {
+			r.Log.Info("[Warn] Failed to fetch config map [" + RedisClusterStateMapName + "]")
+		} else {
+			r.Log.Error(err, "Failed to fetch configmap")
+		}
 	}
 	labels := configMap.GetObjectMeta().GetLabels()
 	for label := range labels {
@@ -241,7 +251,7 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			if _, ok := configMap.Data["users.acl"]; ok {
 				if err := r.handleACLConfig(&configMap); err != nil {
 					r.Log.Error(err, "Failed to reconcile ACL config")
-					return ctrl.Result{}, err
+					return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 				}
 				return ctrl.Result{}, nil
 			}
@@ -249,7 +259,7 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			if _, ok := configMap.Data["operator.conf"]; ok {
 				if err := r.handleOperatorConfig(&configMap); err != nil {
 					r.Log.Error(err, "Failed to reconcile operator config")
-					return ctrl.Result{}, err
+					return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 				}
 				return ctrl.Result{}, nil
 			}

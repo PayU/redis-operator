@@ -5,7 +5,7 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    redis-operator: rdc-test
+    redis-operator: dev-rdc
 spec:
   selector:
     matchLabels:

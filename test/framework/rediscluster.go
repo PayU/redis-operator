@@ -1,3 +1,4 @@
+//go:build e2e_redis_op
 // +build e2e_redis_op
 
 package framework
@@ -82,7 +83,7 @@ func (f *Framework) WaitForState(redisCluster *dbv1.RedisCluster, state string, 
 	if len(timeout) > 0 {
 		t = timeout[0]
 	}
-	return wait.PollImmediate(2*time.Second, t, func() (bool, error) {
+	return wait.PollImmediate(2*time.Second, 5*t, func() (bool, error) {
 		key, err := client.ObjectKeyFromObject(redisCluster)
 		if err != nil {
 			return false, err
@@ -125,7 +126,7 @@ func (f *Framework) PopulateDatabase(keyCount int, keyName string, keySize int) 
 
 	errs := make(chan error, len(leaderPods.Items))
 
-	for i, leaderPod := range leaderPods.Items {
+	for _, leaderPod := range leaderPods.Items {
 		if leaderPod.Status.PodIP != "" {
 			wg.Add(1)
 			go func(keyCount string, keyName string, keySize string, pod corev1.Pod, wg *sync.WaitGroup) {
@@ -135,9 +136,9 @@ func (f *Framework) PopulateDatabase(keyCount int, keyName string, keySize int) 
 					fmt.Printf("Failed to run container shell: %s | %s\n", stdout, stderr)
 					errs <- err
 				}
-			}(strconv.Itoa(keyCount), keyName, strconv.Itoa(keySize), leaderPods.Items[i], &wg)
+			}(strconv.Itoa(keyCount), keyName, strconv.Itoa(keySize), leaderPod, &wg)
 		} else {
-			fmt.Printf("Node %s had no IP\n", leaderPod.Labels["node-number"])
+			fmt.Printf("Node %s had no IP\n", leaderPod.Labels["node-name"])
 		}
 	}
 

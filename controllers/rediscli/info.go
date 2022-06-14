@@ -36,6 +36,7 @@ type RedisClusterNode struct {
 	PingRecv    string
 	ConfigEpoch string
 	LinkState   string
+	Slots       string
 }
 
 func validateRedisInfo(redisInfo *RedisInfo) error {
@@ -150,7 +151,7 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 		if strings.Contains(nodeInfo[0], ")") { // special case for CLUSTER REPLICAS output
 			nodeInfo = nodeInfo[1:]
 		}
-		if len(nodeInfo) >= 8 {
+		if len(nodeInfo) >= 9 {
 			nodes = append(nodes, RedisClusterNode{
 				ID:          nodeInfo[0],
 				Addr:        nodeInfo[1],
@@ -160,8 +161,20 @@ func NewRedisClusterNodes(rawData string) *RedisClusterNodes {
 				PingRecv:    nodeInfo[5],
 				ConfigEpoch: nodeInfo[6],
 				LinkState:   nodeInfo[7],
+				Slots:       nodeInfo[8],
 			})
-
+		} else if len(nodeInfo) >= 8 {
+			nodes = append(nodes, RedisClusterNode{
+				ID:          nodeInfo[0],
+				Addr:        nodeInfo[1],
+				Flags:       nodeInfo[2],
+				Leader:      nodeInfo[3],
+				PingSend:    nodeInfo[4],
+				PingRecv:    nodeInfo[5],
+				ConfigEpoch: nodeInfo[6],
+				LinkState:   nodeInfo[7],
+				Slots:       "",
+			})
 		}
 	}
 	return &nodes
