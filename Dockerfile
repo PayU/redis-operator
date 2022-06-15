@@ -40,6 +40,7 @@ WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
 COPY --from=builder /bin/bash .
+COPY --from=builder /bin/libtinfo6 .
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 
