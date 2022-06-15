@@ -151,9 +151,9 @@ func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.Re
 		signal.Notify(saveStatusOnQuit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
 		go func() {
 			<-saveStatusOnQuit
+			mutex.Lock()
 			close(saveStatusOnQuit)
 			r.Log.Info("[WARN] reconcile loop interrupted by os signal, saving cluster state view...")
-			mutex.Lock()
 			r.saveClusterStateView(redisCluster)
 			mutex.Unlock()
 		}()
