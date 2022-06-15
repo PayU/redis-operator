@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -415,38 +416,50 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 	if len(lostIds) > 0 {
 		r.Log.Info(fmt.Sprintf("List of healthy nodes: %v", healthyNodes))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
-		r.runForget(lostIds, healthyNodes, v)
+		failingForgets := r.runForget(lostIds, healthyNodes, map[string]string{})
+		if len(failingForgets) > 0 {
+			waitIfFails := 20 * time.Second
+			time.Sleep(waitIfFails)
+			for name, id := range failingForgets {
+				node, exists := v.Nodes[name]
+				if exists && node != nil {
+					_, err := r.RedisCLI.ClusterForget(node.Ip, id)
+					if err != nil {
+						r.deletePod(node.Pod)
+					}
+				}
+			}
+			r.runForget(lostIds, healthyNodes, failingForgets)
+		}
 		r.Log.Info(fmt.Sprintf("Cluster FORGET sent for [%v] lost nodes", len(lostIds)))
 	}
 	return len(lostIds) > 0
 }
 
-func (r *RedisClusterReconciler) runForget(lostIds map[string]bool, healthyNodes map[string]string, v *view.RedisClusterView) {
-	podsToDelete := []corev1.Pod{}
+func (r *RedisClusterReconciler) runForget(lostIds map[string]bool, healthyNodes map[string]string, ignore map[string]string) map[string]string{
+	podsToDelete := map[string]string{}
 	var wg sync.WaitGroup
+	waitIfFails := 20 * time.Second
 	wg.Add(len(lostIds) * len(healthyNodes))
 	for id, _ := range lostIds {
 		for name, ip := range healthyNodes {
+			if _, toIgnore := ignore[name]; toIgnore {
+				continue
+			}
 			go func(ip string, id string) {
 				defer wg.Done()
 				_, err := r.RedisCLI.ClusterForget(ip, id)
 				if err != nil {
 					if strings.Contains(err.Error(), "Can't forget my master") {
-						node, exists := v.Nodes[name]
-						if exists && node != nil {
-							podsToDelete = append(podsToDelete, node.Pod)
-						}
+						r.Log.Info(fmt.Sprintf("[Warn] node [%v] is not able to forget [%v] properly, additional attempt to forget will be performed within [%v], additional failure to forget [%v] will lead to node [%v] deletion", ip, id, waitIfFails, id, ip))
+						podsToDelete[name] = id
 					}
 				}
 			}(ip, id)
 		}
 	}
 	wg.Wait()
-	if len(podsToDelete) > 0 {
-		for _, p := range podsToDelete {
-			r.deletePod(p)
-		}
-	}
+	return podsToDelete
 }
 
 func (r *RedisClusterReconciler) recoverCluster(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) error {
@@ -1176,7 +1189,7 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 		}
 
 		r.Log.Info(fmt.Sprintf("Checking sync on master [%v] to replica [%v]: Memory size (%v, %v, %v%v), DB size (%v, %v, %v%v)", m.CurrentMasterIp, nodeIP, memorySizeL, memorySizeF, memSizeMatch, "% match", dbsizeL, dbsizeF, dbSizeMatch, "% match"))
-		return dbSizeMatch >= int64(r.Config.Thresholds.SyncMatchThreshold) && memSizeMatch >= float64(r.Config.Thresholds.SyncMatchThreshold), nil
+		return dbSizeMatch >= int64(r.Config.Thresholds.SyncMatchThreshold), nil
 	})
 }
 

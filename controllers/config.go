@@ -167,7 +167,7 @@ func DefaultRedisOperatorConfig(logger logr.Logger) *RedisOperatorConfig {
 		Log: logger,
 		Config: OperatorConfig{
 			Thresholds: OperatorConfigThresholds{
-				SyncMatchThreshold:            85,
+				SyncMatchThreshold:            90,
 				MaxToleratedPodsRecoverAtOnce: 15,
 				MaxToleratedPodsUpdateAtOnce:  5,
 			},
