@@ -7,7 +7,8 @@ WORKDIR /workspace
 
 # install curl
 RUN apt-get update \
-    && apt-get install -y curl
+    && apt-get install -y curl \ 
+    && apt-get install libtinfo5
 
 # install redis cli
 RUN cd /tmp &&\
@@ -40,7 +41,7 @@ WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
 COPY --from=builder /bin/bash .
-COPY --from=builder /bin/libtinfo6 .
+
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 
