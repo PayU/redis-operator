@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 
 	dbv1 "github.com/PayU/redis-operator/api/v1"
+	rediscli "github.com/PayU/redis-operator/controllers/rediscli"
 	view "github.com/PayU/redis-operator/controllers/view"
 )
 
@@ -283,11 +284,15 @@ func (r *RedisClusterReconciler) waitForAllNodesAgreeAboutSlotsConfiguration(v *
 			v = newView
 		}
 	}
+	var nodes *rediscli.RedisClusterNodes
 	nonResponsive := map[string]bool{}
 	agreed := map[string]bool{}
 	if pollErr := wait.PollImmediate(r.Config.Times.RedisNodesAgreeAboutSlotsConfigCheckInterval, r.Config.Times.RedisNodesAgreeAboutSlotsConfigTimeout, func() (bool, error) {
-		dissagreement := false
+		agreement := true
 		for _, n := range v.Nodes {
+			if !agreement {
+				break
+			}
 			if n == nil {
 				continue
 			}
@@ -305,10 +310,28 @@ func (r *RedisClusterReconciler) waitForAllNodesAgreeAboutSlotsConfiguration(v *
 			if strings.Contains(stdout, "[OK] All nodes agree about slots configuration") {
 				agreed[n.Name] = true
 			} else {
-				dissagreement = true
+				agreement = false
+			}
+			if agreement {
+				nodesTable, _, err := r.RedisCLI.ClusterNodes(n.Ip)
+				if err != nil {
+					nonResponsive[n.Name] = true
+					continue
+				}
+				if nodesTable == nil {
+					continue
+				}
+				if nodes == nil {
+					nodes = nodesTable
+				}else{
+					if len(*nodesTable) > len(*nodes){
+						nodes = nodesTable
+						agreement = false
+					}
+				}
 			}
 		}
-		return !dissagreement, nil
+		return agreement, nil
 	}); pollErr != nil {
 		r.Log.Info("[Warn] Error occured during waiting for cluster nodes to agree about slots configuration, performing CLUSTER REBALANCE might need to be followed by CLUSTER FIX")
 	}
