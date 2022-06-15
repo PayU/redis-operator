@@ -7,7 +7,8 @@ WORKDIR /workspace
 
 # install curl
 RUN apt-get update \
-    && apt-get install -y curl
+    && apt-get install -y curl \ 
+    && apt-get install bash-static
 
 # install redis cli
 RUN cd /tmp &&\
@@ -35,11 +36,11 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager 
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM alpine:3.10.9
+FROM gcr.io/distroless/base-debian11
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
-COPY --from=builder /bin/bash .
+COPY --from=builder /bin/bash-static .
 
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
