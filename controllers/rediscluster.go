@@ -463,19 +463,22 @@ func (r *RedisClusterReconciler) runForget(lostIds map[string]bool, healthyNodes
 	podsToDelete := map[string]string{}
 	var wg sync.WaitGroup
 	waitIfFails := 20 * time.Second
+	mutex := &sync.Mutex{}
 	wg.Add(len(lostIds) * len(healthyNodes))
 	for id, _ := range lostIds {
 		for name, ip := range healthyNodes {
-			if _, toIgnore := ignore[name]; toIgnore {
-				continue
-			}
 			go func(ip string, id string) {
 				defer wg.Done()
+				if _, toIgnore := ignore[name]; toIgnore {
+					return
+				}
 				_, err := r.RedisCLI.ClusterForget(ip, id)
 				if err != nil {
 					if strings.Contains(err.Error(), "Can't forget my master") {
+						mutex.Lock()
 						r.Log.Info(fmt.Sprintf("[Warn] node [%v] is not able to forget [%v] properly, additional attempt to forget will be performed within [%v], additional failure to forget [%v] will lead to node [%v] deletion", ip, id, waitIfFails, id, ip))
 						podsToDelete[name] = id
+						mutex.Unlock()
 					}
 				}
 			}(ip, id)

@@ -148,7 +148,7 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 			defer wg.Done()
 			if _, e := r.RedisCLI.Ping(pod.Status.PodIP); e != nil {
 				r.Log.Info(fmt.Sprintf("[Warn] ACL config sync is not ready yet for pod: [%v]", pod.Name))
-				*failSignal = true
+				//*failSignal = true
 				return
 			}
 			redisNodeConfigHash, err := r.getACLConfigHash(pod)
