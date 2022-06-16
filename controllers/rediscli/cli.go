@@ -576,8 +576,9 @@ func (r *RedisCLI) ACLList(nodeIP string, opt ...string) (*RedisACL, string, err
 func (r *RedisCLI) ClusterFix(nodeIP string, opt ...string) (bool, string, error) {
 	args := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	pipeArgs := []string{"yes"}
-	stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args, 50)
+	//pipeArgs := []string{"yes"}
+	//stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args, 50)
+	stdout, stderr, err := r.Handler.executeCommand(args, 50)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster fix (%v): %s | %s | %v", addressPortDecider(nodeIP, r.Port), stdout, stderr, err)
 	}
