@@ -36,6 +36,14 @@ func (h *TestCommandHandler) executeCommand(args []string, multipFactorForTimeou
 	return executedCommand, "", nil
 }
 
+func (h *TestCommandHandler) executeCommandReshard(args []string, multipFactorForTimeout ...float64) (string, string, error) {
+	executedCommand := ""
+	for _, arg := range args {
+		executedCommand += arg + " "
+	}
+	return executedCommand, "", nil
+}
+
 // func (h *TestCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error) {
 	// executedCommand := ""
 	// for _, arg := range pipeArgs {

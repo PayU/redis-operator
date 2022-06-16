@@ -27,6 +27,7 @@ type CommandHandler interface {
 	buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string)
 	executeCommand(args []string, multipFactorForTimeout ...float64) (string, string, error)
 	//executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error)
+	executeCommandReshard(args []string, multipFactorForTimeout ...float64) (string, string, error)
 	buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error)
 	buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error)
 }
@@ -75,6 +76,75 @@ func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, 
 /* Executes command and returns cmd stdout, stderr and runtime error if appears
  *  args: arguments, flags and their values, in the order they should appear as if they were executed in the cli itself
  */
+func (h *RunTimeCommandHandler) executeCommandReshard(args []string, multipFactorForTimeout ...float64) (string, string, error) {
+
+	var stdout, stderr bytes.Buffer
+
+	multipFactor := 1.0
+	if len(multipFactorForTimeout) > 0 {
+		multipFactor = multipFactorForTimeout[0]
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(multipFactor)*defaultRedisCliTimeout)
+	defer cancel()
+
+	argLine := ""
+	// for _, arg := range pipeArgs {
+		// argLine += arg + " "
+	// }
+	// if len(pipeArgs) > 0 {
+		// argLine += "| "
+	// }
+	argLine += ""
+	for _, arg := range args {
+		argLine += " " + arg
+	}
+
+	println("redis-cli " + argLine)
+
+	cmd := exec.CommandContext(ctx, "redis-cli", argLine)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		return stdout.String(), stderr.String(), err
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if e, ok := err.(*exec.ExitError); ok {
+
+			// If the process exited by itself, just return the error to the caller
+			if e.Exited() {
+				return stdout.String(), stderr.String(), e
+			}
+
+			// We know now that the process could be started, but didn't exit
+			// by itself. Something must have killed it. If the context is done,
+			// we can *assume* that it has been killed by the exec.Command.
+			// Let's return ctx.Err() so our user knows that this *might* be
+			// the case.
+
+			select {
+			case <-ctx.Done():
+				return stdout.String(), stderr.String(), errors.Errorf("exec of %v failed with: %v", args, ctx.Err())
+			default:
+				return stdout.String(), stderr.String(), errors.Errorf("exec of %v failed with: %v", args, e)
+			}
+		}
+		return stdout.String(), stderr.String(), err
+	}
+
+	stdOutput := strings.TrimSpace(stdout.String())
+	errOutput := strings.TrimSpace(stderr.String())
+
+	if errOutput != "" {
+		return stdOutput, errOutput, errors.New(errOutput)
+	}
+	if stdOutput != "" && strings.Contains(strings.ToLower(stdOutput), "error:") {
+		return stdOutput, stdOutput, errors.New(stdOutput)
+	}
+	return stdOutput, errOutput, nil
+}
+
 func (h *RunTimeCommandHandler) executeCommand(args []string, multipFactorForTimeout ...float64) (string, string, error) {
 
 	var stdout, stderr bytes.Buffer
@@ -515,7 +585,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		"--cluster-yes",
 	}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args, 50)
+	stdout, stderr, err := r.Handler.executeCommandReshard(args, 50)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster reshard (%v): from [%s] to [%s] stdout: %s | stderr : %s | err: %v", nodeIP, sourceId, targetId, stdout, stderr, err)
 	}
@@ -576,8 +646,6 @@ func (r *RedisCLI) ACLList(nodeIP string, opt ...string) (*RedisACL, string, err
 func (r *RedisCLI) ClusterFix(nodeIP string, opt ...string) (bool, string, error) {
 	args := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	//pipeArgs := []string{"yes"}
-	//stdout, stderr, err := r.Handler.executeCommandWithPipe(pipeArgs, args, 50)
 	stdout, stderr, err := r.Handler.executeCommand(args, 50)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster fix (%v): %s | %s | %v", addressPortDecider(nodeIP, r.Port), stdout, stderr, err)
