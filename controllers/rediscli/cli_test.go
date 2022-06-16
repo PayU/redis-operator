@@ -36,25 +36,17 @@ func (h *TestCommandHandler) executeCommand(args []string, multipFactorForTimeou
 	return executedCommand, "", nil
 }
 
-func (h *TestCommandHandler) executeCommandReshard(args []string, multipFactorForTimeout ...float64) (string, string, error) {
+func (h *TestCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error) {
 	executedCommand := ""
-	for _, arg := range args {
+	for _, arg := range pipeArgs {
 		executedCommand += arg + " "
+	}
+	executedCommand += "| redis-cli"
+	for _, arg := range args {
+		executedCommand += " " + arg
 	}
 	return executedCommand, "", nil
 }
-
-// func (h *TestCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error) {
-	// executedCommand := ""
-	// for _, arg := range pipeArgs {
-		// executedCommand += arg + " "
-	// }
-	// executedCommand += "| redis-cli"
-	// for _, arg := range args {
-		// executedCommand += " " + arg
-	// }
-	// return executedCommand, "", nil
-// }
 
 func mapToPrintableStr(argMap map[string]string) string {
 	toStr := "{\n"
