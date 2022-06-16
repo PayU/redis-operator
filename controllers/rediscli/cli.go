@@ -101,7 +101,8 @@ func (h *RunTimeCommandHandler) executeCommandReshard(args []string, multipFacto
 
 	println("redis-cli" + argLine)
 
-	cmd := exec.CommandContext(ctx, "redis-cli", argLine)
+	cmd := exec.CommandContext(ctx, "redis-cli", args...)
+	fmt.Printf("%v\n", cmd.Args)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -157,6 +158,7 @@ func (h *RunTimeCommandHandler) executeCommand(args []string, multipFactorForTim
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "redis-cli", args...)
+	fmt.Printf("%v\n", cmd.Args)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
