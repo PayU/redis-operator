@@ -8,8 +8,6 @@ WORKDIR /workspace
 # install curl
 RUN apt-get update \
     && apt-get install -y curl \ 
-    && apt-get install bash-static \
-    && apt-get install libtinfo6 \
     && apt-get install unzip
 
 # install redis cli
@@ -49,8 +47,6 @@ FROM gcr.io/distroless/base-debian11
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
-COPY --from=builder /bin ./bin
-COPY --from=builder /lib ./lib
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 

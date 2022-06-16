@@ -36,17 +36,17 @@ func (h *TestCommandHandler) executeCommand(args []string, multipFactorForTimeou
 	return executedCommand, "", nil
 }
 
-func (h *TestCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error) {
-	executedCommand := ""
-	for _, arg := range pipeArgs {
-		executedCommand += arg + " "
-	}
-	executedCommand += "| redis-cli"
-	for _, arg := range args {
-		executedCommand += " " + arg
-	}
-	return executedCommand, "", nil
-}
+// func (h *TestCommandHandler) executeCommandWithPipe(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error) {
+	// executedCommand := ""
+	// for _, arg := range pipeArgs {
+		// executedCommand += arg + " "
+	// }
+	// executedCommand += "| redis-cli"
+	// for _, arg := range args {
+		// executedCommand += " " + arg
+	// }
+	// return executedCommand, "", nil
+// }
 
 func mapToPrintableStr(argMap map[string]string) string {
 	toStr := "{\n"
@@ -667,7 +667,7 @@ func execClusterFixTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	pipeArgs := []string{"yes", "yes"}
-	expectedResult, _, _ := r.Handler.executeCommandWithPipe(pipeArgs, expectedArgList)
+	//pipeArgs := []string{"yes", "yes"}
+	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
 	resultHandler(expectedResult, result, "Cluster fix "+testCaseId, argMap, expectedArgMap)
 }

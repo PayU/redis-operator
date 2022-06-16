@@ -1045,9 +1045,9 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	if !ok {
 		return errors.New("Could not perform redis cluster update")
 	}
-	updatingPodsAtOnc := 0
+	updatingPodsAtOnce := 0
 	for _, n := range v.Nodes {
-		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
+		if updatingPodsAtOnce >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
 			return nil
 		}
 		if n == nil {
@@ -1059,7 +1059,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 				continue
 			}
 			if !podUpToDate {
-				updatingPodsAtOnc++
+				updatingPodsAtOnce++
 				promotedReplica, err := r.failOverToReplica(n.Name, v)
 				if err != nil || promotedReplica == nil {
 					continue
@@ -1068,12 +1068,12 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 		}
 	}
-	if updatingPodsAtOnc > 0 {
+	if updatingPodsAtOnce > 0 {
 		return nil
 	}
 
 	for _, n := range v.Nodes {
-		if updatingPodsAtOnc >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
+		if updatingPodsAtOnce >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
 			return nil
 		}
 		if n == nil {
@@ -1086,7 +1086,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 			if !podUpToDate {
 				r.deletePod(n.Pod)
-				updatingPodsAtOnc++
+				updatingPodsAtOnce++
 			}
 		}
 	}
