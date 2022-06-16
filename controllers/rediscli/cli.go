@@ -84,7 +84,6 @@ func (h *RunTimeCommandHandler) executeCommand(args []string, multipFactorForTim
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "redis-cli", args...)
-	fmt.Printf("%v\n", cmd.Args)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -157,7 +156,6 @@ func (h *RunTimeCommandHandler) executeCommandWithPipe(pipeArgs []string, args [
 	}
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", argLine)
-	fmt.Printf("%v\n", cmd.Args)
 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

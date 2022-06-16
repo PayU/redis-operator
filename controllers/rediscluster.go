@@ -695,10 +695,69 @@ func (r *RedisClusterReconciler) handleLossOfLeaderWithAllReplicas(redisCluster 
 	return false
 }
 
+func (r *RedisClusterReconciler) detectExisintgLeadersAndReplicasWithFullDataLoss(v *view.RedisClusterView) bool{
+	// If node is created thinking there exists other temp-master to replicate from, during its waiting for pod-create the other single replica fails
+	// it will get stuck in "CreateNode/AddNode" state forever, cluster will be in [recover] mode forever
+	// indication:
+	// If all the nodes with the same leader name has len of nodes == 1
+	// reshard & delete them all, it will be detected later as case of loss leaders with all followers, and recovered by FIX -> REBALANCE 
+	lost := []string{}
+	var wg sync.WaitGroup
+	mutex := &sync.Mutex{}
+	for _, n := range v.Nodes {
+		if n.Name != n.LeaderName {
+			continue
+		}
+		wg.Add(1)
+		go func(n *view.NodeView) {
+			defer wg.Done()
+			setOK := false
+			nodes, _, err := r.RedisCLI.ClusterNodes(n.Ip)
+			if err != nil || nodes == nil {
+				return
+			}
+			if len(*nodes) > 2 {
+				return
+			}
+			for _, node := range v.Nodes {
+				if node.LeaderName != n.LeaderName || node.Name == n.Name {
+					continue
+				}
+				nodes, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+				if err != nil || nodes == nil {
+					continue
+				}
+				if len(*nodes) > 2 {
+					setOK = true
+					break
+				}
+			}
+			if !setOK {
+				// At this point: n has one recognized node in his table, all the existing nodes with same leader name has one recognized node in their table
+				// Mitigation: all of them need to be resharded, but kept in map
+				mutex.Lock()
+				lost = append(lost, n.LeaderName)
+				mutex.Unlock()
+			}
+		}(n)
+	}
+	wg.Wait()
+	for _, l := range lost {
+		r.Log.Info(fmt.Sprintf("[Warn] A case of existing nodes with complete loss of data detected, leader name: [%v], all replicas of this leader will be resharded and deleted", l))
+		for _, node := range v.Nodes {
+			if node.LeaderName == l {
+				r.RedisClusterStateView.SetNodeState(node.Name, node.LeaderName, view.ReshardNodeKeepInMap)
+			}
+		}
+	}
+	return len(lost) > 0
+}
+
 func (r *RedisClusterReconciler) recoverNodes(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) bool {
 	if r.handleLossOfLeaderWithAllReplicas(redisCluster, v) {
 		return true
 	}
+	r.detectExisintgLeadersAndReplicasWithFullDataLoss(v)
 	if r.handleInterruptedScaleFlows(redisCluster, v) {
 		return true
 	}
