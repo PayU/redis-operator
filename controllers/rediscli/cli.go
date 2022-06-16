@@ -99,7 +99,7 @@ func (h *RunTimeCommandHandler) executeCommandReshard(args []string, multipFacto
 		argLine += " " + arg
 	}
 
-	println("redis-cli " + argLine)
+	println("redis-cli" + argLine)
 
 	cmd := exec.CommandContext(ctx, "redis-cli", argLine)
 	cmd.Stdout = &stdout
@@ -584,7 +584,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		"--cluster-slots", fmt.Sprint(slots),
 		"--cluster-yes",
 	}
-	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommandReshard(args, 50)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return false, stdout, errors.Errorf("Failed to execute cluster reshard (%v): from [%s] to [%s] stdout: %s | stderr : %s | err: %v", nodeIP, sourceId, targetId, stdout, stderr, err)
