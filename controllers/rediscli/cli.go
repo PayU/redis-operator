@@ -516,7 +516,7 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string, opt ...st
 func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "failover"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand(args, 5)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FAILOVER (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
