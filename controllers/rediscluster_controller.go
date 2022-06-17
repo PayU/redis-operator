@@ -409,49 +409,11 @@ func ForceReconcile(c echo.Context) error {
 }
 
 func ClusterTest(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster test")
-	}
-	cli := rediscli.NewRedisCLI(&reconciler.Log)
-	user := os.Getenv("REDIS_USERNAME")
-	if user != "" {
-		cli.Auth = &rediscli.RedisAuth{
-			User: user,
-		}
-	}
-	t := &testlab.TestLab{
-		Client:             reconciler.Client,
-		RedisCLI:           cli,
-		Cluster:            cluster,
-		RedisClusterClient: nil,
-		Log:                reconciler.Log,
-		Report:             "",
-	}
-	t.RunTest(&reconciler.RedisClusterStateView.Nodes, false)
-	return c.String(http.StatusOK, t.Report)
+	return c.String(http.StatusOK, setAndStartTestLab(&c, false))
 }
 
 func ClusterTestWithData(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster test")
-	}
-	cli := rediscli.NewRedisCLI(&reconciler.Log)
-	user := os.Getenv("REDIS_USERNAME")
-	if user != "" {
-		cli.Auth = &rediscli.RedisAuth{
-			User: user,
-		}
-	}
-	t := &testlab.TestLab{
-		Client:             reconciler.Client,
-		RedisCLI:           cli,
-		Cluster:            cluster,
-		RedisClusterClient: nil,
-		Log:                reconciler.Log,
-		Report:             "",
-	}
-	t.RunTest(&reconciler.RedisClusterStateView.Nodes, true)
-	return c.String(http.StatusOK, t.Report)
+	return c.String(http.StatusOK, setAndStartTestLab(&c, true))
 }
 
 func PopulateClusterWithData(c echo.Context) error {
@@ -539,4 +501,27 @@ func FlushClusterData(c echo.Context) error {
 		println(n.Name + ": " + info.Memory["used_memory_human"])
 	}
 	return c.String(http.StatusOK, "Cluster data flushed")
+}
+
+func setAndStartTestLab(c *echo.Context, data bool) string{
+	if reconciler == nil || cluster == nil {
+		return "Could not perform cluster test"
+	}
+	cli := rediscli.NewRedisCLI(&reconciler.Log)
+	user := os.Getenv("REDIS_USERNAME")
+	if user != "" {
+		cli.Auth = &rediscli.RedisAuth{
+			User: user,
+		}
+	}
+	t := &testlab.TestLab{
+		Client:             reconciler.Client,
+		RedisCLI:           cli,
+		Cluster:            cluster,
+		RedisClusterClient: nil,
+		Log:                reconciler.Log,
+		Report:             "",
+	}
+	t.RunTest(&reconciler.RedisClusterStateView.Nodes, data)
+	return t.Report
 }

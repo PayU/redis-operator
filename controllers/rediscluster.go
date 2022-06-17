@@ -144,6 +144,7 @@ func (r *RedisClusterReconciler) attemptToFailOver(followerIP string, opt ...str
 	e = r.doFailover(followerIP, opt...)
 	if e != nil {
 		r.Log.Info(fmt.Sprintf("[Warning] Attempt to failover with node ip [%s] failed", followerIP))
+		println(e.Error())
 		return e
 	}
 	r.Log.Info(fmt.Sprintf("[OK] Attempt to failover succeeded. [%s] is a leader", followerIP))
@@ -153,9 +154,10 @@ func (r *RedisClusterReconciler) attemptToFailOver(followerIP string, opt ...str
 // Triggers a failover command on the specified node and waits for the follower
 // to become leader
 func (r *RedisClusterReconciler) doFailover(promotedNodeIp string, opt ...string) error {
-	r.Log.Info(fmt.Sprintf("Running 'cluster failover %s' on %s", opt, promotedNodeIp))
+	r.Log.Info(fmt.Sprintf("Running failover on [%s]", promotedNodeIp))
 	_, err := r.RedisCLI.ClusterFailover(promotedNodeIp, opt...)
 	if err != nil {
+		println(err.Error())
 		return err
 	}
 	return r.waitForManualFailover(promotedNodeIp)
@@ -974,6 +976,7 @@ func (r *RedisClusterReconciler) recoverFromFailOver(podIp string, m *view.Missi
 		err := r.doFailover(podIp, "")
 		if err != nil {
 			r.Log.Info(fmt.Sprintf("[Warning] Attempt to failover with node [%s:%s] failed", m.Name, podIp))
+			println(err.Error())
 			return err
 		}
 	}
