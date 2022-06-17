@@ -461,7 +461,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 	stdout, stderr, err := r.Handler.executeCommand(args, false, 50)
 	if err != nil || len(stderr) > 0 {
 		println("Using sh didnt work. using bash")
-		println(err.Error())
+		println(stderr)
 		stdout, stderr, err = r.Handler.executeCommand(args, true, 50)
 	}
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
