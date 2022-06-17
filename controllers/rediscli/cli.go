@@ -91,12 +91,12 @@ func (h *RunTimeCommandHandler) executeCommand(args []string, useBash bool, mult
 		cmd = exec.CommandContext(ctx, "bash", "-c", argLine)
 		fmt.Printf("%v\n", cmd.Args)
 	}else{
-		argLine := ""
+		argLine := "redis-cli "
 		for _, arg := range args {
 			argLine += arg + " "
 		}
 		if strings.Contains(argLine, "reshard"){
-			cmd = exec.CommandContext(ctx, "redis-cli", argLine)
+			cmd = exec.CommandContext(ctx, argLine)
 			fmt.Printf("%v\n", cmd.Args)
 		}else{
 			cmd = exec.CommandContext(ctx, "redis-cli", args...)
