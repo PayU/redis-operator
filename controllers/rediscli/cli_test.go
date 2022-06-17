@@ -36,18 +36,6 @@ func (h *TestCommandHandler) executeCommand(args []string, useBash bool, multipF
 	return executedCommand, "", nil
 }
 
-// func (h *TestCommandHandler) executeCommandWithBash(pipeArgs []string, args []string, multipFactorForTimeout ...float64) (string, string, error) {
-	// executedCommand := ""
-	// for _, arg := range pipeArgs {
-		// executedCommand += arg + " "
-	// }
-	// executedCommand += "| redis-cli"
-	// for _, arg := range args {
-		// executedCommand += " " + arg
-	// }
-	// return executedCommand, "", nil
-// }
-
 func mapToPrintableStr(argMap map[string]string) string {
 	toStr := "{\n"
 	for key, val := range argMap {
