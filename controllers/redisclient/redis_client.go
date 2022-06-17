@@ -46,7 +46,6 @@ func GetRedisClusterClient(v *view.RedisClusterView, cli *rediscli.RedisCLI) *Re
 			Username: "admin",
 			Password: "adminpass",
 		})
-
 	}
 	mutex.Unlock()
 	return clusterClient
