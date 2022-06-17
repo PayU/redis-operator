@@ -89,6 +89,7 @@ func (h *RunTimeCommandHandler) executeCommand(args []string, useBash bool, mult
 			argLine += " " + arg
 		}
 		cmd = exec.CommandContext(ctx, "bash", "-c", argLine)
+		fmt.Printf("%v\n", cmd.Args)
 	}else{
 		argLine := ""
 		for _, arg := range args {
@@ -96,6 +97,7 @@ func (h *RunTimeCommandHandler) executeCommand(args []string, useBash bool, mult
 		}
 		if strings.Contains(argLine, "reshard"){
 			cmd = exec.CommandContext(ctx, "redis-cli", argLine)
+			fmt.Printf("%v\n", cmd.Args)
 		}else{
 			cmd = exec.CommandContext(ctx, "redis-cli", args...)
 		}
@@ -458,6 +460,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args, false, 50)
 	if err != nil || len(stderr) > 0 {
+		println("using sh didnt work. using bash")
 		stdout, stderr, err = r.Handler.executeCommand(args, true, 50)
 	}
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
