@@ -438,11 +438,22 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 			}
 		}
 	}
+	r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
 	if len(lostIds) > 0 {
 		r.Log.Info(fmt.Sprintf("List of healthy nodes: %v", healthyNodes))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
 		failingForgets := r.runForget(lostIds, healthyNodes, map[string]string{})
 		if len(failingForgets) > 0 {
+			for name, id := range failingForgets {
+				node, exists := v.Nodes[name]
+				if exists && node != nil {
+					_, err := r.RedisCLI.ClusterForget(node.Ip, id)
+					if err != nil {
+						r.RedisCLI.ClusterFailover(node.Ip)
+						r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+					}
+				}
+			}
 			waitIfFails := 20 * time.Second
 			time.Sleep(waitIfFails)
 			for name, id := range failingForgets {
