@@ -708,6 +708,10 @@ func (r *RedisClusterReconciler) detectExisintgLeadersAndReplicasWithFullDataLos
 		if n.Name != n.LeaderName {
 			continue
 		}
+		k, existsInMap := r.RedisClusterStateView.Nodes[n.Name]
+		if !existsInMap || k.NodeState == view.DeleteNode || k.NodeState == view.DeleteNodeKeepInMap || k.NodeState == view.ReshardNode || k.NodeState == view.ReshardNodeKeepInMap{
+			continue
+		}
 		wg.Add(1)
 		go func(n *view.NodeView) {
 			defer wg.Done()
@@ -737,6 +741,9 @@ func (r *RedisClusterReconciler) detectExisintgLeadersAndReplicasWithFullDataLos
 				// Mitigation: all of them need to be resharded, but kept in map
 				mutex.Lock()
 				lost = append(lost, n.LeaderName)
+				if r.RedisClusterStateView.ClusterState != view.ClusterFix {
+					r.RedisClusterStateView.ClusterState = view.ClusterFix
+				}
 				mutex.Unlock()
 			}
 		}(n)
@@ -757,7 +764,10 @@ func (r *RedisClusterReconciler) recoverNodes(redisCluster *dbv1.RedisCluster, v
 	if r.handleLossOfLeaderWithAllReplicas(redisCluster, v) {
 		return true
 	}
-	r.detectExisintgLeadersAndReplicasWithFullDataLoss(v)
+	if r.detectExisintgLeadersAndReplicasWithFullDataLoss(v) {
+		return true
+	}
+	// must be synchrounous
 	if r.handleInterruptedScaleFlows(redisCluster, v) {
 		return true
 	}
@@ -802,7 +812,6 @@ func (r *RedisClusterReconciler) recoverNodes(redisCluster *dbv1.RedisCluster, v
 
 func (r *RedisClusterReconciler) handleInterruptedScaleFlows(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) bool {
 	actionRequired := false
-	// must be synchrounous
 	r.Log.Info("Checking if sharding process have been interrupted for some nodes...")
 	for _, n := range r.RedisClusterStateView.Nodes {
 		switch n.NodeState {
