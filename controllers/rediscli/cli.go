@@ -450,12 +450,19 @@ func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...
 }
 
 func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId string, slots int, opt ...string) (bool, string, error) {
+	// args := []string{
+		// "--cluster reshard", addressPortDecider(nodeIP, r.Port),
+		// "--cluster-from", sourceId,
+		// "--cluster-to", targetId,
+		// "--cluster-slots", fmt.Sprint(slots),
+		// "--cluster-yes",
+	// }
 	args := []string{
 		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
-		"--cluster-from", sourceId,
-		"--cluster-to", targetId,
-		"--cluster-slots", fmt.Sprint(slots),
-		"--cluster-yes",
+		"--from", sourceId,
+		"--to", targetId,
+		"--slots", fmt.Sprint(slots),
+		"--yes",
 	}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args, false, 50)
