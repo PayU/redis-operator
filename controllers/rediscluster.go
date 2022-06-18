@@ -458,7 +458,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 				node, exists := v.Nodes[name]
 				if exists && node != nil {
 					_, err := r.RedisCLI.ClusterForget(node.Ip, id)
-					if err != nil {
+					if err != nil && strings.Contains(err.Error(), "Can't forget my master") {
 						r.deletePod(node.Pod)
 					}
 				}
@@ -484,13 +484,11 @@ func (r *RedisClusterReconciler) runForget(lostIds map[string]bool, healthyNodes
 					return
 				}
 				_, err := r.RedisCLI.ClusterForget(ip, id)
-				if err != nil {
-					if strings.Contains(err.Error(), "Can't forget my master") {
-						mutex.Lock()
-						r.Log.Info(fmt.Sprintf("[Warn] node [%v:%v] is not able to forget [%v] properly, additional attempt to forget will be performed within [%v], additional failure to forget [%v] will lead to node [%v:%v] deletion", name, ip, id, waitIfFails, id, name, ip))
-						podsToDelete[name] = id
-						mutex.Unlock()
-					}
+				if err != nil && strings.Contains(err.Error(), "Can't forget my master"){
+					mutex.Lock()
+					r.Log.Info(fmt.Sprintf("[Warn] node [%v:%v] is not able to forget [%v] properly, additional attempt to forget will be performed within [%v], additional failure to forget [%v] will lead to node [%v:%v] deletion", name, ip, id, waitIfFails, id, name, ip))
+					podsToDelete[name] = id
+					mutex.Unlock()
 				}
 			}(ip, id)
 		}
