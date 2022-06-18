@@ -457,7 +457,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		"--cluster-slots", fmt.Sprint(slots),
 		"--cluster-yes", addressPortDecider(nodeIP, r.Port),
 	}
-	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err := r.Handler.executeCommand(args, false, 50)
 	if err != nil || len(stderr) > 0 {
 		println(stderr)
@@ -465,6 +465,23 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		println("first sol worked")
 		return true, stdout, nil
 	}
+
+	args = []string{
+		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
+		"--cluster-from", sourceId,
+		"--cluster-to", targetId,
+		"--cluster-slots", fmt.Sprint(slots),
+		"--cluster-yes", 
+	}
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err = r.Handler.executeCommand(args, false, 50)
+	if err != nil || len(stderr) > 0 {
+		println(stderr)
+	}else{
+		println("first1 sol worked")
+		return true, stdout, nil
+	}
+
 	args = []string{
 		"--cluster reshard", 
 		"--from", sourceId,
@@ -472,7 +489,7 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		"--slots", fmt.Sprint(slots),
 		"--yes", addressPortDecider(nodeIP, r.Port),
 	}
-	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
 	stdout, stderr, err = r.Handler.executeCommand(args, false, 50)
 	if err != nil || len(stderr) > 0 {
 		println(stderr)
@@ -480,6 +497,87 @@ func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId strin
 		println("second sol worked")
 		return true, stdout, nil
 	}
+
+	args = []string{
+		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
+		"--from", sourceId,
+		"--to", targetId,
+		"--slots", fmt.Sprint(slots),
+		"--yes", 
+	}
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err = r.Handler.executeCommand(args, false, 50)
+	if err != nil || len(stderr) > 0 {
+		println(stderr)
+	}else{
+		println("second1 sol worked")
+		return true, stdout, nil
+	}
+
+	args = []string{
+		"--cluster reshard", 
+		"-from", sourceId,
+		"-to", targetId,
+		"-slots", fmt.Sprint(slots),
+		"-yes", addressPortDecider(nodeIP, r.Port),
+	}
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err = r.Handler.executeCommand(args, false, 50)
+	if err != nil || len(stderr) > 0 {
+		println(stderr)
+	}else{
+		println("third sol worked")
+		return true, stdout, nil
+	}
+
+	args = []string{
+		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
+		"-from", sourceId,
+		"-to", targetId,
+		"-slots", fmt.Sprint(slots),
+		"-yes", 
+	}
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err = r.Handler.executeCommand(args, false, 50)
+	if err != nil || len(stderr) > 0 {
+		println(stderr)
+	}else{
+		println("third1 sol worked")
+		return true, stdout, nil
+	}
+
+	args = []string{
+		"--cluster reshard", 
+		"from", sourceId,
+		"to", targetId,
+		"slots", fmt.Sprint(slots),
+		"yes", addressPortDecider(nodeIP, r.Port),
+	}
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err = r.Handler.executeCommand(args, false, 50)
+	if err != nil || len(stderr) > 0 {
+		println(stderr)
+	}else{
+		println("four sol worked")
+		return true, stdout, nil
+	}
+
+	args = []string{
+		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
+		"from", sourceId,
+		"to", targetId,
+		"slots", fmt.Sprint(slots),
+		"yes", 
+	}
+	//args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err = r.Handler.executeCommand(args, false, 50)
+	if err != nil || len(stderr) > 0 {
+		println(stderr)
+	}else{
+		println("four sol worked")
+		return true, stdout, nil
+	}
+
 	println("Using sh didnt work. using bash")
 	args = []string{
 		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
