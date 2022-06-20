@@ -43,12 +43,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager 
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-# FROM gcr.io/distroless/base-debian11
-# WORKDIR /
-# COPY --from=builder /workspace/manager .
-# COPY --from=builder /bin/redis-cli .
-# COPY --from=builder /bin ./bin
-# COPY --from=builder /lib ./lib
+#FROM gcr.io/distroless/base-debian11
+WORKDIR /
+#ADD /bin/redis-cli /bin/redis-cli
+#ADD /bin/manager .
+#COPY --from=builder /workspace/manager .
+#COPY --from=builder /bin/redis-cli .
+#COPY --from=builder /bin ./bin
+#COPY --from=builder /lib ./lib
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 
