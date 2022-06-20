@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.15 as builder
+FROM golang:1.16 as builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -7,8 +7,7 @@ WORKDIR /workspace
 
 # install curl
 RUN apt-get update \
-    && apt-get install -y curl \
-    && apt-get install yes
+    && apt-get install -y curl
 
 # install redis cli
 
@@ -50,6 +49,7 @@ COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
 COPY --from=builder /bin ./bin
 COPY --from=builder /lib ./lib
+COPY --from=builder /usr/bin/yes .
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 
