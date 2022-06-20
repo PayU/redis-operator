@@ -7,7 +7,8 @@ WORKDIR /workspace
 
 # install curl
 RUN apt-get update \
-    && apt-get install -y curl 
+    && apt-get install -y curl \
+    && apt-get install yes
 
 # install redis cli
 
