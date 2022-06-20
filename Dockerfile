@@ -47,9 +47,8 @@ FROM gcr.io/distroless/base-debian11
 WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY --from=builder /bin/redis-cli .
-COPY --from=builder / ./
-#COPY --from=builder /bin ./bin
-#COPY --from=builder /lib ./lib
+COPY --from=builder /bin ./bin
+COPY --from=builder /lib ./lib
 USER nonroot:nonroot
 ENV PATH="./:${PATH}"
 
