@@ -17,6 +17,7 @@ import (
 const (
 	defaultRedisCliTimeout        = 20 * time.Second
 	REDIS_DEFAULT_PORT     string = "6379"
+	MAX_SLOTS_PER_LEADER = 16384
 )
 
 type RedisAuth struct {
@@ -96,7 +97,6 @@ func (h *RunTimeCommandHandler) executeCommand(pipedArgs []string, args []string
 			argLine += " " + arg
 		}
 		cmd = exec.CommandContext(ctx, "bash", "-c", argLine)
-		fmt.Printf("%v\n", cmd.Args)
 	}else{
 		cmd = exec.CommandContext(ctx, "redis-cli", args...)
 	}

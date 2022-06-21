@@ -11,8 +11,9 @@ func Register(e *echo.Echo) {
 	e.POST("/reset", controllers.DoResetCluster)
 	e.POST("/rebalance", controllers.ClusterRebalance)
 	e.POST("/fix", controllers.ClusterFix)
+	e.POST("/forgetLostNodes", controllers.ForgetLostNodes)
 	e.POST("/forceReconcile", controllers.ForceReconcile)
 	e.POST("/test", controllers.ClusterTest)
 	e.POST("/testData", controllers.ClusterTestWithData)
-	e.POST("/populateData", controllers.PopulateClusterWithData)
+	e.POST("/populateMockData", controllers.PopulateClusterWithMockData)
 }

@@ -20,22 +20,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/PayU/redis-operator/controllers/redisclient"
-	"github.com/PayU/redis-operator/controllers/testlab"
 	"github.com/PayU/redis-operator/controllers/view"
 
 	"github.com/go-logr/logr"
-	"github.com/labstack/echo/v4"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -329,199 +324,4 @@ func (r *RedisClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Pod{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
-}
-
-func DoResetCluster(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster reset action")
-	}
-	cluster.Status.ClusterState = string(Reset)
-	reconciler.saveOperatorState(cluster)
-	return c.String(http.StatusOK, "Set cluster state to reset mode")
-}
-
-func ClusterRebalance(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster rebalance action")
-	}
-	reconciler.saveClusterStateView(cluster)
-	v, ok := reconciler.NewRedisClusterView(cluster)
-	if !ok {
-		return c.String(http.StatusOK, "Could not retrieve redis cluster view to")
-	}
-	reconciler.removeSoloLeaders(v)
-	healthyServerName, found := reconciler.findHealthyLeader(v)
-	if !found {
-		return c.String(http.StatusOK, "Could not find healthy server to serve the rebalance request")
-	}
-	mutex := &sync.Mutex{}
-	mutex.Lock()
-	reconciler.RedisClusterStateView.ClusterState = view.ClusterRebalance
-	healthyServerIp := v.Nodes[healthyServerName].Ip
-	reconciler.waitForAllNodesAgreeAboutSlotsConfiguration(v)
-	_, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
-	if err != nil {
-		reconciler.Log.Error(err, "Could not perform cluster rebalance")
-	}
-	reconciler.RedisClusterStateView.ClusterState = view.ClusterOK
-	mutex.Unlock()
-	reconciler.saveClusterStateView(cluster)
-	return c.String(http.StatusOK, "Cluster rebalance attempt executed")
-}
-
-func ClusterFix(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster fix action")
-	}
-	reconciler.saveClusterStateView(cluster)
-	v, ok := reconciler.NewRedisClusterView(cluster)
-	if !ok {
-		return c.String(http.StatusOK, "Could not retrieve redis cluster view to")
-	}
-	healthyServerName, found := reconciler.findHealthyLeader(v)
-	if !found {
-		return c.String(http.StatusOK, "Could not find healthy server to serve the fix request")
-	}
-	healthyServerIp := v.Nodes[healthyServerName].Ip
-	mutex := &sync.Mutex{}
-	mutex.Lock()
-	reconciler.RedisClusterStateView.ClusterState = view.ClusterFix
-	_, _, err := reconciler.RedisCLI.ClusterFix(healthyServerIp)
-	if err != nil {
-		reconciler.Log.Error(err, "Could not perform cluster fix")
-	}
-	reconciler.RedisClusterStateView.ClusterState = view.ClusterOK
-	mutex.Unlock()
-	reconciler.saveClusterStateView(cluster)
-	return c.String(http.StatusOK, "Cluster fix attempt executed")
-}
-
-func ForceReconcile(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster reconcile action")
-	}
-	reconciler.saveClusterStateView(cluster)
-	_, err := reconciler.Reconcile(ctrl.Request{types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}})
-	if err != nil {
-		reconciler.Log.Error(err, "Could not perform reconcile trigger")
-	}
-	return c.String(http.StatusOK, "Force Reconcile request triggered, direct reconcile trigger might run the loop without enqueue it again causing the operator to not scheduling another run within requested time.\nIn case of need run eforced reconcile manually several times until recovery is complete, and restart manager when cluster is stable")
-}
-
-func ClusterTest(c echo.Context) error {
-	return c.String(http.StatusOK, setAndStartTestLab(&c, false))
-}
-
-func ClusterTestWithData(c echo.Context) error {
-	return c.String(http.StatusOK, setAndStartTestLab(&c, true))
-}
-
-func PopulateClusterWithData(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster popluate data")
-	}
-	var cl *redisclient.RedisClusterClient = nil
-	v, ok := reconciler.NewRedisClusterView(cluster)
-	if !ok || v == nil {
-		return c.String(http.StatusOK, "Could not perform cluster populate data")
-	}
-	rcli := rediscli.NewRedisCLI(&reconciler.Log)
-	user := os.Getenv("REDIS_USERNAME")
-	if user != "" {
-		rcli.Auth = &rediscli.RedisAuth{
-			User: user,
-		}
-	}
-	cl = redisclient.GetRedisClusterClient(v, rcli)
-
-	for _, n := range v.Nodes {
-		info, _, err := reconciler.RedisCLI.Info(n.Ip)
-		if err != nil || info == nil {
-			continue
-		}
-		println(n.Name + ": " + info.Memory["used_memory_human"])
-	}
-
-	total := 50000000
-	init := 0
-	sw := 0
-
-	println("populating: ")
-	println(total)
-
-	updateClientPer := 15000
-	loopsBeforeClientUpdate := 0
-
-	for i := init; i < init+total; i++ {
-		key := "key" + fmt.Sprintf("%v", i)
-		val := "val" + fmt.Sprintf("%v", i)
-		err := cl.Set(key, val, 3)
-		if err == nil {
-			sw++
-		}
-		loopsBeforeClientUpdate++
-		if loopsBeforeClientUpdate == updateClientPer {
-			v, ok := reconciler.NewRedisClusterView(cluster)
-			if ok && v != nil {
-				cl = redisclient.GetRedisClusterClient(v, rcli)
-				loopsBeforeClientUpdate = 0
-			}
-		}
-
-	}
-
-	for _, n := range v.Nodes {
-		info, _, err := reconciler.RedisCLI.Info(n.Ip)
-		if err != nil || info == nil {
-			continue
-		}
-		println(n.Name + ": " + info.Memory["used_memory_human"])
-	}
-	return c.String(http.StatusOK, "Cluster populated with data")
-}
-
-func FlushClusterData(c echo.Context) error {
-	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster popluate data")
-	}
-	var cl *redisclient.RedisClusterClient = nil
-	v, ok := reconciler.NewRedisClusterView(cluster)
-	if !ok || v == nil {
-		return c.String(http.StatusOK, "Could not perform cluster flush data")
-	}
-	cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
-	println("flushing")
-	cl.FlushAllData()
-	time.Sleep(10 * time.Second)
-	for _, n := range v.Nodes {
-		info, _, err := reconciler.RedisCLI.Info(n.Ip)
-		if err != nil || info == nil {
-			continue
-		}
-		println(n.Name + ": " + info.Memory["used_memory_human"])
-	}
-	return c.String(http.StatusOK, "Cluster data flushed")
-}
-
-func setAndStartTestLab(c *echo.Context, data bool) string{
-	if reconciler == nil || cluster == nil {
-		return "Could not perform cluster test"
-	}
-	cli := rediscli.NewRedisCLI(&reconciler.Log)
-	user := os.Getenv("REDIS_USERNAME")
-	if user != "" {
-		cli.Auth = &rediscli.RedisAuth{
-			User: user,
-		}
-	}
-	t := &testlab.TestLab{
-		Client:             reconciler.Client,
-		RedisCLI:           cli,
-		Cluster:            cluster,
-		RedisClusterClient: nil,
-		Log:                reconciler.Log,
-		Report:             "",
-	}
-	t.RunTest(&reconciler.RedisClusterStateView.Nodes, data)
-	return t.Report
 }

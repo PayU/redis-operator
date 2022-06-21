@@ -120,7 +120,7 @@ func (r *RedisClusterReconciler) initializeLeaders(redisCluster *dbv1.RedisClust
 	return nil
 }
 
-func (r *RedisClusterReconciler) failOverToReplica(leaderName string, v *view.RedisClusterView) (promotedReplica *view.NodeView, err error) {
+func (r *RedisClusterReconciler) failOverToReplica(leaderName string, v *view.RedisClusterView) (promotedReplica *view.NodeView) {
 	for _, n := range v.Nodes {
 		if n != nil {
 			if n.LeaderName == leaderName && n.Name != leaderName {
@@ -128,11 +128,11 @@ func (r *RedisClusterReconciler) failOverToReplica(leaderName string, v *view.Re
 				if err != nil {
 					continue
 				}
-				return n, nil
+				return n
 			}
 		}
 	}
-	return nil, nil
+	return nil
 }
 
 func (r *RedisClusterReconciler) attemptToFailOver(followerIP string, opt ...string) error {
@@ -1122,6 +1122,16 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	if !ok {
 		return errors.New("Could not perform redis cluster update")
 	}
+	hl, found := r.findHealthyLeader(v, map[string]bool{})
+	if !found {
+		r.Log.Info("[Warn] Coud not find healthy leader to promote update process, re attempting in next healthy reconcile loop...")
+		return nil
+	}
+	healthyLeader, exists := v.Nodes[hl]
+	if !exists {
+		r.Log.Info("[Warn] Coud not find healthy leader to promote update process, re attempting in next healthy reconcile loop...")
+		return nil
+	}
 	updatingPodsAtOnce := 0
 	for _, n := range v.Nodes {
 		if updatingPodsAtOnce >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
@@ -1130,19 +1140,45 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 		if n == nil {
 			continue
 		}
-		if n.Name == n.LeaderName {
+		if n.Name == n.LeaderName && n.Name != hl {
 			podUpToDate, err := r.isPodUpToDate(redisCluster, n.Pod)
-			if err != nil {
+			if err != nil || podUpToDate {
 				continue
 			}
-			if !podUpToDate {
-				updatingPodsAtOnce++
-				promotedReplica, err := r.failOverToReplica(n.Name, v)
-				if err != nil || promotedReplica == nil {
+			isMaster, err := r.checkIfMaster(n.Ip)
+			if err != nil {
+				return err
+			}
+			if !isMaster{
+				continue
+			}
+			hasFollower := false
+			for _, node := range r.RedisClusterStateView.Nodes {
+				if node.Name != n.Name && node.LeaderName == n.LeaderName {
+					_, hasFollower := v.Nodes[node.Name]
+					if !hasFollower {
+						return nil
+					}else{
+						break
+					}
+				}
+			}
+			if hasFollower {
+				promotedReplica := r.failOverToReplica(n.Name, v)
+				if promotedReplica == nil {
 					continue
 				}
-				r.deletePod(n.Pod)
+			}else{
+				r.Log.Info("[Warn] Update master with no defined followers will lead to repeated resharding and rebalancing attempts during leaders recreation")
+				success, _, err := r.RedisCLI.ClusterReshard(healthyLeader.Ip, n.Id, healthyLeader.Id, rediscli.MAX_SLOTS_PER_LEADER)
+				if err != nil || !success {
+					continue
+				}
+				r.RedisClusterStateView.ClusterState = view.ClusterRebalance
 			}
+			r.removeNode(healthyLeader.Ip, n)
+			r.deletePod(n.Pod)
+			updatingPodsAtOnce++
 		}
 	}
 	if updatingPodsAtOnce > 0 {
@@ -1159,12 +1195,21 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 		if n.Name != n.LeaderName {
 			podUpToDate, err := r.isPodUpToDate(redisCluster, n.Pod)
 			if err != nil {
+				return err
+			}
+			if podUpToDate {
 				continue
 			}
-			if !podUpToDate {
-				r.deletePod(n.Pod)
-				updatingPodsAtOnce++
+			isMaster, err := r.checkIfMaster(n.Ip)
+			if err != nil {
+				return nil
 			}
+			if isMaster{
+				continue
+			}
+			r.removeNode(healthyLeader.Ip, n)
+			r.deletePod(n.Pod)
+			updatingPodsAtOnce++
 		}
 	}
 	return nil
@@ -1753,8 +1798,8 @@ func (r *RedisClusterReconciler) reshardLeaderCheckCoverage(healthyLeaderIp stri
 	}
 
 	r.Log.Info(fmt.Sprintf("Performing resharding and coverage check on leader [%s]", leaderToRemove.Name))
-	maxSlotsPerLeader := 16384
-	success, _, e := r.RedisCLI.ClusterReshard(healthyLeaderIp, leaderToRemove.Id, targetLeaderId, maxSlotsPerLeader)
+	
+	success, _, e := r.RedisCLI.ClusterReshard(healthyLeaderIp, leaderToRemove.Id, targetLeaderId, rediscli.MAX_SLOTS_PER_LEADER)
 	if e != nil || !success {
 		return e
 	}

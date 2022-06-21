@@ -17,13 +17,6 @@ RUN cd /tmp &&\
     cp redis-stable/src/redis-cli /bin &&\
     rm -rf /tmp/redis-stable
 
-# RUN cd /tmp &&\
-    # curl -LO https://github.com/NataliAharoniPayu/redis/archive/refs/heads/unstable.zip
-# RUN cd /tmp && unzip unstable.zip && \
-    # make -C redis-unstable &&\
-    # cp redis-unstable/src/redis-cli /bin &&\
-    # rm -rf /tmp/redis-unstable
-
 # Copy the Go Modules manifests
 COPY go.mod go.mod
 COPY go.sum go.sum
