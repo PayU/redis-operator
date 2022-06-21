@@ -892,6 +892,7 @@ func (r *RedisClusterReconciler) handleInterruptedClusterHealthFlow(redisCluster
 	if err != nil {
 		r.forgetLostNodes(redisCluster, v)
 		r.RedisClusterStateView.ClusterState = view.ClusterFix
+		r.Log.Info("[Warn] " + err.Error())
 	}
 
 	return actionRequired
