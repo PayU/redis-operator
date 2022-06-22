@@ -1186,11 +1186,8 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 				continue
 			}
 			hasFollower := false
-			println("update master: " + n.Name)
-			println("looking for followers")
 			for _, node := range r.RedisClusterStateView.Nodes {
 				if node.LeaderName == n.LeaderName && node.Name != n.Name {
-					println("node name: " + node.Name)
 					_, hasFollower = v.Nodes[node.Name]
 					if hasFollower {
 						break
