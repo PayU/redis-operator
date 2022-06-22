@@ -1187,16 +1187,13 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			for _, node := range r.RedisClusterStateView.Nodes {
 				if node.LeaderName == n.LeaderName && node.Name != n.Name {
 					println("node name: " + node.Name)
-					_, hasFollower := v.Nodes[node.Name]
-					println("exists?")
-					println(hasFollower)
+					_, hasFollower = v.Nodes[node.Name]
 					if hasFollower {
 						break
 					}
 				}
 			}
 			if hasFollower {
-				println("failing over to replica....")
 				promotedReplica := r.failOverToReplica(n.Name, v)
 				if promotedReplica == nil {
 					continue
