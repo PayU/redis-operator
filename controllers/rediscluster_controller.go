@@ -106,10 +106,10 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		err = r.getClusterStateView(&redisCluster)
 		if err != nil {
 			r.Log.Error(err, "Could not perform reconcile loop")
+			r.deriveStateViewOutOfExistingCluster(&redisCluster)
 			return ctrl.Result{Requeue: true, RequeueAfter: 20 * time.Second}, nil
 		}
 	}
-	// todo: ? scenario where cluster exists and for some reason map is missing -> trigger flow of build state view map out of existing cluster (with entry point by router), alert if it happens?
 
 	r.saveClusterStateOnSigTerm(&redisCluster)
 	switch r.State {
@@ -324,4 +324,23 @@ func (r *RedisClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Pod{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
+}
+
+func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluster *dbv1.RedisCluster){
+	r.RedisClusterStateView.CreateStateView(redisCluster.Spec.LeaderCount, redisCluster.Spec.LeaderFollowersCount)
+	v, ok := r.NewRedisClusterView(redisCluster)
+	if ok && v != nil {
+		for _, n := range v.Nodes {
+			isMaster, err := r.checkIfMaster(n.Ip)
+			if err == nil {
+				continue
+			}
+			if isMaster {
+				r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
+			}else{
+				r.deletePod(n.Pod)
+			}
+		}
+		r.postNewClusterStateView(redisCluster)
+	}
 }

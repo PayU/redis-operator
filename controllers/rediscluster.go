@@ -981,6 +981,10 @@ func (r *RedisClusterReconciler) recoverFromFailOver(podIp string, m *view.Missi
 	if m.Name == m.LeaderName {
 		r.Log.Info(fmt.Sprintf("Performing failover for node [%s]", m.Name))
 		r.RedisClusterStateView.LockResourceAndSetNodeState(m.Name, m.LeaderName, view.FailoverNode, mutex)
+		_, err := r.RedisCLI.Ping(podIp)
+		if err != nil {
+			return err
+		}
 		failOver := r.retryFailover(m.Name, podIp, 3)
 		if !failOver {
 			for _, n := range r.RedisClusterStateView.Nodes {
