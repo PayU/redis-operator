@@ -981,14 +981,26 @@ func (r *RedisClusterReconciler) recoverFromFailOver(podIp string, m *view.Missi
 	if m.Name == m.LeaderName {
 		r.Log.Info(fmt.Sprintf("Performing failover for node [%s]", m.Name))
 		r.RedisClusterStateView.LockResourceAndSetNodeState(m.Name, m.LeaderName, view.FailoverNode, mutex)
-		err := r.doFailover(podIp, "")
-		if err != nil {
-			r.Log.Info(fmt.Sprintf("[Warning] Attempt to failover with node [%s:%s] failed", m.Name, podIp))
-			return err
+		failOver := r.retryFailover(m.Name, podIp, 3)
+		if !failOver {
+			r.RedisClusterStateView.LockResourceAndSetNodeState(m.CurrentMasterName, m.LeaderName, view.DeleteNodeKeepInMap, mutex)
+			return nil
 		}
 	}
 	r.RedisClusterStateView.LockResourceAndSetNodeState(m.Name, m.LeaderName, view.NodeOK, mutex)
 	return nil
+}
+
+func (r *RedisClusterReconciler) retryFailover(name string, ip string, attempts int) bool {
+	if attempts == 0 {
+		return false
+	}
+	err := r.doFailover(ip, "")
+	if err != nil {
+		r.Log.Info(fmt.Sprintf("[Warning] Attempt to failover with node [%s:%s] failed, retries left: (%s)", name, ip, attempts - 1))
+		return r.retryFailover(name, ip, attempts - 1)
+	}
+	return true
 }
 
 func (r *RedisClusterReconciler) detectNodeTableMissalignments(v *view.RedisClusterView) bool {
@@ -1117,6 +1129,17 @@ func (r *RedisClusterReconciler) waitForNonReachablePodsTermination(redisCluster
 	return len(terminatingPods)+len(nonReachablePods) > 0
 }
 
+func (r *RedisClusterReconciler) getMaxUpdatedPodsPerUpdateBtach(v *view.RedisClusterView) int {
+	clusterSize := len(v.Nodes)
+	if clusterSize <= 6 {
+		return 1
+	}else if clusterSize <= 12 {
+		return 3
+	}else {
+		return r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce
+	}
+}
+
 func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) error {
 	r.Log.Info("Updating Cluster Pods...")
 	v, ok := r.NewRedisClusterView(redisCluster)
@@ -1133,9 +1156,10 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 		r.Log.Info("[Warn] Coud not find healthy leader to promote update process, re attempting in next healthy reconcile loop...")
 		return nil
 	}
-	updatingPodsAtOnce := 0
+	maxUpdatePodsPerBatch := r.getMaxUpdatedPodsPerUpdateBtach(v)
+	updatedPodsCounter := 0
 	for _, n := range v.Nodes {
-		if updatingPodsAtOnce >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
+		if updatedPodsCounter >= maxUpdatePodsPerBatch {
 			return nil
 		}
 		if n == nil {
@@ -1179,15 +1203,14 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
-			updatingPodsAtOnce++
+			updatedPodsCounter++
 		}
 	}
-	if updatingPodsAtOnce > 0 {
+	if updatedPodsCounter > 0 {
 		return nil
 	}
-
 	for _, n := range v.Nodes {
-		if updatingPodsAtOnce >= r.Config.Thresholds.MaxToleratedPodsUpdateAtOnce {
+		if updatedPodsCounter >= maxUpdatePodsPerBatch {
 			return nil
 		}
 		if n == nil {
@@ -1210,7 +1233,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
-			updatingPodsAtOnce++
+			updatedPodsCounter++
 		}
 	}
 	return nil
