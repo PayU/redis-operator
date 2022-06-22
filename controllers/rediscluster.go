@@ -997,7 +997,7 @@ func (r *RedisClusterReconciler) retryFailover(name string, ip string, attempts 
 	}
 	err := r.doFailover(ip, "")
 	if err != nil {
-		r.Log.Info(fmt.Sprintf("[Warning] Attempt to failover with node [%s:%s] failed, retries left: (%s)", name, ip, attempts - 1))
+		r.Log.Info(fmt.Sprintf("[Warning] Attempt to failover with node [%s:%s] failed, retries left: (%s)", name, ip, fmt.Sprint(attempts - 1)))
 		return r.retryFailover(name, ip, attempts - 1)
 	}
 	return true
