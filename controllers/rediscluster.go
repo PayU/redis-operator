@@ -452,8 +452,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 					}
 				}
 			}
-			waitIfFails := 20 * time.Second
-			time.Sleep(waitIfFails)
+			time.Sleep(r.Config.Times.SleepIfForgetNodeFails)
 			for name, id := range failingForgets {
 				node, exists := v.Nodes[name]
 				if exists && node != nil {

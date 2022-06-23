@@ -97,6 +97,9 @@ import (
 # failure.
 # RedisAutoFailoverCheckInterval
 # RedisAutoFailoverCheckTimeout
+
+# SleepIfForgetNodeFails
+# If forget node function fails, sleep before taking any deletion or irreversible action
 */
 
 type RedisOperatorConfig struct {
@@ -141,6 +144,7 @@ type OperatorConfigTimes struct {
 	RedisRemoveNodeTimeout                       time.Duration `yaml:"RedisRemoveNodeTimeout"`
 	WaitForRedisLoadDataSetInMemoryCheckInterval time.Duration `yaml:"WaitForRedisLoadDataSetInMemoryCheckInterval"`
 	WaitForRedisLoadDataSetInMemoryTimeout       time.Duration `yaml:"WaitForRedisLoadDataSetInMemoryTimeout"`
+	SleepIfForgetNodeFails                       time.Duration `yaml:"SleepIfForgetNodeFails"`
 }
 
 type OperatorConfig struct {
@@ -201,6 +205,7 @@ func DefaultRedisOperatorConfig(logger logr.Logger) *RedisOperatorConfig {
 				RedisRemoveNodeTimeout:                       20 * 1000 * time.Millisecond,
 				WaitForRedisLoadDataSetInMemoryCheckInterval: 2 * 1000 * time.Millisecond,
 				WaitForRedisLoadDataSetInMemoryTimeout:       10 * 1000 * time.Millisecond,
+				SleepIfForgetNodeFails:                       20 * 1000 * time.Millisecond,
 			},
 		},
 	}
