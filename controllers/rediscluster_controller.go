@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"regexp"
 	"sync"
 	"syscall"
 	"time"
@@ -331,15 +332,25 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 	r.RedisClusterStateView.CreateStateView(redisCluster.Spec.LeaderCount, redisCluster.Spec.LeaderFollowersCount)
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if ok && v != nil {
+		leaderFormat := "redis-node-(\\d+)"
+		followerFormat := "redis-node-(\\d+)-(\\d+)"
 		for _, n := range v.Nodes {
 			isMaster, err := r.checkIfMaster(n.Ip)
 			if err == nil {
 				continue
 			}
 			if isMaster {
-				r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
+				match, e := regexp.MatchString(leaderFormat, n.Name)
+				if e != nil  && match {
+					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
+				}
 			}else{
-				r.deletePod(n.Pod)
+				match, e := regexp.MatchString(followerFormat, n.Name)
+				if e != nil  && match {
+					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
+				}else{
+					r.deletePod(n.Pod)
+				}
 			}
 		}
 		r.postNewClusterStateView(redisCluster)
