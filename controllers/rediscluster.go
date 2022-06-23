@@ -1165,7 +1165,6 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 	}
 	maxUpdatePodsPerBatch := r.getMaxUpdatedPodsPerUpdateBtach(v)
 	updatedPodsCounter := 0
-	deletedPods := []corev1.Pod{}
 	for _, n := range v.Nodes {
 		if updatedPodsCounter >= maxUpdatePodsPerBatch {
 			return nil
@@ -1209,13 +1208,11 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
-			deletedPods = append(deletedPods, n.Pod)
 			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
 			updatedPodsCounter++
 		}
 	}
 	if updatedPodsCounter > 0 {
-		r.waitForPodDelete(deletedPods...)
 		return nil
 	}
 	for _, n := range v.Nodes {
@@ -1242,12 +1239,10 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
-			deletedPods = append(deletedPods, n.Pod)
 			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
 			updatedPodsCounter++
 		}
 	}
-	r.waitForPodDelete(deletedPods...)
 	return nil
 }
 
