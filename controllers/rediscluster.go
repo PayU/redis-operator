@@ -1210,6 +1210,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
 			deletedPods = append(deletedPods, n.Pod)
+			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
 			updatedPodsCounter++
 		}
 	}
@@ -1241,8 +1242,9 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			}
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
-			updatedPodsCounter++
 			deletedPods = append(deletedPods, n.Pod)
+			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
+			updatedPodsCounter++
 		}
 	}
 	r.waitForPodDelete(deletedPods...)
