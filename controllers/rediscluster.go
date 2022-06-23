@@ -1912,3 +1912,16 @@ func roundFloatToPercision(num float64, percision int) float64 {
 func round(num float64) int {
 	return int(num + math.Copysign(0.5, num))
 }
+
+func (r *RedisClusterReconciler) logCurrentMastersList(v *view.RedisClusterView){
+	masters := []string{}
+	for _, node := range v.Nodes {
+		isMaster, err := r.checkIfMaster(node.Ip)
+		if err != nil || !isMaster{
+			continue
+		}
+		masters = append(masters, node.Name)
+	}
+	
+	r.Log.Info(fmt.Sprintf("Num of masters in cluster: [%v] masters list: [%v]", len(masters), masters))
+}

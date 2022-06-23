@@ -230,6 +230,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
 	}
+	r.logCurrentMastersList(v)
 	uptodate, err := r.isClusterUpToDate(redisCluster, v)
 	if err != nil {
 		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
