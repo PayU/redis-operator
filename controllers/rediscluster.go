@@ -1214,9 +1214,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 		}
 	}
 	if updatedPodsCounter > 0 {
-		for _, d := range deletedPods {
-			r.waitForPodDelete(d)
-		}
+		r.waitForPodDelete(deletedPods...)
 		return nil
 	}
 	for _, n := range v.Nodes {
@@ -1247,9 +1245,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			deletedPods = append(deletedPods, n.Pod)
 		}
 	}
-	for _, d := range deletedPods {
-		r.waitForPodDelete(d)
-	}
+	r.waitForPodDelete(deletedPods...)
 	return nil
 }
 
