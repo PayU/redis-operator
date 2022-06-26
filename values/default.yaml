@@ -1,0 +1,109 @@
+# fullnameOverride: "redis-operator-test"
+
+global:
+  rbac:
+    create: true
+
+redisOperator:
+  enabled: true
+  namespace: default
+  managerReplicas: 2 # Number of manger pods the Deployment will create
+  labels:
+    control-plane: "controller-manager"
+  serviceAccount:
+  #   create: true
+    name: "redis-operator-manager"
+  imagePullSecrets:
+  - name: regcred
+  terminationGracePeriodSeconds: 10
+
+  containers:
+  - name: manager
+    image: redis-operator-docker:local
+    imagePullPolicy: IfNotPresent
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1024Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    ports:
+    - containerPort: 9808
+    command:
+    - "./manager"
+    args:
+    - "-namespace=default"
+    - "-metrics-addr=0.0.0.0:9808"
+    - "-enable-leader-election=true"
+
+redisCluster:
+  redisConfigFile: "redis-internal/redis.conf"
+  redisACLConfigFile: "redis-internal/users.acl"
+  enabled: true
+  name: rdc-test
+  namespace: default
+  leaderCount: 3
+  leaderFollowersCount: 1
+  enableDefaultAffinity: true
+  podLabelSelector:
+    app: redis-cluster-pod
+
+  redisPodSpec:
+    imagePullSecrets:
+    - name: regcred
+
+    initContainers:
+    - name: redis-init-container
+      image: redis-init:testing
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        privileged: true
+        runAsNonRoot: false
+        runAsUser: 0
+      volumeMounts:
+      - name: host-sys
+        mountPath: "/host-sys"
+      command:
+      - "/bin/sh"
+      args:
+      - "-c"
+      - "install_packages systemd procps && sysctl -w net.core.somaxconn=1024"
+      # - "&& echo never > /host-sys/kernel/mm/transparent_hugepage/enabled"
+      # - "&& grep -q -F [never] /sys/kernel/mm/transparent_hugepage/enabled"
+
+    containers:
+    - name: redis-container
+      image: redis:testing
+      imagePullPolicy: IfNotPresent
+      resources:
+        limits:
+          cpu: 500m
+          memory: 500Mi
+        requests:
+          cpu: 50m
+          memory: 50Mi
+      env:
+      - name: PORT
+        value: "6379"
+      - name: CONF_PATH
+        value: "/usr/local/etc/redis/redis.conf"
+      ports:
+      - containerPort: 6379
+      volumeMounts:
+      - name: redis-node-configuration
+        mountPath: "/usr/local/etc/redis"
+
+    - name: redis-metric-exporter
+      image: metrics-exporter:testing
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 9121
+
+    volumes:
+    - name: redis-node-configuration
+      configMap:
+        name: rdc-test-redisconfig
+    - name: host-sys
+      hostPath:
+        path: "/sys"
