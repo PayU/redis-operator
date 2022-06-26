@@ -12,6 +12,7 @@ Requirements:
 * `kind`: [v0.11.1](https://github.com/kubernetes-sigs/kind/releases/tag/v0.11.1)
 * `controller-gen` > 0.4
 * `kustomize` >= 4.0
+* `docker`: latest version, at least 6.25 GB of memory limit
 
 **1. Setting up a cluster**
 
@@ -22,7 +23,9 @@ sh ./install.sh # you might need to run this as sudo if a regular user can't use
 
 If the `.kube/config` file was not updated it can be populated using
 
-`kind --name redis-test get kubeconfig > ~/.kube/config`
+`kind --name redis-test get kubeconfig > ~/.kube/config-redis-operator`
+
+And export with `export KUBECONFIG=$KUBECONFIG:${HOME}/.kube/config-redis-operator`
 
 **2. Installing the operator**
 
@@ -58,13 +61,13 @@ Examples:
 helm install redis-operator ./helm -n default
 
 # install only the Redis operator in the default namespace
-helm install redis-operator ./helm -n default --set global.rbac.create=false redisCluster.enabled=false --skip-crds
+helm install redis-operator ./helm -n default --set global.rbac.create=false --set redisCluster.enabled=false --skip-crds
 
 # install only the RBAC configuration (Role+Binding, ClusterRole+Binding, ServiceAccount)
-helm install redis-operator-rbac ./helm -n default --set redisOperator=false redisCluster.enabled=false --skip-crds
+helm install redis-operator-rbac ./helm -n default --set redisOperator=false --set redisCluster.enabled=false --skip-crds
 
 #install only the RedisCluster in the default namespace
-helm install redis-operator-rbac ./helm -n default --set redisOperator=false global.rbac.create=false --skip-crds
+helm install redis-operator-rbac ./helm -n default --set redisOperator=false --set global.rbac.create=false --skip-crds
 ```
 
 ### Running the E2E tests
@@ -74,14 +77,38 @@ Check the README on how to use E2E tests: [https://github.com/PayU/redis-operato
 
 ### Running unit tests
 
-Run non cache `go test` command on specific path. for example:  
+Run non cache `go test` command on specific path. for example:
 ```
 go test -count=1 ./controllers/rediscli/
 ```
 
+### Development using Tilt
+
+The recommended development flow is based on [Tilt](https://tilt.dev/) - it is used for quick iteration on code running in live containers.
+Setup based on [official docs](https://docs.tilt.dev/example_go.html) can be found in the Tiltfile.
+
+Prerequisites:
+
+1. Install the Tilt tool
+2. Build the redis-cli binary: go to `hack/redis-bin` and run the `run.sh` script. It will build the redis-cli binary inside a Linux container so it can be used by Tilt when building the dev image. You only need to do this once. Check that you have redis-cli in `hack/redis-bin/build` directory.
+3. Run `tilt up` and go the indicated localhost webpage
+
+```
+> tilt up
+Tilt started on http://localhost:10350/
+v0.22.15, built 2021-10-29
+
+(space) to open the browser
+(s) to stream logs (--stream=true)
+(t) to open legacy terminal mode (--legacy=true)
+(ctrl-c) to exit
+```
+
 ---
 
-### Quick development using Telepresence
+### Development using Telepresence
+
+*The Telepresence setup is deprecated, it only works with telepresence V1 and will be remvoved once the Tilt flow is fully adopted.*
 
 To develop directly on a deployed operator without rebuilding and loading/deploying the image you need to have access to a cluster (can be remote or local) and [Telepresence](https://www.telepresence.io/) tool.
 

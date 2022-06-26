@@ -3,6 +3,8 @@ package rediscli
 import (
 	"regexp"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // https://redis.io/commands/info
@@ -36,11 +38,39 @@ type RedisClusterNode struct {
 	LinkState   string
 }
 
-func NewRedisInfo(rawInfo string) *RedisInfo {
+func validateRedisInfo(redisInfo *RedisInfo) error {
+	validator := map[string]bool{
+		"serverInfo":      redisInfo.Server != nil,
+		"clientsInfo":     redisInfo.Clients != nil,
+		"memoryInfo":      redisInfo.Memory != nil,
+		"persistInfo":     redisInfo.Persistence != nil,
+		"statsInfo":       redisInfo.Stats != nil,
+		"replicationInfo": redisInfo.Replication != nil,
+		"cpuInfo":         redisInfo.CPU != nil,
+		"clustersInfo":    redisInfo.Cluster != nil,
+		"modulesInfo":     redisInfo.Modules != nil,
+		"keyspaceInfo":    redisInfo.Keyspace != nil,
+	}
+	errStr := "Redis info bad format error - the following keys are missing: "
+	ok := true
+	for key, indicator := range validator {
+		if !indicator {
+			errStr += " " + key
+			ok = false
+		}
+	}
+	if ok {
+		return nil
+	} else {
+		return errors.Errorf(errStr)
+	}
+}
+
+func NewRedisInfo(rawInfo string) (*RedisInfo, error) {
 	var currentInfo *map[string]string
 	var currentInfoLabel string
 	if rawInfo == "" {
-		return nil
+		return nil, nil
 	}
 	lines := strings.Split(rawInfo, "\n")
 	info := RedisInfo{}
@@ -83,28 +113,31 @@ func NewRedisInfo(rawInfo string) *RedisInfo {
 				}
 			} else {
 				lineInfo := strings.Split(line, ":")
-				(*currentInfo)[lineInfo[0]] = lineInfo[1]
+				if len(lineInfo) > 1 {
+					(*currentInfo)[lineInfo[0]] = lineInfo[1]
+				} else {
+					return &info, errors.Errorf("info.go : Redis info parsing error, line doesn't match the format <property>:<value>")
+				}
 			}
 		}
 	}
-	return &info
+	return &info, validateRedisInfo(&info)
 }
 
-func NewRedisClusterInfo(rawData string) *RedisClusterInfo {
+func NewRedisClusterInfo(rawData string) (*RedisClusterInfo, error) {
 	if rawData == "" {
-		return nil
+		return nil, nil
 	}
-
 	info := RedisClusterInfo{}
 	lines := strings.Split(rawData, "\r\n")
 	for _, line := range lines {
 		lineInfo := strings.Split(line, ":")
 		if len(lineInfo) < 2 {
-			return nil
+			return nil, errors.Errorf("info.go : Redis cluster info parsing error, line doesn't match the format <property>:<value>")
 		}
 		info[lineInfo[0]] = lineInfo[1]
 	}
-	return &info
+	return &info, nil
 }
 
 // NewRedisClusterNodes is a constructor for RedisClusterNodes

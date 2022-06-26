@@ -13,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -41,9 +40,11 @@ import (
 
 type RedisConfigReconciler struct {
 	client.Client
-	Log      logr.Logger
-	Scheme   *runtime.Scheme
-	RedisCLI *rediscli.RedisCLI
+	Log        logr.Logger
+	Scheme     *runtime.Scheme
+	K8sManager *K8sManager
+	RedisCLI   *rediscli.RedisCLI
+	Config     *OperatorConfig
 }
 
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -56,7 +57,8 @@ const ACLFilePropagationDuration time.Duration = time.Millisecond * 5000
 // Defines the time it takes for Redis to load the new config
 const ACLFileLoadDuration time.Duration = time.Millisecond * 500
 const redisConfigLabelKey string = "redis-cluster"
-const handleACLConfigErrorMessage = "Failed to handle ACL configuation"
+const handleACLConfigErrorMessage = "Failed to handle ACL configuration"
+const operatorConfigLabelKey string = "redis-operator"
 
 func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ...corev1.Pod) error {
 
@@ -71,7 +73,7 @@ func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ..
 
 		time.Sleep(ACLFileLoadDuration)
 
-		loadedConfig, err := r.RedisCLI.ACLList(pod.Status.PodIP)
+		loadedConfig, _, err := r.RedisCLI.ACLList(pod.Status.PodIP)
 		if err != nil {
 			r.Log.Error(err, fmt.Sprintf("Failed to list new ACL config from %s(%s)", pod.Name, pod.Status.PodIP))
 			return err
@@ -95,18 +97,12 @@ func (r *RedisConfigReconciler) syncConfig(latestConfigHash string, redisPods ..
 
 // Updates the 'acl-config' annotation on the Redis cluster pods with the provided string value
 func (r *RedisConfigReconciler) updateACLHashStatus(status string, redisPods ...corev1.Pod) error {
-	patch := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"acl-config": "%s"}}}`, status))
-	for i, pod := range redisPods {
-		if err := r.Patch(context.Background(), &redisPods[i], client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
-			r.Log.Error(err, fmt.Sprintf("Failed to patch the ACL file hash on pod %s (%s), status: %s", pod.Name, pod.Status.PodIP, status))
-		}
-	}
-	return nil
+	return r.K8sManager.WritePodAnnotations(map[string]string{"acl-config": status}, redisPods...)
 }
 
 // Retrieves the ACL config from a Redis node and returns its SHA256 hash
 func (r *RedisConfigReconciler) getACLConfigHash(pod *corev1.Pod) (string, error) {
-	acl, err := r.RedisCLI.ACLList(pod.Status.PodIP)
+	acl, _, err := r.RedisCLI.ACLList(pod.Status.PodIP)
 	if err != nil {
 		r.Log.Error(err, fmt.Sprintf("Failed to list previous ACL config from %s(%s) ", pod.Name, pod.Status.PodIP))
 		return "", err
@@ -209,6 +205,25 @@ func (r *RedisConfigReconciler) handleACLConfig(configMap *corev1.ConfigMap) err
 	return handleFail
 }
 
+func (r *RedisConfigReconciler) handleOperatorConfig(configMap *corev1.ConfigMap) error {
+	operatorName := configMap.GetObjectMeta().GetLabels()["redis-operator"]
+	ns := configMap.Namespace
+	r.Log.Info(fmt.Sprintf("Reconciling operator config for [%s/%s]", ns, operatorName))
+
+	operatorPods := corev1.PodList{}
+	err := r.List(context.Background(), &operatorPods,
+		client.InNamespace(configMap.Namespace),
+		client.MatchingLabels{"redis-operator": operatorName})
+	if err != nil {
+		r.Log.Error(err, "Failed to get pods of the operator [%s]", operatorName)
+	}
+	if err := r.K8sManager.WritePodAnnotations(map[string]string{"config-reload": time.Now().UTC().String()}, operatorPods.Items...); err != nil {
+		return err
+	}
+	r.Log.Info(fmt.Sprintf("Triggered config reload for [%s/%s]", ns, operatorName))
+	return nil
+}
+
 func (r *RedisClusterReconciler) handleRedisConfig(configMap *corev1.ConfigMap) error {
 	r.Log.Info("Detected change on the redis.conf configmap")
 	return nil
@@ -226,6 +241,14 @@ func (r *RedisConfigReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 			if _, ok := configMap.Data["users.acl"]; ok {
 				if err := r.handleACLConfig(&configMap); err != nil {
 					r.Log.Error(err, "Failed to reconcile ACL config")
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{}, nil
+			}
+		} else if label == operatorConfigLabelKey {
+			if _, ok := configMap.Data["operator.conf"]; ok {
+				if err := r.handleOperatorConfig(&configMap); err != nil {
+					r.Log.Error(err, "Failed to reconcile operator config")
 					return ctrl.Result{}, err
 				}
 				return ctrl.Result{}, nil

@@ -5,6 +5,7 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
+    redis-operator: rdc-test
 spec:
   selector:
     matchLabels:
@@ -35,5 +36,16 @@ spec:
           value: "admin"
         - name: REDISCLI_AUTH
           value: "adminpass"
+        - name: CLUSTER_VIEW_FILE
+          value: "cluster_data"
+        - name: CLUSTER_STATE_FILE
+          value: "cluster_state"
+        volumeMounts:
+        - name: redis-operator-config
+          mountPath: "/usr/local/etc/"
       terminationGracePeriodSeconds: 10
       serviceAccountName: "redis-operator-manager"
+      volumes:
+      - name: redis-operator-config
+        configMap:
+          name: redis-operator-operator-config
