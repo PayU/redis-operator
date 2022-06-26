@@ -571,10 +571,12 @@ func (r *RedisClusterReconciler) detectLossOfLeadersWithAllReplicas(v *view.Redi
 
 func (r *RedisClusterReconciler) findPromotedMasterReplica(leaderName string, v *view.RedisClusterView) (*view.NodeView, bool) {
 	for _, node := range v.Nodes {
+		println("node name: " + node.Name + " it leader name: " + node.LeaderName + " requested leader: " + leaderName)
 		if node == nil {
 			continue
 		}
 		if leaderName != node.LeaderName {
+			println("different leader name... : " + leaderName + " / " + node.LeaderName)
 			continue
 		}
 		println("node " + node.Name + " has same leader name " + leaderName)
@@ -590,11 +592,13 @@ func (r *RedisClusterReconciler) findPromotedMasterReplica(leaderName string, v 
 		}
 		println("node table exists")
 		if len(*nodesTable) == 1 {
-			println("its table is 1 though ...")
+			println("its table is 1 though ... moving on ...")
 			continue
 		}
+		println("returning: " + node.Name)
 		return node, true
 	}
+	println("returning nil ( leader name " + leaderName + ")")
 	return nil, false
 }
 
