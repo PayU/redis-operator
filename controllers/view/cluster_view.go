@@ -58,6 +58,7 @@ type NodeView struct {
 type NodeStateView struct {
 	Name       string
 	LeaderName string
+	IsUpToDate bool
 	NodeState  NodeState
 }
 
@@ -79,6 +80,7 @@ func (sv *RedisClusterStateView) CreateStateView(leaderCount int, followersPerLe
 		sv.Nodes[name] = &NodeStateView{
 			Name:       name,
 			LeaderName: name,
+			IsUpToDate: true,
 			NodeState:  CreateNode,
 		}
 	}
@@ -89,6 +91,7 @@ func (sv *RedisClusterStateView) CreateStateView(leaderCount int, followersPerLe
 				sv.Nodes[name] = &NodeStateView{
 					Name:       name,
 					LeaderName: leader.Name,
+					IsUpToDate: true,
 					NodeState:  CreateNode,
 				}
 			}
@@ -104,6 +107,7 @@ func (sv *RedisClusterStateView) SetNodeState(name string, leaderName string, no
 		sv.Nodes[name] = &NodeStateView{
 			Name:       name,
 			LeaderName: leaderName,
+			IsUpToDate: true,
 			NodeState:  nodeState,
 		}
 	}
@@ -118,6 +122,7 @@ func (sv *RedisClusterStateView) LockResourceAndSetNodeState(name string, leader
 		sv.Nodes[name] = &NodeStateView{
 			Name:       name,
 			LeaderName: leaderName,
+			IsUpToDate: true,
 			NodeState:  nodeState,
 		}
 	}
@@ -148,6 +153,15 @@ func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.Redi
 		v.Nodes[pod.Name] = redisNode
 	}
 	return nil
+}
+
+func getLeaderName(pod corev1.Pod) string {
+	leaderName := pod.Labels["leader-name"]
+	if len(leaderName) > 0 {
+		return leaderName
+	}
+	nodeNumber := pod.Labels["leader-number"]
+	return "redis-node-" + nodeNumber
 }
 
 func isReachableNode(n *NodeView, redisCli *rediscli.RedisCLI) bool {

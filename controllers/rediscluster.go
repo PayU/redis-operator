@@ -1221,6 +1221,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
 			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
+			r.RedisClusterStateView.Nodes[n.Name].IsUpToDate = true
 			updatedPodsCounter++
 		}
 	}
@@ -1252,6 +1253,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			r.removeNode(healthyLeader.Ip, n)
 			r.deletePod(n.Pod)
 			r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.DeleteNodeKeepInMap)
+			r.RedisClusterStateView.Nodes[n.Name].IsUpToDate = true
 			updatedPodsCounter++
 		}
 	}
@@ -1450,6 +1452,10 @@ func (r *RedisClusterReconciler) waitForFailover(redisCluster *dbv1.RedisCluster
 }
 
 func (r *RedisClusterReconciler) isPodUpToDate(redisCluster *dbv1.RedisCluster, pod corev1.Pod) (bool, error) {
+	node, existsInMap := r.RedisClusterStateView.Nodes[pod.Name]
+	if existsInMap && node != nil && !node.IsUpToDate {
+		return false, nil
+	}
 	for _, container := range pod.Spec.Containers {
 		for _, crContainer := range redisCluster.Spec.RedisPodSpec.Containers {
 			if crContainer.Name == container.Name {
@@ -1635,6 +1641,7 @@ func (r *RedisClusterReconciler) scaleUpLeaders(redisCluster *dbv1.RedisCluster,
 		r.RedisClusterStateView.Nodes[name] = &view.NodeStateView{
 			Name:       name,
 			LeaderName: name,
+			IsUpToDate: true,
 			NodeState:  view.NewEmptyNode,
 		}
 		for f := 1; f <= redisCluster.Spec.LeaderFollowersCount; f++ {
@@ -1642,6 +1649,7 @@ func (r *RedisClusterReconciler) scaleUpLeaders(redisCluster *dbv1.RedisCluster,
 			r.RedisClusterStateView.Nodes[followerName] = &view.NodeStateView{
 				Name:       followerName,
 				LeaderName: name,
+				IsUpToDate: true,
 				NodeState:  view.CreateNode,
 			}
 		}
@@ -1793,6 +1801,7 @@ func (r *RedisClusterReconciler) scaleUpFollowers(redisCluster *dbv1.RedisCluste
 			r.RedisClusterStateView.Nodes[name] = &view.NodeStateView{
 				Name:       name,
 				LeaderName: leaderName,
+				IsUpToDate: true,
 				NodeState:  view.CreateNode,
 			}
 		}

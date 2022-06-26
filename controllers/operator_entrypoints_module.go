@@ -106,6 +106,17 @@ func ForceReconcile(c echo.Context) error {
 	"\nIn case of need run eforced reconcile manually several times until recovery is complete, and restart manager when cluster is stable")
 }
 
+func UpgradeCluster(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster upgarde action")
+	}
+	for _, n := range reconciler.RedisClusterStateView.Nodes {
+		n.IsUpToDate = false
+	}
+	requestUpgrade = false
+	return c.String(http.StatusOK, "Cluster upgarde request triggered")
+}
+
 func ClusterTest(c echo.Context) error {
 	return c.String(http.StatusOK, setAndStartTestLab(&c, false))
 }

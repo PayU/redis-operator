@@ -81,6 +81,8 @@ type RedisClusterReconciler struct {
 var reconciler *RedisClusterReconciler
 var cluster *dbv1.RedisCluster
 
+var requestUpgrade bool = false
+
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=*,resources=pods;services;configmaps,verbs=create;update;patch;get;list;watch;delete
@@ -256,6 +258,9 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	} else {
 		r.Log.Info("[OK] Cluster is in finalized state")
 	}
+	if requestUpgrade {
+		r.Log.Info("[Warn] Cluster upgrade is required, upgrade can be triggered by using entry point /upgradeCluster ")
+	}
 	return nil
 }
 
@@ -357,5 +362,6 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 		}
 		r.postNewClusterStateView(redisCluster)
 		r.waitForPodDelete(deletedPods...)
+		requestUpgrade = true
 	}
 }
