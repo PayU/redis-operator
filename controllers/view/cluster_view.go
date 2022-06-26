@@ -143,7 +143,7 @@ func (v *RedisClusterView) CreateView(pods []corev1.Pod, redisCli *rediscli.Redi
 			Id:         "",
 			Namespace:  pod.Namespace,
 			Ip:         pod.Status.PodIP,
-			LeaderName: pod.Labels["leader-name"],
+			LeaderName: getLeaderName(pod),
 			IsLeader:   pod.Labels["redis-node-role"] == "leader",
 			Pod:        pod,
 		}

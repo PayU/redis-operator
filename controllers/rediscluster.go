@@ -571,34 +571,26 @@ func (r *RedisClusterReconciler) detectLossOfLeadersWithAllReplicas(v *view.Redi
 
 func (r *RedisClusterReconciler) findPromotedMasterReplica(leaderName string, v *view.RedisClusterView) (*view.NodeView, bool) {
 	for _, node := range v.Nodes {
-		println("node name: " + node.Name + " it leader name: " + node.LeaderName + " requested leader: " + leaderName)
 		if node == nil {
 			continue
 		}
 		if leaderName != node.LeaderName {
-			println("different leader name... : " + leaderName + " / " + node.LeaderName)
 			continue
 		}
-		println("node " + node.Name + " has same leader name " + leaderName)
 		info, _, err := r.RedisCLI.Info(node.Ip)
 		if err != nil || info == nil || info.Replication["role"] != "master" {
 			continue
 		}
-		println("node " + node.Name + " is master ")
 		ipsToNodesTable, err := r.ClusterNodesWaitForRedisLoadDataSetInMemory(node.Ip)
 		nodesTable, exists := ipsToNodesTable[node.Ip]
 		if err != nil || !exists || nodesTable == nil {
 			continue
 		}
-		println("node table exists")
 		if len(*nodesTable) == 1 {
-			println("its table is 1 though ... moving on ...")
 			continue
 		}
-		println("returning: " + node.Name)
 		return node, true
 	}
-	println("returning nil ( leader name " + leaderName + ")")
 	return nil, false
 }
 
@@ -860,8 +852,6 @@ func (r *RedisClusterReconciler) handleInterruptedClusterHealthFlow(redisCluster
 		return true
 	}
 
-	println("promoted replica: " + promotedMasterReplica.Name)
-
 	if promotedMasterReplica.Name == n.Name {
 		r.RedisClusterStateView.LockResourceAndSetNodeState(n.Name, n.LeaderName, view.NodeOK, mutex)
 	}
@@ -926,7 +916,6 @@ func (r *RedisClusterReconciler) recoverFromNewEmptyNode(name string, v *view.Re
 }
 
 func (r *RedisClusterReconciler) recoverFromAddNode(p corev1.Pod, m *view.MissingNodeView, mutex *sync.Mutex) error {
-	println("recoverying from add node: " + p.Name)
 	masterIp := m.CurrentMasterIp
 	masterId := m.CurrentMasterId
 	newPodIp := p.Status.PodIP
@@ -936,7 +925,6 @@ func (r *RedisClusterReconciler) recoverFromAddNode(p corev1.Pod, m *view.Missin
 	if err != nil || !exists || nodesTable == nil {
 		return err
 	}
-	println("node table exists: " + p.Name)
 	if len(*nodesTable) == 1 {
 		warnMsg := "[WARN] This failure might be an indication for additional failures that appeared in cluster during recovering process, try to wait for/induce FORGET of failing nodes and re-attempt reconcile loop"
 		r.Log.Info(fmt.Sprintf("Adding new redis node [%s], current master [%s]", m.Name, m.CurrentMasterName))
