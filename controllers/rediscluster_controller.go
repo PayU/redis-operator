@@ -337,6 +337,9 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 	r.RedisClusterStateView.CreateStateView(redisCluster.Spec.LeaderCount, redisCluster.Spec.LeaderFollowersCount)
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if ok && v != nil {
+		if len(v.Nodes) > 0 {
+			r.RedisClusterStateView.ClusterState = view.ClusterOK
+		}
 		leaderFormat := "redis-node-(\\d+)"
 		followerFormat := "redis-node-(\\d+)-(\\d+)"
 		deletedPods := []corev1.Pod{}
