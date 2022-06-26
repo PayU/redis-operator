@@ -800,6 +800,7 @@ func (r *RedisClusterReconciler) recoverFromNewEmptyNode(name string, v *view.Re
 }
 
 func (r *RedisClusterReconciler) recoverFromAddNode(p corev1.Pod, m *view.MissingNodeView, mutex *sync.Mutex) error {
+	println("recoverying from add node: " + p.Name)
 	masterIp := m.CurrentMasterIp
 	masterId := m.CurrentMasterId
 	newPodIp := p.Status.PodIP
@@ -809,6 +810,7 @@ func (r *RedisClusterReconciler) recoverFromAddNode(p corev1.Pod, m *view.Missin
 	if err != nil || !exists || nodesTable == nil {
 		return err
 	}
+	println("node table exists: " + p.Name)
 	if len(*nodesTable) == 1 {
 		warnMsg := "[WARN] This failure might be an indication for additional failures that appeared in cluster during recovering process, try to wait for/induce FORGET of failing nodes and re-attempt reconcile loop"
 		r.Log.Info(fmt.Sprintf("Adding new redis node [%s], current master [%s]", m.Name, m.CurrentMasterName))
