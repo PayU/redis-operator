@@ -334,6 +334,7 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 	if ok && v != nil {
 		leaderFormat := "redis-node-(\\d+)"
 		followerFormat := "redis-node-(\\d+)-(\\d+)"
+		deletedPods := []corev1.Pod{}
 		for _, n := range v.Nodes {
 			isMaster, err := r.checkIfMaster(n.Ip)
 			if err == nil {
@@ -350,9 +351,11 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
 				}else{
 					r.deletePod(n.Pod)
+					deletedPods = append(deletedPods, n.Pod)
 				}
 			}
 		}
 		r.postNewClusterStateView(redisCluster)
+		r.waitForPodDelete(deletedPods...)
 	}
 }
