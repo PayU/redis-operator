@@ -2,3 +2,5 @@ user default on nopass ~* &* +@all
 user iam-api-user on #ed3763412c74aba0979020b87e4b8265eb62868ef41fb490edfa2f1be9b8cc4a +cluster +ping +info +hset +hgetall +expire +del +hdel +exec +multi +readonly ~iam-api*
 user iam-services-user on #401c0409c436e1bf5c08adbb492d5c6af6604febddfc18e14d55c7bdd1137bc8 +cluster +ping +info +hset +hgetall +expire +del +hdel +exec +multi +readonly ~iam-services*
 user payments-v130-user on #5c3b919e66b4b7058dcff28db6037b4c7703623b38a09e4220a5d77adcbfe1cd +cluster +ping +info +readonly +expire +del +hset +hsetnx +hget +hgetall ~payments-v130-idempotencey*
+user payees-storage-live-user on #4afeaf22b208c5d2781e6dd3bcee9c258fa3c268b970280708e444ec634e5241 +cluster +ping +info +readonly +expire +del +hset +hsetnx +hget +hgetall ~payees-storage-live*
+user payees-storage-sandbox-user on #4afeaf22b208c5d2781e6dd3bcee9c258fa3c268b970280708e444ec634e5241 +cluster +ping +info +readonly +expire +del +hset +hsetnx +hget +hgetall ~payees-storage-sandbox*
