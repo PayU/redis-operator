@@ -11,34 +11,41 @@ import (
 )
 
 /*
+# The thresholds value sets definite bounderies for the operator to perform during running concurrent operations
+# and during decision making based on given stated values
+
+# During new node initialization, a request for data replication is sent, and each new node is being sampled and watched untill threshold is reached
+# in order to make sure the sync process is being performed properly
+# SyncMatchThreshold
+
+# During recovery process, missing pods will be recreated asynchronously,
+# this value set the maximum unhealthy nodes that will be recovered by operator at once per reconcile loop
+# MaxToleratedPodsRecoverAtOnce
+
+# During updating process, pods get failed-over, removed, and recreated so the new ones will hold
+# the new requested updated form in terms of the new spec.
+# this value set the maximum number of nodes to be deleted at once per update loop
+# MaxToleratedPodsUpdateAtOnce
+
+*/
+
+/*
 # The wait times are defined by an interval value - how often the check is done
 # and a timeout value, total amount of time to wait before considering the
 # operation failed.
 
-# Wait duration for the SYNC operation start. After a new node connects to a leader
-# there can be a delay before the sync operation starts.
-# SyncStartCheckInterval
-# SyncStartCheckTimeout
-
-# Wait duration for the SYNC operation.
+# Wait values for the SYNC operation.
 # SyncCheckInterval
 # SyncCheckTimeout
 
-# Wait duration for the LOAD operation start.
-# LoadStartCheckInterval
-# LoadStartCheckTimeout
+# Wait values for redis cluster configuration alignment.
+# SleepDuringTablesAlignProcess
+# RedisNodesAgreeAboutSlotsConfigCheckInterval
+# RedisNodesAgreeAboutSlotsConfigTimeout
 
-# Wait duration for the LOAD operation. This time should be set reasonably high
-# because it depends on the size of the DB shards and network latency. Make sure
-# the time is high enough to allow for the data transfer between two nodes.
-# The LOAD and SYNC operations are important during the recreation of a lost
-# node, when the data from a leader is loaded on a replica.
-# https://redis.io/topics/replication
-# The operator uses the INFO message from Redis to get information about the
-# status of SYNC (master_sync_in_progress) and LOAD (loading_eta_seconds)
-# https://redis.io/commands/info
-# LoadCheckInterval
-# LoadCheckTimeout
+# Wait duration of the '--cluster create' command.
+# ClusterCreateInterval
+# ClusterCreateTimeout
 
 # The estimated time it takes for volume mounted configmaps to be updated on the
 # pods. After a configmap is changed, the configmap controller will update a
@@ -47,10 +54,6 @@ import (
 
 # The estimated time it takes for Redis to load the new config map from disk.
 # ACLFileLoadDuration
-
-# Wait duration of the '--cluster create' command.
-# ClusterCreateInterval
-# ClusterCreateTimeout
 
 # Wait duration for a pod to be in ready state - pod is in Ready state and
 # the containers passed all conditions.
@@ -65,6 +68,10 @@ import (
 # PodDeleteCheckInterval
 # PodDeleteCheckTimeout
 
+# Wait duration for the removal of node id from other nodes tables
+# RedisRemoveNodeCheckInterval
+# RedisRemoveNodeTimeout
+
 # Duration of the PING command.
 # RedisPingCheckInterval
 # RedisPingCheckTimeout
@@ -72,6 +79,10 @@ import (
 # Wait duration of the 'cluster replicas' command.
 # RedisClusterReplicationCheckInterval
 # RedisClusterReplicationCheckTimeout
+
+# Wait duration for nodes to load dataset to their memory
+# WaitForRedisLoadDataSetInMemoryCheckInterval
+# WaitForRedisLoadDataSetInMemoryTimeout
 
 # Wait duration of the MEET command.
 # RedisClusterMeetCheckInterval
@@ -86,6 +97,9 @@ import (
 # failure.
 # RedisAutoFailoverCheckInterval
 # RedisAutoFailoverCheckTimeout
+
+# SleepIfForgetNodeFails
+# If forget node function fails, sleep before taking any deletion or irreversible action
 */
 
 type RedisOperatorConfig struct {
@@ -94,39 +108,48 @@ type RedisOperatorConfig struct {
 	Config OperatorConfig
 }
 
+type OperatorConfigThresholds struct {
+	SyncMatchThreshold            int `yaml:"SyncMatchThreshold"`
+	MaxToleratedPodsRecoverAtOnce int `yaml:"MaxToleratedPodsRecoverAtOnce"`
+	MaxToleratedPodsUpdateAtOnce  int `yaml:"MaxToleratedPodsUpdateAtOnce"`
+}
+
 type OperatorConfigTimes struct {
-	SyncStartCheckInterval               time.Duration `yaml:"syncStartCheckInterval"`
-	SyncStartCheckTimeout                time.Duration `yaml:"syncStartCheckTimeout"`
-	SyncCheckInterval                    time.Duration `yaml:"syncCheckInterval"`
-	SyncCheckTimeout                     time.Duration `yaml:"syncCheckTimeout"`
-	LoadStartCheckInterval               time.Duration `yaml:"loadStartCheckInterval"`
-	LoadStartCheckTimeout                time.Duration `yaml:"loadStartCheckTimeout"`
-	LoadCheckInterval                    time.Duration `yaml:"loadCheckInterval"`
-	LoadCheckTimeout                     time.Duration `yaml:"loadCheckTimeout"`
-	ClusterCreateInterval                time.Duration `yaml:"clusterCreateInterval"`
-	ClusterCreateTimeout                 time.Duration `yaml:"clusterCreateTimeout"`
-	ACLFilePropagationDuration           time.Duration `yaml:"aclFilePropagationDuration"`
-	ACLFileLoadDuration                  time.Duration `yaml:"aclFileLoadDuration"`
-	PodReadyCheckInterval                time.Duration `yaml:"podReadyCheckInterval"`
-	PodReadyCheckTimeout                 time.Duration `yaml:"podReadyCheckTimeout"`
-	PodNetworkCheckInterval              time.Duration `yaml:"podNetworkCheckInterval"`
-	PodNetworkCheckTimeout               time.Duration `yaml:"podNetworkCheckTimeout"`
-	PodDeleteCheckInterval               time.Duration `yaml:"podDeleteCheckInterval"`
-	PodDeleteCheckTimeout                time.Duration `yaml:"podDeleteCheckTimeout"`
-	RedisPingCheckInterval               time.Duration `yaml:"redisPingCheckInterval"`
-	RedisPingCheckTimeout                time.Duration `yaml:"redisPingCheckTimeout"`
-	RedisClusterReplicationCheckInterval time.Duration `yaml:"redisClusterReplicationCheckInterval"`
-	RedisClusterReplicationCheckTimeout  time.Duration `yaml:"redisClusterReplicationCheckTimeout"`
-	RedisClusterMeetCheckInterval        time.Duration `yaml:"redisClusterMeetCheckInterval"`
-	RedisClusterMeetCheckTimeout         time.Duration `yaml:"redisClusterMeetCheckTimeout"`
-	RedisManualFailoverCheckInterval     time.Duration `yaml:"redisManualFailoverCheckInterval"`
-	RedisManualFailoverCheckTimeout      time.Duration `yaml:"redisManualFailoverCheckTimeout"`
-	RedisAutoFailoverCheckInterval       time.Duration `yaml:"redisAutoFailoverCheckInterval"`
-	RedisAutoFailoverCheckTimeout        time.Duration `yaml:"redisAutoFailoverCheckTimeout"`
+	SyncCheckInterval                            time.Duration `yaml:"SyncCheckInterval"`
+	SyncCheckTimeout                             time.Duration `yaml:"SyncCheckTimeout"`
+	SleepDuringTablesAlignProcess                time.Duration `yaml:"SleepDuringTablesAlignProcess"`
+	ClusterCreateInterval                        time.Duration `yaml:"ClusterCreateInterval"`
+	ClusterCreateTimeout                         time.Duration `yaml:"ClusterCreateTimeout"`
+	ACLFilePropagationDuration                   time.Duration `yaml:"ACLFilePropagationDuration"`
+	ACLFileLoadDuration                          time.Duration `yaml:"ACLFileLoadDuration"`
+	PodReadyCheckInterval                        time.Duration `yaml:"PodReadyCheckInterval"`
+	PodReadyCheckTimeout                         time.Duration `yaml:"PodReadyCheckTimeout"`
+	PodNetworkCheckInterval                      time.Duration `yaml:"PodNetworkCheckInterval"`
+	PodNetworkCheckTimeout                       time.Duration `yaml:"PodNetworkCheckTimeout"`
+	PodDeleteCheckInterval                       time.Duration `yaml:"PodDeleteCheckInterval"`
+	PodDeleteCheckTimeout                        time.Duration `yaml:"PodDeleteCheckTimeout"`
+	RedisPingCheckInterval                       time.Duration `yaml:"RedisPingCheckInterval"`
+	RedisPingCheckTimeout                        time.Duration `yaml:"RedisPingCheckTimeout"`
+	RedisClusterReplicationCheckInterval         time.Duration `yaml:"RedisClusterReplicationCheckInterval"`
+	RedisClusterReplicationCheckTimeout          time.Duration `yaml:"RedisClusterReplicationCheckTimeout"`
+	RedisClusterMeetCheckInterval                time.Duration `yaml:"RedisClusterMeetCheckInterval"`
+	RedisClusterMeetCheckTimeout                 time.Duration `yaml:"RedisClusterMeetCheckTimeout"`
+	RedisManualFailoverCheckInterval             time.Duration `yaml:"RedisManualFailoverCheckInterval"`
+	RedisManualFailoverCheckTimeout              time.Duration `yaml:"RedisManualFailoverCheckTimeout"`
+	RedisAutoFailoverCheckInterval               time.Duration `yaml:"RedisAutoFailoverCheckInterval"`
+	RedisAutoFailoverCheckTimeout                time.Duration `yaml:"RedisAutoFailoverCheckTimeout"`
+	RedisNodesAgreeAboutSlotsConfigTimeout       time.Duration `yaml:"RedisNodesAgreeAboutSlotsConfigTimeout"`
+	RedisNodesAgreeAboutSlotsConfigCheckInterval time.Duration `yaml:"RedisNodesAgreeAboutSlotsConfigCheckInterval"`
+	RedisRemoveNodeCheckInterval                 time.Duration `yaml:"RedisRemoveNodeCheckInterval"`
+	RedisRemoveNodeTimeout                       time.Duration `yaml:"RedisRemoveNodeTimeout"`
+	WaitForRedisLoadDataSetInMemoryCheckInterval time.Duration `yaml:"WaitForRedisLoadDataSetInMemoryCheckInterval"`
+	WaitForRedisLoadDataSetInMemoryTimeout       time.Duration `yaml:"WaitForRedisLoadDataSetInMemoryTimeout"`
+	SleepIfForgetNodeFails                       time.Duration `yaml:"SleepIfForgetNodeFails"`
 }
 
 type OperatorConfig struct {
-	Times OperatorConfigTimes `yaml:"times"`
+	Times      OperatorConfigTimes      `yaml:"times"`
+	Thresholds OperatorConfigThresholds `yaml:"thresholds"`
 }
 
 func NewRedisOperatorConfig(configPath string, logger logr.Logger) (*RedisOperatorConfig, error) {
@@ -142,40 +165,47 @@ func NewRedisOperatorConfig(configPath string, logger logr.Logger) (*RedisOperat
 }
 
 // Default constants used by the controllers for various tasks.
-// It is used as fallback in case a configmap is not provided.
+// It is used as fallback in case a "config/configfiles/operator.conf" configmap is not provided.
 func DefaultRedisOperatorConfig(logger logr.Logger) *RedisOperatorConfig {
 	return &RedisOperatorConfig{
 		Log: logger,
 		Config: OperatorConfig{
+			Thresholds: OperatorConfigThresholds{
+				SyncMatchThreshold:            90,
+				MaxToleratedPodsRecoverAtOnce: 15,
+				MaxToleratedPodsUpdateAtOnce:  5,
+			},
 			Times: OperatorConfigTimes{
-				SyncStartCheckInterval:               500 * time.Millisecond,
-				SyncStartCheckTimeout:                15000 * time.Millisecond,
-				SyncCheckInterval:                    500 * time.Millisecond,
-				SyncCheckTimeout:                     15000 * time.Millisecond,
-				LoadStartCheckInterval:               500 * time.Millisecond,
-				LoadStartCheckTimeout:                180000 * time.Millisecond,
-				LoadCheckInterval:                    500 * time.Millisecond,
-				LoadCheckTimeout:                     180000 * time.Millisecond,
-				ClusterCreateInterval:                5000 * time.Millisecond,
-				ClusterCreateTimeout:                 30000 * time.Millisecond,
-				ACLFilePropagationDuration:           5000 * time.Millisecond,
-				ACLFileLoadDuration:                  500 * time.Millisecond,
-				PodReadyCheckInterval:                2000 * time.Millisecond,
-				PodReadyCheckTimeout:                 30000 * time.Millisecond,
-				PodNetworkCheckInterval:              2000 * time.Millisecond,
-				PodNetworkCheckTimeout:               30000 * time.Millisecond,
-				PodDeleteCheckInterval:               2000 * time.Millisecond,
-				PodDeleteCheckTimeout:                30000 * time.Millisecond,
-				RedisPingCheckInterval:               2000 * time.Millisecond,
-				RedisPingCheckTimeout:                30000 * time.Millisecond,
-				RedisClusterReplicationCheckInterval: 2000 * time.Millisecond,
-				RedisClusterReplicationCheckTimeout:  30000 * time.Millisecond,
-				RedisClusterMeetCheckInterval:        2000 * time.Millisecond,
-				RedisClusterMeetCheckTimeout:         30000 * time.Millisecond,
-				RedisManualFailoverCheckInterval:     2000 * time.Millisecond,
-				RedisManualFailoverCheckTimeout:      30000 * time.Millisecond,
-				RedisAutoFailoverCheckInterval:       2000 * time.Millisecond,
-				RedisAutoFailoverCheckTimeout:        30000 * time.Millisecond,
+				SyncCheckInterval:                            5 * 1000 * time.Millisecond,
+				SyncCheckTimeout:                             30 * 1000 * time.Millisecond,
+				SleepDuringTablesAlignProcess:                12 * 1000 * time.Millisecond,
+				ClusterCreateInterval:                        5 * 1000 * time.Millisecond,
+				ClusterCreateTimeout:                         90 * 1000 * time.Millisecond,
+				ACLFilePropagationDuration:                   5 * 1000 * time.Millisecond,
+				ACLFileLoadDuration:                          5 * 1000 * time.Millisecond,
+				PodReadyCheckInterval:                        3 * 1000 * time.Millisecond,
+				PodReadyCheckTimeout:                         30 * 1000 * time.Millisecond,
+				PodNetworkCheckInterval:                      3 * 1000 * time.Millisecond,
+				PodNetworkCheckTimeout:                       60 * 1000 * time.Millisecond,
+				PodDeleteCheckInterval:                       3 * 1000 * time.Millisecond,
+				PodDeleteCheckTimeout:                        60 * 1000 * time.Millisecond,
+				RedisPingCheckInterval:                       2 * 1000 * time.Millisecond,
+				RedisPingCheckTimeout:                        20 * 1000 * time.Millisecond,
+				RedisClusterReplicationCheckInterval:         2 * 1000 * time.Millisecond,
+				RedisClusterReplicationCheckTimeout:          30 * 1000 * time.Millisecond,
+				RedisClusterMeetCheckInterval:                2 * 1000 * time.Millisecond,
+				RedisClusterMeetCheckTimeout:                 10 * 1000 * time.Millisecond,
+				RedisManualFailoverCheckInterval:             5 * 1000 * time.Millisecond,
+				RedisManualFailoverCheckTimeout:              40 * 1000 * time.Millisecond,
+				RedisAutoFailoverCheckInterval:               5 * 1000 * time.Millisecond,
+				RedisAutoFailoverCheckTimeout:                40 * 1000 * time.Millisecond,
+				RedisNodesAgreeAboutSlotsConfigCheckInterval: 3 * 1000 * time.Millisecond,
+				RedisNodesAgreeAboutSlotsConfigTimeout:       12 * 1000 * time.Millisecond,
+				RedisRemoveNodeCheckInterval:                 2 * 1000 * time.Millisecond,
+				RedisRemoveNodeTimeout:                       20 * 1000 * time.Millisecond,
+				WaitForRedisLoadDataSetInMemoryCheckInterval: 2 * 1000 * time.Millisecond,
+				WaitForRedisLoadDataSetInMemoryTimeout:       10 * 1000 * time.Millisecond,
+				SleepIfForgetNodeFails:                       20 * 1000 * time.Millisecond,
 			},
 		},
 	}

@@ -1,11 +1,11 @@
 apiVersion: db.payu.com/v1
 kind: RedisCluster
 metadata:
-  name: rdc-test
+  name: dev-rdc
   namespace: default
 spec:
-  leaderCount: 3
-  leaderFollowersCount: 1
+  leaderCount: 5
+  leaderFollowersCount: 2
   enableDefaultAffinity: true
   podLabelSelector:
     app: redis-cluster-pod
