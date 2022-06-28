@@ -348,16 +348,10 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 				if e != nil  && match {
 					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
 				}
-				// else{
-					// r.deletePod(n.Pod)
-					// deletedPods = append(deletedPods, n.Pod)
-				// }
 			}
 		}
 		requestUpgrade = true
-		println("set request upgrade bool to: " + fmt.Sprint(requestUpgrade))
 		r.postNewClusterStateView(redisCluster)
-		//r.waitForPodDelete(deletedPods...)
 	}
 }
 
