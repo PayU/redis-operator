@@ -1501,7 +1501,11 @@ func (r *RedisClusterReconciler) isClusterHealthy(redisCluster *dbv1.RedisCluste
 			return false, nil
 		}
 		if !requestUpgrade && len(node.Pod.Labels["leader-name"]) == 0 {
+			println("request upgrade: " + fmt.Sprint(requestUpgrade))
+			println("len leader name label: " + fmt.Sprint(len(node.Pod.Labels["leader-name"])))
+			println("name: " + node.Name)
 			requestUpgrade = true
+			println("set request upgrade to true")
 		}
 	}
 	isComplete := r.RedisClusterStateView.ClusterState == view.ClusterOK && len(nonHealthyNodes) == 0

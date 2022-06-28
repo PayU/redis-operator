@@ -117,6 +117,7 @@ func UpgradeCluster(c echo.Context) error {
 		n.IsUpToDate = false
 	}
 	requestUpgrade = false
+	println("set request upgrade to false")
 	reconciler.saveClusterStateView(cluster)
 	return c.String(http.StatusOK, "Cluster upgarde request triggered")
 }
