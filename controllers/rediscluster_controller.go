@@ -20,11 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/signal"
 	"regexp"
-	"sync"
-	"syscall"
 	"time"
 
 	"github.com/PayU/redis-operator/controllers/view"
@@ -82,6 +78,7 @@ var reconciler *RedisClusterReconciler
 var cluster *dbv1.RedisCluster
 
 var requestUpgrade bool = false
+var setChannelOnSigTerm bool = true
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters/status,verbs=get;update;patch
@@ -114,7 +111,6 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		}
 	}
 
-	r.saveClusterStateOnSigTerm(&redisCluster)
 	switch r.State {
 	case NotExists:
 		err = r.handleInitializingCluster(&redisCluster)
@@ -140,22 +136,6 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	r.saveClusterView(&redisCluster)
 	return ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}, err
-}
-
-func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.RedisCluster) {
-	if r.RedisClusterStateView != nil {
-		mutex := &sync.Mutex{}
-		saveStatusOnQuit := make(chan os.Signal, 1)
-		signal.Notify(saveStatusOnQuit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
-		go func() {
-			<-saveStatusOnQuit
-			mutex.Lock()
-			close(saveStatusOnQuit)
-			r.Log.Info("[WARN] reconcile loop interrupted by os signal, saving cluster state view...")
-			r.saveClusterStateView(redisCluster)
-			mutex.Unlock()
-		}()
-	}
 }
 
 func (r *RedisClusterReconciler) saveOperatorState(redisCluster *dbv1.RedisCluster) {
@@ -363,8 +343,8 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 				}
 			}
 		}
+		requestUpgrade = true
 		r.postNewClusterStateView(redisCluster)
 		r.waitForPodDelete(deletedPods...)
-		requestUpgrade = true
 	}
 }
