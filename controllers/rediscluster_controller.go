@@ -249,7 +249,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 		r.Log.Info("[OK] Cluster is in finalized state")
 	}
 	if requestUpgrade {
-		r.Log.Info("[Warn] Cluster upgrade is required, upgrade can be triggered by using entry point /upgradeCluster ")
+		r.Log.Info("[Warn] Cluster upgrade is required, upgrade can be triggered by using entry point /upgrade")
 	}
 	return nil
 }
