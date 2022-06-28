@@ -8,7 +8,7 @@ func StartServer() {
 	echo := echo.New()
 
 	// Routes
-	Register(echo)
+	register(echo)
 
 	// Start server
 	go echo.Logger.Fatal(echo.Start("0.0.0.0:8080"))

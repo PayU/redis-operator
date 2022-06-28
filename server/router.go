@@ -5,7 +5,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func Register(e *echo.Echo) {
+func register(e *echo.Echo) {
 	e.GET("/state", clusterState)
 	e.GET("/info", clusterInfo)
 	e.POST("/reset", controllers.DoResetCluster)
