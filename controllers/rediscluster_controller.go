@@ -322,7 +322,7 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 		}
 		leaderFormat := "redis-node-(\\d+)"
 		followerFormat := "redis-node-(\\d+)-(\\d+)"
-		deletedPods := []corev1.Pod{}
+		//deletedPods := []corev1.Pod{}
 		for _, n := range v.Nodes {
 			isMaster, err := r.checkIfMaster(n.Ip)
 			if err == nil {
@@ -337,14 +337,16 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 				match, e := regexp.MatchString(followerFormat, n.Name)
 				if e != nil  && match {
 					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
-				}else{
-					r.deletePod(n.Pod)
-					deletedPods = append(deletedPods, n.Pod)
 				}
+				// else{
+					// r.deletePod(n.Pod)
+					// deletedPods = append(deletedPods, n.Pod)
+				// }
 			}
 		}
 		requestUpgrade = true
+		println("set request upgrade bool to: " + fmt.Sprint(requestUpgrade))
 		r.postNewClusterStateView(redisCluster)
-		r.waitForPodDelete(deletedPods...)
+		//r.waitForPodDelete(deletedPods...)
 	}
 }
