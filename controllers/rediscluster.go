@@ -1495,8 +1495,8 @@ func (r *RedisClusterReconciler) isClusterHealthy(redisCluster *dbv1.RedisCluste
 		}
 		nonHealthyNodes[n.Name] = n.NodeState
 	}
-	for _, node := range r.RedisClusterStateView.Nodes {
-		if _, reported := v.Nodes[node.Name]; !reported {
+	for _, node := range v.Nodes {
+		if _, reported := r.RedisClusterStateView.Nodes[node.Name]; !reported {
 			r.Log.Info(fmt.Sprintf("[Warn] Non reported node detected in view: [%v]", node.Name))
 			return false, nil
 		}
