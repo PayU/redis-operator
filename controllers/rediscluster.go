@@ -1933,5 +1933,5 @@ func (r *RedisClusterReconciler) logCurrentMastersList(v *view.RedisClusterView)
 		masters = append(masters, node.Name)
 	}
 	
-	r.Log.Info(fmt.Sprintf("Num of masters in cluster: [%v] masters list: [%v]", len(masters), masters))
+	r.Log.Info(fmt.Sprintf("Num of masters in cluster: [%v] masters list: %v", len(masters), masters))
 }
