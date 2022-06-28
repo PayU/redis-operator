@@ -20,6 +20,7 @@ func DoResetCluster(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster reset action")
 	}
+	reconciler.Log.Info("[WARN] Sensitive entry point, on the way to pre-prod / prod environments, the access should be removed from router list")
 	cluster.Status.ClusterState = string(Reset)
 	reconciler.saveOperatorState(cluster)
 	return c.String(http.StatusOK, "Set cluster state to reset mode")
@@ -123,9 +124,11 @@ func ClusterTest(c echo.Context) error {
 }
 
 func ClusterTestWithData(c echo.Context) error {
+	reconciler.Log.Info("[WARN] Sensitive entry point, on the way to pre-prod / prod environments, the access should be removed from router list")
 	return c.String(http.StatusOK, setAndStartTestLab(&c, true))
 }
 
+// [WARN] Should not appear on router when we go to prod
 func PopulateClusterWithMockData(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster popluate data")
@@ -134,6 +137,7 @@ func PopulateClusterWithMockData(c echo.Context) error {
 	if !ok || v == nil {
 		return c.String(http.StatusOK, "Could not perform cluster populate data")
 	}
+	reconciler.Log.Info("[WARN] Sensitive entry point, on the way to pre-prod / prod environments, the access should be removed from router list")
 	redisCli := rediscli.NewRedisCLI(&reconciler.Log)
 	user := os.Getenv("REDIS_USERNAME")
 	if user != "" {
@@ -144,7 +148,7 @@ func PopulateClusterWithMockData(c echo.Context) error {
 	clusterCli := redisclient.GetRedisClusterClient(v, redisCli)
 	printUsedMemoryForAllNodes(v)
 
-	total := 50000000
+	total := 5000000
 	init := 0
 	sw := 0
 
@@ -180,6 +184,7 @@ func FlushClusterData(c echo.Context) error {
 	if !ok || v == nil {
 		return c.String(http.StatusOK, "Could not perform cluster flush data")
 	}
+	reconciler.Log.Info("[WARN] Sensitive entry point, on the way to pre-prod / prod environments, the access should be removed from router list")
 	cl = redisclient.GetRedisClusterClient(v, reconciler.RedisCLI)
 	cl.FlushAllData()
 	time.Sleep(10 * time.Second)
