@@ -1500,6 +1500,9 @@ func (r *RedisClusterReconciler) isClusterHealthy(redisCluster *dbv1.RedisCluste
 			r.Log.Info(fmt.Sprintf("[Warn] Non reported node detected in view: [%v]", node.Name))
 			return false, nil
 		}
+		if !requestUpgrade && len(node.Pod.Labels["leader-name"]) == 0 {
+			requestUpgrade = true
+		}
 	}
 	isComplete := r.RedisClusterStateView.ClusterState == view.ClusterOK && len(nonHealthyNodes) == 0
 

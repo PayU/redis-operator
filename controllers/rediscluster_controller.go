@@ -118,7 +118,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 	if setChannelOnSigTerm {
 		r.saveClusterStateOnSigTerm(&redisCluster)
-		setChannelOnSigTerm = false
+		//setChannelOnSigTerm = false
 	}
 
 	switch r.State {
@@ -332,7 +332,6 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 		}
 		leaderFormat := "redis-node-(\\d+)"
 		followerFormat := "redis-node-(\\d+)-(\\d+)"
-		//deletedPods := []corev1.Pod{}
 		for _, n := range v.Nodes {
 			isMaster, err := r.checkIfMaster(n.Ip)
 			if err == nil {
@@ -350,10 +349,11 @@ func (r *RedisClusterReconciler) deriveStateViewOutOfExistingCluster(redisCluste
 				}
 			}
 		}
-		requestUpgrade = true
 		r.postNewClusterStateView(redisCluster)
 	}
 }
+
+var goRoutinCounter int = 0
 
 func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.RedisCluster) {
 	if setChannelOnSigTerm && r.RedisClusterStateView != nil {
@@ -361,12 +361,14 @@ func (r *RedisClusterReconciler) saveClusterStateOnSigTerm(redisCluster *dbv1.Re
 		saveStatusOnQuit := make(chan os.Signal, 1)
 		signal.Notify(saveStatusOnQuit, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGKILL)
 		go func() {
+			goRoutinCounter++
 			<-saveStatusOnQuit
 			mutex.Lock()
 			close(saveStatusOnQuit)
 			r.Log.Info("[WARN] reconcile loop interrupted by os signal, saving cluster state view...")
 			r.saveClusterStateView(redisCluster)
 			mutex.Unlock()
+			println(goRoutinCounter)
 		}()
 	}
 }
