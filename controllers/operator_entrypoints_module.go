@@ -32,7 +32,7 @@ func ClusterRebalance(c echo.Context) error {
 	reconciler.saveClusterStateView(cluster)
 	v, ok := reconciler.NewRedisClusterView(cluster)
 	if !ok {
-		return c.String(http.StatusOK, "Could not retrieve redis cluster view to")
+		return c.String(http.StatusOK, "Could not retrieve redis cluster view")
 	}
 	reconciler.removeSoloLeaders(v)
 	healthyServerName, found := reconciler.findHealthyLeader(v)
@@ -61,7 +61,7 @@ func ClusterFix(c echo.Context) error {
 	reconciler.saveClusterStateView(cluster)
 	v, ok := reconciler.NewRedisClusterView(cluster)
 	if !ok {
-		return c.String(http.StatusOK, "Could not retrieve redis cluster view to")
+		return c.String(http.StatusOK, "Could not retrieve redis cluster view")
 	}
 	healthyServerName, found := reconciler.findHealthyLeader(v)
 	if !found {
@@ -87,7 +87,7 @@ func ForgetLostNodes(c echo.Context) error {
 	}
 	v, ok := reconciler.NewRedisClusterView(cluster)
 	if !ok {
-		return c.String(http.StatusOK, "Could not retrieve redis cluster view to")
+		return c.String(http.StatusOK, "Could not retrieve redis cluster view")
 	}
 	reconciler.forgetLostNodes(cluster, v)
 	return c.String(http.StatusOK, "Finish execution for attempt to forget lost nodes")
