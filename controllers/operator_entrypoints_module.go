@@ -47,6 +47,7 @@ func ClusterRebalance(c echo.Context) error {
 	reconciler.waitForAllNodesAgreeAboutSlotsConfiguration(v)
 	_, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
 	if err != nil {
+		reconciler.RedisClusterStateView.ClusterState = view.ClusterFix
 		reconciler.Log.Error(err, "Could not perform cluster rebalance")
 	}
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterOK
@@ -76,7 +77,8 @@ func ClusterFix(c echo.Context) error {
 	if err != nil {
 		reconciler.Log.Error(err, "Could not perform cluster fix")
 	}
-	reconciler.RedisClusterStateView.ClusterState = view.ClusterOK
+	reconciler.RedisClusterStateView.ClusterState = view.ClusterRebalance
+	reconciler.Log.Info("It is recommended to run rebalance after each cluster fix, changing state to [ClusterRebalance]")
 	mutex.Unlock()
 	reconciler.saveClusterStateView(cluster)
 	return c.String(http.StatusOK, "Cluster fix attempt executed")
