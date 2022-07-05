@@ -56,23 +56,22 @@ func getSelectorRequirementFromPodLabelSelector(redisCluster *dbv1.RedisCluster)
 	return lsr
 }
 
-func (r *RedisClusterReconciler) getClusterStateView(redisCluster *dbv1.RedisCluster) error {
+func (r *RedisClusterReconciler) getClusterStateView(redisCluster *dbv1.RedisCluster) (*view.RedisClusterStateView, error) {
 	configMapName := r.RedisClusterStateView.Name
 	configMapNamespace := redisCluster.ObjectMeta.Namespace
 	var configMap corev1.ConfigMap
 	var redisClusterStateView view.RedisClusterStateView
 	e := r.Get(context.Background(), client.ObjectKey{Name: configMapName, Namespace: configMapNamespace}, &configMap)
 	if e != nil {
-		return e
+		return nil, e
 	}
 	view := configMap.Data["data"]
 
 	err := json.Unmarshal([]byte(view), &redisClusterStateView)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	r.RedisClusterStateView = &redisClusterStateView
-	return nil
+	return &redisClusterStateView, nil
 }
 
 // Update methods

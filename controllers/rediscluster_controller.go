@@ -33,7 +33,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
@@ -69,7 +68,6 @@ type RedisClusterState string
 
 type RedisClusterReconciler struct {
 	client.Client
-	Cache                 cache.Cache
 	Log                   logr.Logger
 	Scheme                *runtime.Scheme
 	RedisCLI              *rediscli.RedisCLI
@@ -108,7 +106,7 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	cluster = &redisCluster
 
 	if r.State != NotExists && r.State != Reset {
-		err = r.getClusterStateView(&redisCluster)
+		r.RedisClusterStateView, err = r.getClusterStateView(&redisCluster)
 		if err != nil {
 			r.Log.Error(err, "Could not perform reconcile loop")
 			r.deriveStateViewOutOfExistingCluster(&redisCluster)
