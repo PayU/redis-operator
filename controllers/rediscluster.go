@@ -276,10 +276,10 @@ func (r *RedisClusterReconciler) removeNode(healthyServerIp string, n *view.Node
 	return nil
 }
 
-func (r *RedisClusterReconciler) waitForAllNodesAgreeAboutSlotsConfiguration(v *view.RedisClusterView, redisCluster ...*dbv1.RedisCluster) {
+func (r *RedisClusterReconciler) waitForAllNodesAgreeAboutSlotsConfiguration(v *view.RedisClusterView, redisCluster *dbv1.RedisCluster) {
 	r.Log.Info("Waiting for all cluster nodes to agree about slots configuration...")
-	if len(redisCluster) > 0 {
-		newView, ok := r.NewRedisClusterView(redisCluster[0])
+	if redisCluster != nil {
+		newView, ok := r.NewRedisClusterView(redisCluster)
 		if ok {
 			v = newView
 		}
@@ -363,10 +363,10 @@ func (r *RedisClusterReconciler) addLeaderNodes(redisCluster *dbv1.RedisCluster,
 	}
 	wg.Wait()
 	for _, leader := range readyNodes {
-		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+		r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 		r.joindNewLeaderToCluster(leader, healthyServerIp, mutex)
 	}
-	r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+	r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 	return nil
 }
 
@@ -436,7 +436,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 			}
 		}
 	}
-	r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+	r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 	if len(lostIds) > 0 {
 		r.Log.Info(fmt.Sprintf("List of healthy nodes: %v", healthyNodes))
 		r.Log.Info(fmt.Sprintf("List of lost nodes ids: %v", lostIds))
@@ -448,7 +448,7 @@ func (r *RedisClusterReconciler) forgetLostNodes(redisCluster *dbv1.RedisCluster
 					_, err := r.RedisCLI.ClusterForget(node.Ip, id)
 					if err != nil {
 						r.RedisCLI.ClusterFailover(node.Ip)
-						r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+						r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 					}
 				}
 			}
@@ -870,7 +870,7 @@ func (r *RedisClusterReconciler) handleInterruptedClusterHealthFlow(redisCluster
 	case view.AddNode:
 		actionRequired = true
 		mutex.Lock()
-		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+		r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 		mutex.Unlock()
 		err = r.recoverFromAddNode(pod, m, mutex)
 		break
@@ -1084,7 +1084,7 @@ func (r *RedisClusterReconciler) recoverRedisCluster(redisCluster *dbv1.RedisClu
 		return true, nil
 	case view.ClusterRebalance:
 		r.removeSoloLeaders(v)
-		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+		r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 		healthyLeaderName, found := r.findHealthyLeader(v)
 		if !found {
 			return true, errors.New("Could not find healthy reachable leader to serve cluster rebalance request")
@@ -1658,7 +1658,7 @@ func (r *RedisClusterReconciler) scaleUpLeaders(redisCluster *dbv1.RedisCluster,
 			return e
 		}
 		r.Log.Info("Leaders added successfully to redis cluster")
-		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+		r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 	} else {
 		r.Log.Info("[Warn] New leader names list appeard to be empty, no leaders been added to cluster")
 	}
@@ -1760,7 +1760,7 @@ func (r *RedisClusterReconciler) reshardAndRemoveSingleUnit(name string, healthy
 			r.Log.Error(err, fmt.Sprintf("Error during attempt to reshard node [%s]", name))
 			return
 		}
-		r.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+		r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 		r.Log.Info(fmt.Sprintf("Leader reshard successful between [%s]->[%s]", nodeToRemove.Id, targetLeaderId))
 		r.deletePod(nodeToRemove.Pod)
 	}

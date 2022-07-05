@@ -44,7 +44,7 @@ func ClusterRebalance(c echo.Context) error {
 	mutex.Lock()
 	reconciler.RedisClusterStateView.ClusterState = view.ClusterRebalance
 	healthyServerIp := v.Nodes[healthyServerName].Ip
-	reconciler.waitForAllNodesAgreeAboutSlotsConfiguration(v)
+	reconciler.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
 	_, _, err := reconciler.RedisCLI.ClusterRebalance(healthyServerIp, true)
 	if err != nil {
 		reconciler.RedisClusterStateView.ClusterState = view.ClusterFix
