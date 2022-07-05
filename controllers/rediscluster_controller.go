@@ -106,6 +106,9 @@ func (r *RedisClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	cluster = &redisCluster
 
 	if r.State != NotExists && r.State != Reset {
+		if r.RedisClusterStateView == nil {
+			r.RedisClusterStateView = &view.RedisClusterStateView{Name: RedisClusterStateMapName}
+		}
 		r.RedisClusterStateView, err = r.getClusterStateView(&redisCluster)
 		if err != nil {
 			r.Log.Error(err, "Could not perform reconcile loop")

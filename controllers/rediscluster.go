@@ -1319,14 +1319,14 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 		}
 		infoF, _, err := reconciler.RedisCLI.Info(nodeIP)
 		if err != nil || infoF == nil {
-			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+			if err != nil && strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
 				return false, nil
 			}
 			return false, err
 		}
 		infoL, _, err := reconciler.RedisCLI.Info(m.CurrentMasterIp)
 		if err != nil || infoL == nil {
-			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+			if err != nil && strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
 				return false, nil
 			}
 			return false, err
