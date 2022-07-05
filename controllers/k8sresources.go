@@ -588,9 +588,9 @@ func (r *RedisClusterReconciler) ClusterNodesWaitForRedisLoadDataSetInMemory(ips
 	ipsToNodes = map[string]*rediscli.RedisClusterNodes{}
 	if pollErr := wait.PollImmediate(r.Config.Times.WaitForRedisLoadDataSetInMemoryCheckInterval, r.Config.Times.WaitForRedisLoadDataSetInMemoryTimeout, func() (bool, error) {
 		for _, ip := range ips {
-			nodes, _, err := r.RedisCLI.ClusterNodes(ip)
+			nodes, std, err := r.RedisCLI.ClusterNodes(ip)
 			if err != nil {
-				if strings.Contains(err.Error(), "Redis is loading the dataset in memory") {
+				if strings.Contains(err.Error(), "Redis is loading the dataset in memory") || strings.Contains(std, "Redis is loading the dataset in memory"){
 					return false, nil
 				}
 				return false, err

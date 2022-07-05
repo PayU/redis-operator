@@ -1302,14 +1302,14 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 	return wait.PollImmediate(r.Config.Times.SyncCheckInterval, r.Config.Times.SyncCheckTimeout, func() (bool, error) {
 		stdoutF, err := r.RedisCLI.Role(nodeIP)
 		if err != nil {
-			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+			if strings.Contains(err.Error(), "Redis is loading the dataset in memory") {
 				return false, nil
 			}
 			return false, err
 		}
 		stdoutL, err := r.RedisCLI.Role(m.CurrentMasterIp)
 		if err != nil {
-			if strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+			if strings.Contains(err.Error(), "Redis is loading the dataset in memory") {
 				return false, nil
 			}
 			return false, err
@@ -1317,19 +1317,22 @@ func (r *RedisClusterReconciler) waitForRedisSync(m *view.MissingNodeView, nodeI
 		if !strings.Contains(stdoutF, m.CurrentMasterIp) || !strings.Contains(stdoutL, nodeIP) {
 			return false, nil
 		}
-		infoF, _, err := reconciler.RedisCLI.Info(nodeIP)
-		if err != nil || infoF == nil {
-			if err != nil && strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+		infoF, std, err := reconciler.RedisCLI.Info(nodeIP)
+		if err != nil{
+			if strings.Contains(err.Error(), "Redis is loading the dataset in memory") || strings.Contains(std, "Redis is loading the dataset in memory"){
 				return false, nil
 			}
 			return false, err
 		}
-		infoL, _, err := reconciler.RedisCLI.Info(m.CurrentMasterIp)
-		if err != nil || infoL == nil {
-			if err != nil && strings.Contains(err.Error(), "LOADING Redis is loading the dataset in memory") {
+		infoL, std, err := reconciler.RedisCLI.Info(m.CurrentMasterIp)
+		if err != nil {
+			if strings.Contains(err.Error(), "Redis is loading the dataset in memory") || strings.Contains(std, "Redis is loading the dataset in memory"){
 				return false, nil
 			}
 			return false, err
+		}
+		if infoF == nil || infoL == nil {
+			return false, nil
 		}
 		memorySizeF := infoF.Memory["used_memory_human"]
 		memorySizeL := infoL.Memory["used_memory_human"]
