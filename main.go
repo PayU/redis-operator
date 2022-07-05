@@ -96,6 +96,7 @@ func startManager() {
 	}
 
 	if err = (&controllers.RedisClusterReconciler{
+		Client:                mgr.GetClient(),
 		Log:                   rdcLogger,
 		Scheme:                mgr.GetScheme(),
 		RedisCLI:              getRedisCLI(&rdcLogger),
