@@ -11,6 +11,14 @@ import (
 )
 
 /*
+
+# The setters value defines a set of indicators for the operator to determine if to adjust or avoid a behaviour that can be practiced as default based on the booleanic value of the related indicator
+
+# The operator exposes set of entry points that can serve the user in case of need, part of them are sensitive and holds the potential to harm existing data if the operator is deployed on production.
+# Those same entry points can serve the user for debug, validation and testing if operator is deployed on development environment.
+# The following indicator serves as a 'feature-bit' that tells the operator to hide those sensitive entry points in order to avoid harm on sensitive environment, naturally it is set to be 'false' (Recommended).
+# ExposeSensitiveEntryPoints
+
 # The thresholds value sets definite bounderies for the operator to perform during running concurrent operations
 # and during decision making based on given stated values
 
@@ -108,6 +116,10 @@ type RedisOperatorConfig struct {
 	Config OperatorConfig
 }
 
+type OperatorSetters struct {
+	ExposeSensitiveEntryPoints bool `yaml:"ExposeSensitiveEntryPoints"`
+}
+
 type OperatorConfigThresholds struct {
 	SyncMatchThreshold            int `yaml:"SyncMatchThreshold"`
 	MaxToleratedPodsRecoverAtOnce int `yaml:"MaxToleratedPodsRecoverAtOnce"`
@@ -150,6 +162,7 @@ type OperatorConfigTimes struct {
 type OperatorConfig struct {
 	Times      OperatorConfigTimes      `yaml:"times"`
 	Thresholds OperatorConfigThresholds `yaml:"thresholds"`
+	Setters OperatorSetters `yaml:"setters"`
 }
 
 func NewRedisOperatorConfig(configPath string, logger logr.Logger) (*RedisOperatorConfig, error) {
@@ -170,6 +183,9 @@ func DefaultRedisOperatorConfig(logger logr.Logger) *RedisOperatorConfig {
 	return &RedisOperatorConfig{
 		Log: logger,
 		Config: OperatorConfig{
+			Setters: OperatorSetters{
+				ExposeSensitiveEntryPoints: false,
+			},
 			Thresholds: OperatorConfigThresholds{
 				SyncMatchThreshold:            90,
 				MaxToleratedPodsRecoverAtOnce: 15,

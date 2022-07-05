@@ -20,6 +20,9 @@ func DoResetCluster(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster reset action")
 	}
+	if reconciler.Config.Setters.ExposeSensitiveEntryPoints == false {
+		return c.String(http.StatusOK, "Sensitive operation - Not allowed")
+	}
 	reconciler.Log.Info("[WARN] Sensitive entry point, on the way to pre-prod / prod environments, the access should be removed from router list")
 	cluster.Status.ClusterState = string(Reset)
 	reconciler.saveOperatorState(cluster)
@@ -122,10 +125,19 @@ func UpgradeCluster(c echo.Context) error {
 }
 
 func ClusterTest(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster test")
+	}
 	return c.String(http.StatusOK, setAndStartTestLab(&c, false))
 }
 
 func ClusterTestWithData(c echo.Context) error {
+	if reconciler == nil || cluster == nil {
+		return c.String(http.StatusOK, "Could not perform cluster test")
+	}
+	if reconciler.Config.Setters.ExposeSensitiveEntryPoints == false {
+		return c.String(http.StatusOK, "Sensitive operation - Not allowed")
+	}
 	reconciler.Log.Info("[WARN] Sensitive entry point, on the way to pre-prod / prod environments, the access should be removed from router list")
 	return c.String(http.StatusOK, setAndStartTestLab(&c, true))
 }
@@ -134,6 +146,9 @@ func ClusterTestWithData(c echo.Context) error {
 func PopulateClusterWithMockData(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster popluate data")
+	}
+	if reconciler.Config.Setters.ExposeSensitiveEntryPoints == false {
+		return c.String(http.StatusOK, "Sensitive operation - Not allowed")
 	}
 	v, ok := reconciler.NewRedisClusterView(cluster)
 	if !ok || v == nil {
@@ -179,7 +194,10 @@ func PopulateClusterWithMockData(c echo.Context) error {
 
 func FlushClusterData(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
-		return c.String(http.StatusOK, "Could not perform cluster popluate data")
+		return c.String(http.StatusOK, "Could not perform cluster flush data")
+	}
+	if reconciler.Config.Setters.ExposeSensitiveEntryPoints == false {
+		return c.String(http.StatusOK, "Sensitive operation - Not allowed")
 	}
 	var cl *redisclient.RedisClusterClient = nil
 	v, ok := reconciler.NewRedisClusterView(cluster)
@@ -195,9 +213,6 @@ func FlushClusterData(c echo.Context) error {
 }
 
 func setAndStartTestLab(c *echo.Context, data bool) string{
-	if reconciler == nil || cluster == nil {
-		return "Could not perform cluster test"
-	}
 	cli := rediscli.NewRedisCLI(&reconciler.Log)
 	user := os.Getenv("REDIS_USERNAME")
 	if user != "" {
