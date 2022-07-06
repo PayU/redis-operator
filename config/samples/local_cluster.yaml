@@ -4,8 +4,8 @@ metadata:
   name: dev-rdc
   namespace: default
 spec:
-  leaderCount: 5
-  leaderFollowersCount: 2
+  leaderCount: 3
+  leaderFollowersCount: 1
   enableDefaultAffinity: true
   podLabelSelector:
     app: redis-cluster-pod
