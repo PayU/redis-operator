@@ -284,56 +284,61 @@ func (r *RedisClusterReconciler) waitForAllNodesAgreeAboutSlotsConfiguration(v *
 			v = newView
 		}
 	}
-	var nodes *rediscli.RedisClusterNodes
+
+	mutex := &sync.Mutex{}
 	nonResponsive := map[string]bool{}
-	agreed := map[string]bool{}
 	if pollErr := wait.PollImmediate(r.Config.Times.RedisNodesAgreeAboutSlotsConfigCheckInterval, r.Config.Times.RedisNodesAgreeAboutSlotsConfigTimeout, func() (bool, error) {
-		agreement := true
-		for _, n := range v.Nodes {
-			if !agreement {
-				break
-			}
-			if n == nil {
+		nameToTableSize := map[string]int{}
+		var wg sync.WaitGroup
+		for _, node := range v.Nodes {
+			if _, exclude := nonResponsive[node.Name]; exclude {
 				continue
 			}
-			if _, nr := nonResponsive[n.Name]; nr {
-				continue
-			}
-			if _, agree := agreed[n.Name]; agree {
-				continue
-			}
-			stdout, err := r.RedisCLI.ClusterCheck(n.Ip)
-			if err != nil {
-				nonResponsive[n.Name] = true
-				continue
-			}
-			if strings.Contains(stdout, "[OK] All nodes agree about slots configuration") {
-				agreed[n.Name] = true
-			} else {
-				agreement = false
-			}
-			if agreement {
-				nodesTable, _, err := r.RedisCLI.ClusterNodes(n.Ip)
+			wg.Add(1)
+			go func(node *view.NodeView){
+				defer wg.Done()
+				stdout, err := r.RedisCLI.ClusterCheck(node.Ip)
 				if err != nil {
-					nonResponsive[n.Name] = true
-					continue
+					mutex.Lock()
+					nonResponsive[node.Name] = true
+					mutex.Unlock()
+					return
 				}
-				if nodesTable == nil {
-					continue
+				if strings.Contains(stdout, "[OK] All nodes agree about slots configuration") {
+					nodesTable, _, err := r.RedisCLI.ClusterNodes(node.Ip)
+					if err != nil || nodesTable == nil{
+						mutex.Lock()
+						nonResponsive[node.Name] = true
+						mutex.Unlock()
+						return
+					}
+					mutex.Lock()
+					nameToTableSize[node.Name] = len(*nodesTable)
+					mutex.Unlock()
 				}
-				if nodes == nil {
-					nodes = nodesTable
+			}(node)
+		}
+		wg.Wait()
+		tableSize := -1
+		for _, node := range v.Nodes {
+			if _, exclude := nonResponsive[node.Name]; exclude {
+				continue
+			}
+			if nodeTableSize, reported := nameToTableSize[node.Name]; !reported {
+				return false, nil
+			}else{
+				if tableSize == -1 {
+					tableSize = nodeTableSize
 				}else{
-					if len(*nodesTable) > len(*nodes){
-						nodes = nodesTable
-						agreement = false
+					if nodeTableSize != tableSize {
+						return false, nil
 					}
 				}
 			}
 		}
-		return agreement, nil
+		return true, nil
 	}); pollErr != nil {
-		r.Log.Info("[Warn] Error occured during waiting for cluster nodes to agree about slots configuration, performing CLUSTER REBALANCE might need to be followed by CLUSTER FIX")
+		r.Log.Info("[Warn] Error occured during waiting for cluster nodes to agree about slots configuration, performing CLUSTER FIX might need to be followed by CLUSTER REBALANCE")
 	}
 }
 

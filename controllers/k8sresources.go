@@ -323,10 +323,7 @@ func (r *RedisClusterReconciler) createMissingRedisPods(redisCluster *dbv1.Redis
 				r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.AddNode)
 				continue
 			} else {
-				n, inMap := r.RedisClusterStateView.Nodes[node.Name]
-				if !inMap {
-					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.ReplicateNode)
-				} else if n.NodeState != view.ReplicateNode && n.NodeState != view.SyncNode {
+				if n.NodeState != view.ReplicateNode && n.NodeState != view.SyncNode {
 					r.RedisClusterStateView.SetNodeState(n.Name, n.LeaderName, view.NodeOK)
 				}
 			}
