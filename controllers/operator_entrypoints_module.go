@@ -16,6 +16,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+/**
+Set the operator state to RESET state.
+In the next reconcile loop, the operator will enter a RESET mode, which will lead to the following steps:
+1. Delete all redis cluster pods
+2. Wait for all redis cluster pods to terminate
+3. Create new redis cluster pods according to the spec
+[WARN] This entry point is concidered sensitive, and is not allowed naturally. In order to enable it, the config param 'ExposeSensitiveEntryPoints' need to be set to 'true'.
+**/
 func DoResetCluster(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster reset action")
@@ -29,6 +37,10 @@ func DoResetCluster(c echo.Context) error {
 	return c.String(http.StatusOK, "Set cluster state to reset mode")
 }
 
+/**
+Triggers the redis-cli command CLUSTER REBALANCE
+In case of failure, the cluster state will be set to ClusterFix, which will lead to a trigger of ClusterFix redis-cli command within the next reconcile loop
+**/
 func ClusterRebalance(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster rebalance action")
@@ -59,6 +71,11 @@ func ClusterRebalance(c echo.Context) error {
 	return c.String(http.StatusOK, "Cluster rebalance attempt executed")
 }
 
+/**
+Triggers the redis-cli command CLUSTER FIX
+In case of failure, the cluster state will remain ClusterFix, which will lead to a triger of additional attempt to fix in the next reconcile loop
+In case of success, the cluster state will be set to ClusterReblance, which will lead to a trigger of redic-cli command CLUSTER REBALANCE in the next reconcile loop
+**/
 func ClusterFix(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster fix action")
@@ -87,6 +104,9 @@ func ClusterFix(c echo.Context) error {
 	return c.String(http.StatusOK, "Cluster fix attempt executed")
 }
 
+/**
+Triggers an atomic flow of forgetting all redis cluster lost nodes: non-responsive nodes that still exists in the tables of some of the responsive ones.
+**/
 func ForgetLostNodes(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster forget lost nodes action")
@@ -99,6 +119,12 @@ func ForgetLostNodes(c echo.Context) error {
 	return c.String(http.StatusOK, "Finish execution for attempt to forget lost nodes")
 }
 
+/**
+Triggers reconcile loop by manual request.
+Can be useful in case of event that prevents from manager to proceed with it's cluster maintenance routin
+[WARN] Direct reconcile trigger might run the loop without enqueue it again causing the operator to not scheduling another run within requested time.
+In case of need run eforced reconcile manually several times until recovery is complete, and restart manager when cluster is stable.
+**/
 func ForceReconcile(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster reconcile action")
@@ -112,6 +138,11 @@ func ForceReconcile(c echo.Context) error {
 	"\nIn case of need run eforced reconcile manually several times until recovery is complete, and restart manager when cluster is stable")
 }
 
+/**
+Sets the value of parameter 'IsUpToDate' to false for each one of the reported nodes in the cluster state map.
+In the next healthy reconcile loop, upgrade process will take part: each marked node will failover, forgotten, removed, deleted, re created and marked again with 'IsUpToDate' value of true
+This process takes part moderately according to a suggested heuristic that relays on cluster size, and separates upgrade steps of leaders from upgrade steps of followers. 
+**/
 func UpgradeCluster(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster upgarde action")
@@ -124,6 +155,9 @@ func UpgradeCluster(c echo.Context) error {
 	return c.String(http.StatusOK, "Cluster upgarde request triggered")
 }
 
+/**
+Triggers a flow of testing routine that induces events with different severities in order to challenge the operator by simulating possible dissaster scenarios.
+**/
 func ClusterTest(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster test")
@@ -131,6 +165,11 @@ func ClusterTest(c echo.Context) error {
 	return c.String(http.StatusOK, setAndStartTestLab(&c, false))
 }
 
+/**
+Triggers a flow of testing routine that induces events with different severities in order to challenge the operator by simulating possible dissaster scenarios.
+The flow creates mock data and sends it to the redis cluster nodes, later attempts to report estimated possible data loss that might be expirienced during each dissaster scenario.
+[WARN] This entry point is concidered sensitive, and is not allowed naturally. In order to enable it, the config param 'ExposeSensitiveEntryPoints' need to be set to 'true'.
+**/
 func ClusterTestWithData(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster test")
@@ -142,7 +181,10 @@ func ClusterTestWithData(c echo.Context) error {
 	return c.String(http.StatusOK, setAndStartTestLab(&c, true))
 }
 
-// [WARN] Should not appear on router when we go to prod
+/**
+Populates the redis cluster nodes with mock data for debug purposes.
+[WARN] This entry point is concidered sensitive, and is not allowed naturally. In order to enable it, the config param 'ExposeSensitiveEntryPoints' need to be set to 'true'.
+**/
 func PopulateClusterWithMockData(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster popluate data")
@@ -192,6 +234,10 @@ func PopulateClusterWithMockData(c echo.Context) error {
 	return c.String(http.StatusOK, "Cluster populated with data")
 }
 
+/**
+Flushes all the data of redis cluster nodes.
+[WARN] This entry point is concidered sensitive, and is not allowed naturally. In order to enable it, the config param 'ExposeSensitiveEntryPoints' need to be set to 'true'.
+**/
 func FlushClusterData(c echo.Context) error {
 	if reconciler == nil || cluster == nil {
 		return c.String(http.StatusOK, "Could not perform cluster flush data")

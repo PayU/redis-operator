@@ -117,8 +117,8 @@ Run the test:
 * ```Curl -X POST localhost:<forwarded port for example 8080>/testData``` (with mock data)
 
 Note:
-Running the test lab with mock data is concidered sensitive operation, and naturally is part of the protected entry points that are not allowed naturally.
-In order to enable it, the config param 'ExposeSensitiveEntryPoints' need to be set to 'true' (please follow the config file documentation regard this param before doing so)
+Running the test lab with mock data is concidered sensitive operation, and naturally is not allowed.
+In order to enable it, the config param 'ExposeSensitiveEntryPoints' need to be set to 'true' (please follow the config file documentation regard this param before doing so).
 
 ### Development using Tilt
 
