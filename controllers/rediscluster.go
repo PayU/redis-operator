@@ -1250,6 +1250,7 @@ func (r *RedisClusterReconciler) updateCluster(redisCluster *dbv1.RedisCluster) 
 			updatedPodsCounter++
 		}
 	}
+	requestUpgrade = false
 	return nil
 }
 
