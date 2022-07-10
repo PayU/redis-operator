@@ -1,4 +1,4 @@
-{{ if and .Values.redisCluster.enabled }}
+{{- if and .Values.redisCluster.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

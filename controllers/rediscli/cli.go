@@ -3,8 +3,10 @@ package rediscli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 const (
 	defaultRedisCliTimeout        = 20 * time.Second
 	REDIS_DEFAULT_PORT     string = "6379"
+	MAX_SLOTS_PER_LEADER = 16384
 )
 
 type RedisAuth struct {
@@ -23,7 +26,7 @@ type RedisAuth struct {
 
 type CommandHandler interface {
 	buildCommand(routingPort string, args []string, auth *RedisAuth, opt ...string) ([]string, map[string]string)
-	executeCommand(args []string) (string, string, error)
+	executeCommand(pipedArgs []string, args []string, useBash bool, multipFactorForTimeout ...float64) (string, string, error)
 	buildRedisInfoModel(stdoutInfo string) (*RedisInfo, error)
 	buildRedisClusterInfoModel(stdoutInfo string) (*RedisClusterInfo, error)
 }
@@ -69,17 +72,34 @@ func (h *RunTimeCommandHandler) buildCommand(routingPort string, args []string, 
 	return args, argListToArgMap(args)
 }
 
-/* Executes command and returns cmd stdout, stderr and runtime error if appears
- *  args: arguments, flags and their values, in the order they should appear as if they were executed in the cli itself
- */
-func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, error) {
+func (h *RunTimeCommandHandler) executeCommand(pipedArgs []string, args []string, useBash bool, multipFactorForTimeout ...float64) (string, string, error) {
 
 	var stdout, stderr bytes.Buffer
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRedisCliTimeout)
+	multipFactor := 1.0
+	if len(multipFactorForTimeout) > 0 {
+		multipFactor = multipFactorForTimeout[0]
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(multipFactor)*defaultRedisCliTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "redis-cli", args...)
+	var cmd *exec.Cmd
+	if useBash {
+		argLine := ""
+		if len(pipedArgs) > 0 {
+			for _, arg := range pipedArgs {
+				argLine += arg + " "
+			}
+			argLine += " | "
+		}
+		argLine += "redis-cli"
+		for _, arg := range args {
+			argLine += " " + arg
+		}
+		cmd = exec.CommandContext(ctx, "bash", "-c", argLine)
+	}else{
+		cmd = exec.CommandContext(ctx, "redis-cli", args...)
+	}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -122,6 +142,7 @@ func (h *RunTimeCommandHandler) executeCommand(args []string) (string, string, e
 	}
 	return stdOutput, errOutput, nil
 }
+
 
 // Helpers
 
@@ -224,7 +245,7 @@ func (r *RedisCLI) ClusterCreate(leadersAddresses []string, opt ...string) (stri
 	args := append([]string{"--cluster", "create"}, fullAddresses...)
 	args = append(args, "--cluster-yes") // this will run the command non-interactively
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster create (%v): %s | %s | %v", fullAddresses, stdout, stderr, err)
 	}
@@ -234,7 +255,7 @@ func (r *RedisCLI) ClusterCreate(leadersAddresses []string, opt ...string) (stri
 func (r *RedisCLI) ClusterCheck(nodeAddr string, opt ...string) (string, error) {
 	args := []string{"--cluster", "check", addressPortDecider(nodeAddr, r.Port)}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Cluster check result: (%s): %s | %s | %v", nodeAddr, stdout, stderr, err)
 	}
@@ -249,9 +270,24 @@ func (r *RedisCLI) ClusterCheck(nodeAddr string, opt ...string) (string, error) 
 func (r *RedisCLI) AddFollower(newNodeAddr string, existingNodeAddr string, leaderID string, opt ...string) (string, error) {
 	args := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port), "--cluster-slave", "--cluster-master-id", leaderID}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s, %s): %s | %s | %v", newNodeAddr, existingNodeAddr, leaderID, stdout, stderr, err)
+	}
+	return stdout, nil
+}
+
+// AddLeader uses the '--cluster add-node' option on redis-cli to add a node to the cluster
+// newNodeAddr: Address of the follower that will join the cluster in a format of <ip>:<port> or <ip>: or <ip>
+// existingNodeAddr: IP of a node in the cluster in a format of <ip>:<port> or <ip>: or <ip>
+// leaderID: 	Redis ID of the leader that the new follower will replicate
+// In case port won't bw provided as part of the given addresses, cli default port will be added automatically to the address
+func (r *RedisCLI) AddLeader(newNodeAddr string, existingNodeAddr string, opt ...string) (string, error) {
+	args := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port)}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false, 2)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute cluster add node (%s, %s): %s | %s | %v", newNodeAddr, existingNodeAddr, stdout, stderr, err)
 	}
 	return stdout, nil
 }
@@ -262,7 +298,7 @@ func (r *RedisCLI) AddFollower(newNodeAddr string, existingNodeAddr string, lead
 func (r *RedisCLI) DelNode(nodeIP string, nodeID string, opt ...string) (string, error) {
 	args := []string{"--cluster", "del-node", addressPortDecider(nodeIP, r.Port), nodeID}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || stderr != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute cluster del-node (%s, %s): %s | %s | %v", nodeIP, nodeID, stdout, stderr, err)
 	}
@@ -274,7 +310,7 @@ func (r *RedisCLI) ClusterInfo(nodeIP string, opt ...string) (*RedisClusterInfo,
 
 	args := []string{"-h", nodeIP, "cluster", "info"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, "", errors.Errorf("Failed to execute CLUSTER INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -287,7 +323,7 @@ func (r *RedisCLI) Info(nodeIP string, opt ...string) (*RedisInfo, string, error
 
 	args := []string{"-h", nodeIP, "info"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, "", errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -295,11 +331,22 @@ func (r *RedisCLI) Info(nodeIP string, opt ...string) (*RedisInfo, string, error
 	return c, stdout, e
 }
 
+func (r *RedisCLI) DBSIZE(nodeIP string, opt ...string) (int64, string, error) {
+	args := []string{"-h", nodeIP, "DBSIZE"}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return 0, stdout, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	dbsize, err := strconv.ParseInt(stdout, 10, 64)
+	return dbsize, stdout, err
+}
+
 // https://redis.io/commands/ping
 func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
 	args := []string{"-h", nodeIP, "ping"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, message...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute INFO (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -310,7 +357,7 @@ func (r *RedisCLI) Ping(nodeIP string, message ...string) (string, error) {
 func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*RedisClusterNodes, string, error) {
 	args := []string{"-h", nodeIP, "cluster", "nodes"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, "", errors.Errorf("Failed to execute CLUSTER NODES(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -321,7 +368,7 @@ func (r *RedisCLI) ClusterNodes(nodeIP string, opt ...string) (*RedisClusterNode
 func (r *RedisCLI) MyClusterID(nodeIP string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "myid"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute MYID(%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -334,7 +381,7 @@ func (r *RedisCLI) MyClusterID(nodeIP string, opt ...string) (string, error) {
 func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FORGET (%s, %s): %s | %s | %v", nodeIP, forgetNodeID, stdout, stderr, err)
 	}
@@ -346,7 +393,7 @@ func (r *RedisCLI) ClusterForget(nodeIP string, forgetNodeID string, opt ...stri
 func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string, opt ...string) (*RedisClusterNodes, string, error) {
 	args := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, "", errors.Errorf("Failed to execute CLUSTER REPLICAS (%s, %s): %s | %s | %v", nodeIP, leaderNodeID, stdout, stderr, err)
 	}
@@ -357,7 +404,7 @@ func (r *RedisCLI) ClusterReplicas(nodeIP string, leaderNodeID string, opt ...st
 func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "failover"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false, 5)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER FAILOVER (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
@@ -368,7 +415,7 @@ func (r *RedisCLI) ClusterFailover(nodeIP string, opt ...string) (string, error)
 func (r *RedisCLI) ClusterMeet(nodeIP string, newNodeIP string, newNodePort string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "meet", newNodeIP, newNodePort}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER MEET (%s, %s, %s, %v): %s | %s | %v", nodeIP, newNodeIP, newNodePort, opt, stdout, stderr, err)
 	}
@@ -379,11 +426,42 @@ func (r *RedisCLI) ClusterMeet(nodeIP string, newNodeIP string, newNodePort stri
 func (r *RedisCLI) ClusterReset(nodeIP string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "reset"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER RESET (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
 	return stdout, nil
+}
+
+func (r *RedisCLI) ClusterRebalance(nodeIP string, useEmptyMasters bool, opt ...string) (bool, string, error) {
+	args := []string{"--cluster", "rebalance", addressPortDecider(nodeIP, r.Port)}
+	if useEmptyMasters {
+		args = append(args, "--cluster-use-empty-masters")
+	}
+	args = append(args, "--cluster-yes")
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false, 50)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return false, stdout, errors.Errorf("Failed to execute cluster rebalance (%v): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return true, stdout, nil
+}
+
+func (r *RedisCLI) ClusterReshard(nodeIP string, sourceId string, targetId string, slots int, opt ...string) (bool, string, error) {
+	args := []string{
+		"--cluster reshard", addressPortDecider(nodeIP, r.Port),
+		"--cluster-from", sourceId,
+		"--cluster-to", targetId,
+		"--cluster-slots", fmt.Sprint(slots),
+		"--cluster-yes",
+	}
+	useBash := true
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, useBash, 50)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return false, stdout, errors.Errorf("Failed to execute cluster reshard (%v): from [%s] to [%s] stdout: %s | stderr : %s | err: %v", nodeIP, sourceId, targetId, stdout, stderr, err)
+	}
+	return true, stdout, nil
 }
 
 // https://redis.io/commands/flushall
@@ -391,7 +469,7 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 
 	args := []string{"-h", nodeIP, "flushall"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return stdout, errors.Errorf("Failed to execute FLUSHALL (%s, %v): %s | %s | %v", nodeIP, opt, stdout, stderr, err)
 	}
@@ -402,7 +480,7 @@ func (r *RedisCLI) Flushall(nodeIP string, opt ...string) (string, error) {
 func (r *RedisCLI) ClusterReplicate(nodeIP string, leaderID string, opt ...string) (string, error) {
 	args := []string{"-h", nodeIP, "cluster", "replicate", leaderID}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute CLUSTER REPLICATE (%s, %s): %s | %s | %v", nodeIP, leaderID, stdout, stderr, err)
 	}
@@ -414,7 +492,7 @@ func (r *RedisCLI) ACLLoad(nodeIP string, opt ...string) (string, error) {
 
 	args := []string{"-h", nodeIP, "acl", "load"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || strings.TrimSpace(stdout) != "OK" {
 		return stdout, errors.Errorf("Failed to execute ACL LOAD (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -426,7 +504,7 @@ func (r *RedisCLI) ACLList(nodeIP string, opt ...string) (*RedisACL, string, err
 
 	args := []string{"-h", nodeIP, "acl", "list"}
 	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
-	stdout, stderr, err := r.Handler.executeCommand(args)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
 	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
 		return nil, "", errors.Errorf("Failed to execute ACL LIST (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
 	}
@@ -435,4 +513,24 @@ func (r *RedisCLI) ACLList(nodeIP string, opt ...string) (*RedisACL, string, err
 		return nil, "", err
 	}
 	return acl, stdout, nil
+}
+
+func (r *RedisCLI) ClusterFix(nodeIP string, opt ...string) (bool, string, error) {
+	args := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth, opt...)
+	stdout, stderr, err := r.Handler.executeCommand([]string{"yes", "yes"}, args, true, 50)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return false, stdout, errors.Errorf("Failed to execute cluster fix (%v): %s | %s | %v", addressPortDecider(nodeIP, r.Port), stdout, stderr, err)
+	}
+	return true, stdout, nil
+}
+
+func (r *RedisCLI) Role(nodeIP string) (string, error) {
+	args := []string{"-h", nodeIP, "role"}
+	args, _ = r.Handler.buildCommand(r.Port, args, r.Auth)
+	stdout, stderr, err := r.Handler.executeCommand([]string{}, args, false)
+	if err != nil || strings.TrimSpace(stderr) != "" || IsError(strings.TrimSpace(stdout)) {
+		return stdout, errors.Errorf("Failed to execute Role (%s): %s | %s | %v", nodeIP, stdout, stderr, err)
+	}
+	return stdout, nil
 }

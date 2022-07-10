@@ -14,11 +14,22 @@ Requirements:
 * `kustomize` >= 4.0
 * `docker`: latest version, at least 6.25 GB of memory limit
 
+**Quick Start**
+
+```bash
+sh ./hack/install.sh # you might need to run this as sudo if a regular user can't use docker
+cd ./hack/redis-bin -> sh ./run.sh # in case it is the first run on the local machine
+tilt up
+```
+
+**Set up on non-local env**
+
 **1. Setting up a cluster**
 
 ```bash
 cd hack
 sh ./install.sh # you might need to run this as sudo if a regular user can't use docker
+cd ./hack/redis-bin -> sh ./run.sh # in case it is the first run on the local machine
 ```
 
 If the `.kube/config` file was not updated it can be populated using
@@ -81,6 +92,33 @@ Run non cache `go test` command on specific path. for example:
 ```
 go test -count=1 ./controllers/rediscli/
 ```
+
+### Use the test cluster feature
+
+Test cluster feature is a set of tests implemented to run asynchrounously to the operator manager loop, they simulates:
+* Loss of random follower in cluster
+* Loss of random leader in cluster
+* Loss of random follower and random leader (that owns different set of slots)
+* Loss of all followers
+* Loss of all nodes beside one replica for each set of slots range, randomely chosen - somethines the survivor is follower and sometimes it is leader (actual scenario for example is loss of all az's beside one)
+* Loss of leader and all of its followrs
+
+The test can fill the cluster nodes with mock data during to the performed "live site", and keep track on which and how many of the inserted keys succeeded, and at the end of the recovery process attempts to read the keys from cluster and match the value to the value that got reported during tracking writting process.
+
+The report reflects:
+* If the recovery process suceeded with healthy and ready cluster before test time out expired (configurable estimated value)
+* How many writes succeeded with ratio to the itended keys that been attempted to be inserted
+* How many reads succeded with ratio to the number of successful writes
+* Both values in terms of: Actual amount and Success rate
+
+Run the test:
+* Port forward the manager to some local port (8080 for example)
+* ```Curl -X POST localhost:<forwarded port for example 8080>/test``` (no mock data)
+* ```Curl -X POST localhost:<forwarded port for example 8080>/testData``` (with mock data)
+
+Note:
+Running the test lab with mock data is concidered sensitive operation, and naturally is not allowed.
+In order to enable it, the config param 'ExposeSensitiveEntryPoints' need to be set to 'true' (please follow the config file documentation regard this param before doing so).
 
 ### Development using Tilt
 
