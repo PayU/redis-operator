@@ -181,7 +181,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 			LabelSelector: &metav1.LabelSelector{
 				MatchExpressions: getSelectorRequirementFromPodLabelSelector(redisCluster),
 			},
-			TopologyKey: "failure-domain.beta.kubernetes.io/node",
+			TopologyKey: "kubernetes.io/hostname",
 		}
 
 		if affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
@@ -197,7 +197,7 @@ func (r *RedisClusterReconciler) makeRedisPod(redisCluster *dbv1.RedisCluster, n
 				LabelSelector: &metav1.LabelSelector{
 					MatchExpressions: preferredLabelSelectorRequirement,
 				},
-				TopologyKey: "failure-domain.beta.kubernetes.io/zone",
+				TopologyKey: "topology.kubernetes.io/zone",
 			},
 		}
 
