@@ -15,6 +15,7 @@ import (
 	dbv1 "github.com/PayU/redis-operator/api/v1"
 	"github.com/PayU/redis-operator/controllers"
 	"github.com/PayU/redis-operator/controllers/rediscli"
+	"github.com/PayU/redis-operator/controllers/view"
 	"github.com/PayU/redis-operator/server"
 	"github.com/go-logr/logr"
 	// +kubebuilder:scaffold:imports
@@ -41,7 +42,7 @@ func getRedisCLI(log *logr.Logger) *rediscli.RedisCLI {
 
 func main() {
 	go server.StartServer()
-	
+
 	startManager()
 }
 
@@ -91,15 +92,17 @@ func startManager() {
 	k8sManager := controllers.K8sManager{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    configLogger}
+		Log:    configLogger,
+	}
 
 	if err = (&controllers.RedisClusterReconciler{
-		Client:   mgr.GetClient(),
-		Log:      rdcLogger,
-		Scheme:   mgr.GetScheme(),
-		RedisCLI: getRedisCLI(&rdcLogger),
-		Config:   &operatorConfig.Config,
-		State:    controllers.NotExists,
+		Client:                mgr.GetClient(),
+		Log:                   rdcLogger,
+		Scheme:                mgr.GetScheme(),
+		RedisCLI:              getRedisCLI(&rdcLogger),
+		Config:                &operatorConfig.Config,
+		State:                 controllers.NotExists,
+		RedisClusterStateView: &view.RedisClusterStateView{Name: controllers.RedisClusterStateMapName},
 	}).SetupWithManager(mgr); err != nil {
 		setupLogger.Error(err, "unable to create controller", "controller", "RedisCluster")
 		os.Exit(1)

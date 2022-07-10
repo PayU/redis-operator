@@ -1,6 +1,7 @@
 package rediscli
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,7 @@ func (h *TestCommandHandler) buildCommand(routingPort string, args []string, aut
 	return args, argListToArgMap(args)
 }
 
-func (h *TestCommandHandler) executeCommand(args []string) (string, string, error) {
+func (h *TestCommandHandler) executeCommand(pipedArgs []string, args []string, useBash bool, multipFactorForTimeout ...float64) (string, string, error) {
 	executedCommand := ""
 	for _, arg := range args {
 		executedCommand += arg + " "
@@ -68,6 +69,7 @@ func TestRedisCLI(test *testing.T) {
 	testClusterCreate()
 	testClusterCheck()
 	testAddFollower()
+	testAddLeader()
 	testDelNode()
 	testClusterInfo()
 	testInfo()
@@ -79,10 +81,13 @@ func TestRedisCLI(test *testing.T) {
 	testClusterFailOver()
 	testClusterMeet()
 	testClusterReset()
+	testClusterRebalance()
+	testClusterReshard()
 	testFlushAll()
 	testClusterReplicate()
 	testACLLoad()
 	testACLList()
+	testClusterFix()
 }
 
 func testClusterCreate() {
@@ -140,6 +145,25 @@ func testAddFollower() {
 	execAddFollowerTest("4", newNodeAddr, existingNodeAddr, leaderID, "-p 6379 -optArg1 optVal1 -optArg2 optVal2")
 	// Test 5 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is provided, optional arguments provided as a parametrized arg list
 	execAddFollowerTest("5", newNodeAddr, existingNodeAddr, leaderID, "-optArg1 optVal1", "-p 6379", "-optArg2 optVal2")
+}
+
+func testAddLeader() {
+	// Test 1 : Routing port is not provided, newNodeAddr port is not provided, existingNodeAddr port is not provided, no optional args
+	newNodeAddr := "127.0.0.1"
+	existingNodeAddr := "128.1.1.2:"
+	execAddLeaderTest("1", newNodeAddr, existingNodeAddr)
+	// Test 2 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is not provided, no optional args
+	newNodeAddr = "127.0.0.1:6565"
+	execAddLeaderTest("2", newNodeAddr, existingNodeAddr, "-p 8080")
+	// Test 3 : Routing port is not provided, newNodeAddr port is not provided, existingNodeAddr port is provided, optional arguments provided
+	newNodeAddr = "127.0.0.1:"
+	existingNodeAddr = "128.1.1.2:6377"
+	execAddLeaderTest("3", newNodeAddr, existingNodeAddr, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is provided, optional arguments provided
+	newNodeAddr = "127.0.0.1:6377"
+	execAddLeaderTest("4", newNodeAddr, existingNodeAddr, "-p 6379 -optArg1 optVal1 -optArg2 optVal2")
+	// Test 5 : Routing port is provided, newNodeAddr port is provided, existingNodeAddr port is provided, optional arguments provided as a parametrized arg list
+	execAddLeaderTest("5", newNodeAddr, existingNodeAddr, "-optArg1 optVal1", "-p 6379", "-optArg2 optVal2")
 }
 
 func testDelNode() {
@@ -301,6 +325,34 @@ func testClusterReset() {
 	execClusterResetTest("5", nodeIP, "-p 6399", "-optArg1 optVal1")
 }
 
+func testClusterRebalance() {
+	nodeIP := "127.0.0.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterRebalanceTest("1", nodeIP, true)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterRebalanceTest("2", nodeIP, false, "-p 8383")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterRebalanceTest("3", nodeIP, true, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterRebalanceTest("4", nodeIP, false, "-p 8384 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterRebalanceTest("5", nodeIP, true, "-p 6399", "-optArg1 optVal1")
+}
+
+func testClusterReshard() {
+	nodeIP := "127.0.0.1"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterReshardTest("1", nodeIP, "abc", "edf", 16384)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterReshardTest("2", nodeIP, "abc", "edf", 16384, "-p 8383")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterReshardTest("3", nodeIP, "abc", "edf", 16384, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterReshardTest("4", nodeIP, "abc", "edf", 16384, "-p 8384 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterReshardTest("5", nodeIP, "abc", "edf", 16384, "-p 6399", "-optArg1 optVal1")
+}
+
 func testFlushAll() {
 	nodeIP := "128.0.1.1"
 	// Test 1 : Routing port is not provided, no optional arguments
@@ -358,6 +410,20 @@ func testACLList() {
 	execACLListTest("5", nodeIP, "-p 6381", "-optArg1 optVal1")
 }
 
+func testClusterFix() {
+	nodeIP := "129.4.6.2"
+	// Test 1 : Routing port is not provided, no optional arguments
+	execClusterFixTest("1", nodeIP)
+	// Test 2 : Routing port is provided, no optional arguments
+	execClusterFixTest("2", nodeIP, "-p 6379")
+	// Test 3 : Routing port is not provided, optional arguments are provided
+	execClusterFixTest("3", nodeIP, "-optArg1 optVal1")
+	// Test 4 : Routing port is provided, optional arguments are provided
+	execClusterFixTest("4", nodeIP, "-p 6381 -optArg1 optVal1")
+	// Test 5 : Routing port is provided, optional arguments are provided as parametrized arg list
+	execClusterFixTest("5", nodeIP, "-p 6381", "-optArg1 optVal1")
+}
+
 // Test exec helpers
 
 func execClusterCreateTest(testCaseId string, addresses []string, opt ...string) {
@@ -368,7 +434,7 @@ func execClusterCreateTest(testCaseId string, addresses []string, opt ...string)
 	expectedArgList := append([]string{"--cluster", "create"}, updatedAddresses...)
 	expectedArgList = append(expectedArgList, "--cluster-yes")
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Create "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -378,7 +444,7 @@ func execClusterCheckTest(testCaseId string, address string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"--cluster", "check", addressPortDecider(address, r.Port)}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Check "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -393,8 +459,18 @@ func execAddFollowerTest(testCaseId string, newNodeAddr string, existingNodeAddr
 	expectedArgList := []string{"--cluster", "add-node"}
 	expectedArgList = append(expectedArgList, newNodeAddr, existingNodeAddr, leadershipType, leaderIdFlag, leaderID)
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Add follower "+testCaseId, argMap, expectedArgMap)
+}
+
+func execAddLeaderTest(testCaseId string, newNodeAddr string, existingNodeAddr string, opt ...string) {
+	result, _ := r.AddLeader(newNodeAddr, existingNodeAddr, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(result, argMap)
+	expectedArgList := []string{"--cluster", "add-node", addressPortDecider(newNodeAddr, r.Port), addressPortDecider(existingNodeAddr, r.Port)}
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
+	resultHandler(expectedResult, result, "Add Leader "+testCaseId, argMap, expectedArgMap)
 }
 
 func execDelNodeTest(testCaseId string, nodeIP string, nodeID string, opt ...string) {
@@ -403,7 +479,7 @@ func execDelNodeTest(testCaseId string, nodeIP string, nodeID string, opt ...str
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"--cluster", "del-node", addressPortDecider(nodeIP, r.Port), nodeID}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Delete Node "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -413,7 +489,7 @@ func execClusterInfoTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "info"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Info "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -423,7 +499,7 @@ func execInfoTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "info"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Info "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -433,7 +509,7 @@ func execPingTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "ping"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Ping "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -443,7 +519,7 @@ func execClusterNodesTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "nodes"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Nodes "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -453,7 +529,7 @@ func execMyClusterIDTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgLine := []string{"-h", nodeIP, "cluster", "myid"}
 	expectedArgLine, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgLine, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgLine)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgLine, false)
 	resultHandler(expectedResult, result, "My Cluster ID "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -463,7 +539,7 @@ func execClusterForgetTest(testCaseId string, nodeIP string, forgetNodeID string
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "forget", forgetNodeID}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Forget "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -473,7 +549,7 @@ func execClusterReplicasTest(testCaseId string, nodeIP string, leaderNodeID stri
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "replicas", leaderNodeID}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Replicas "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -483,7 +559,7 @@ func execClusterFailOverTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "failover"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Failover "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -493,7 +569,7 @@ func execClusterMeetTest(testCaseId string, nodeIP string, newNodeIP string, new
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "meet", newNodeIP, newNodePort}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Meet "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -503,8 +579,34 @@ func execClusterResetTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "reset"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster Reset "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterRebalanceTest(testCaseId string, nodeIP string, useEmptyMasters bool, opt ...string) {
+	_, result, _ := r.ClusterRebalance(nodeIP, useEmptyMasters, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(fmt.Sprint(result), argMap)
+	expectedArgList := []string{"--cluster", "rebalance", addressPortDecider(nodeIP, r.Port)}
+	if useEmptyMasters {
+		expectedArgList = append(expectedArgList, "--cluster-use-empty-masters")
+	}
+	expectedArgList = append(expectedArgList, "--cluster-yes")
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
+	resultHandler(expectedResult, fmt.Sprint(result), "Cluster Rebalance "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterReshardTest(testCaseId string, nodeIP string, sourceId string, targetId string, slots int, opt ...string) {
+	_, result, _ := r.ClusterReshard(nodeIP, sourceId, targetId, slots, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(fmt.Sprint(result), argMap)
+	expectedArgList := []string{"--cluster reshard", addressPortDecider(nodeIP, r.Port)}
+	expectedArgList = append(expectedArgList, "--cluster-from", sourceId, "--cluster-to", targetId)
+	expectedArgList = append(expectedArgList, "--cluster-slots", fmt.Sprint(slots), "--cluster-yes")
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
+	resultHandler(expectedResult, fmt.Sprint(result), "Cluster Reshard "+testCaseId, argMap, expectedArgMap)
 }
 
 func execFlushAllTest(testCaseId string, nodeIP string, opt ...string) {
@@ -513,7 +615,7 @@ func execFlushAllTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "flushall"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Flush All "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -523,7 +625,7 @@ func execClusterReplicateTest(testCaseId string, nodeIP string, leaderID string,
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "cluster", "replicate", leaderID}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "Cluster replicate "+testCaseId, argMap, expectedArgMap)
 }
 
@@ -533,7 +635,7 @@ func execACLLoadTest(testcaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "acl", "load"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "ACLLoad "+testcaseId, argMap, expectedArgMap)
 }
 
@@ -543,6 +645,17 @@ func execACLListTest(testCaseId string, nodeIP string, opt ...string) {
 	argLineToArgMap(result, argMap)
 	expectedArgList := []string{"-h", nodeIP, "acl", "list"}
 	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
-	expectedResult, _, _ := r.Handler.executeCommand(expectedArgList)
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
 	resultHandler(expectedResult, result, "ACLList "+testCaseId, argMap, expectedArgMap)
+}
+
+func execClusterFixTest(testCaseId string, nodeIP string, opt ...string) {
+	_, result, _ := r.ClusterFix(nodeIP, opt...)
+	argMap := make(map[string]string)
+	argLineToArgMap(result, argMap)
+	expectedArgList := []string{"--cluster", "fix", addressPortDecider(nodeIP, r.Port), "--cluster-fix-with-unreachable-masters", "--cluster-yes"}
+	expectedArgList, expectedArgMap := r.Handler.buildCommand(r.Port, expectedArgList, r.Auth, opt...)
+	//pipeArgs := []string{"yes", "yes"}
+	expectedResult, _, _ := r.Handler.executeCommand([]string{}, expectedArgList, false)
+	resultHandler(expectedResult, result, "Cluster fix "+testCaseId, argMap, expectedArgMap)
 }
