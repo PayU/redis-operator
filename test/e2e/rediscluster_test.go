@@ -84,7 +84,7 @@ func createDefaultCluster(ctx *framework.TestCtx, t *testing.T) (*dbv1.RedisClus
 func makeAZMap(ctx *framework.TestCtx, t *testing.T, config TestConfig) map[string]map[string]([]*corev1.Pod) {
 	// the topology labels differ between K8s 1.17+ and older
 	// https://kubernetes.io/docs/reference/kubernetes-api/labels-annotations-taints/#failure-domainbetakubernetesiozone
-	zoneLabel := "failure-domain.beta.kubernetes.io/zone"
+	zoneLabel := "topology.kubernetes.io/zone"
 
 	nodes, err := tfw.GetNodes()
 	Check(err, t.Fatalf, "Failed to get Kubernetes nodes")

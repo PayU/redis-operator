@@ -181,7 +181,7 @@ func (f *Framework) GetAvailabilityZoneNodes(AZName string) (*corev1.NodeList, e
 	}
 
 	beta, err := f.KubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("failure-domain.beta.kubernetes.io/zone=%s", AZName),
+		LabelSelector: fmt.Sprintf("topology.kubernetes.io/zone=%s", AZName),
 	})
 	if err != nil {
 		return nil, err

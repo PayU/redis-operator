@@ -10,7 +10,7 @@ nodes:
     kind: JoinConfiguration
     nodeRegistration:
       kubeletExtraArgs:
-        node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1a"
+        node-labels: "topology.kubernetes.io/zone=eu-central-1a"
 - role: worker
   image: kindest/node:1.19.11@sha256:07db187ae84b4b7de440a73886f008cf903fcf5764ba8106a9fd5243d6f32729
   kubeadmConfigPatches:
@@ -18,7 +18,7 @@ nodes:
     kind: JoinConfiguration
     nodeRegistration:
       kubeletExtraArgs:
-        node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1a"
+        node-labels: "topology.kubernetes.io/zone=eu-central-1a"
 - role: worker
   image: kindest/node:1.19.11@sha256:07db187ae84b4b7de440a73886f008cf903fcf5764ba8106a9fd5243d6f32729
   kubeadmConfigPatches:
@@ -26,7 +26,7 @@ nodes:
     kind: JoinConfiguration
     nodeRegistration:
       kubeletExtraArgs:
-        node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1b"
+        node-labels: "topology.kubernetes.io/zone=eu-central-1b"
 - role: worker
   image: kindest/node:1.19.11@sha256:07db187ae84b4b7de440a73886f008cf903fcf5764ba8106a9fd5243d6f32729
   kubeadmConfigPatches:
@@ -34,7 +34,7 @@ nodes:
     kind: JoinConfiguration
     nodeRegistration:
       kubeletExtraArgs:
-        node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1b"
+        node-labels: "topology.kubernetes.io/zone=eu-central-1b"
 - role: worker
   image: kindest/node:1.19.11@sha256:07db187ae84b4b7de440a73886f008cf903fcf5764ba8106a9fd5243d6f32729
   kubeadmConfigPatches:
@@ -42,7 +42,7 @@ nodes:
     kind: JoinConfiguration
     nodeRegistration:
       kubeletExtraArgs:
-        node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1c"
+        node-labels: "topology.kubernetes.io/zone=eu-central-1c"
 - role: worker
   image: kindest/node:1.19.11@sha256:07db187ae84b4b7de440a73886f008cf903fcf5764ba8106a9fd5243d6f32729
   kubeadmConfigPatches:
@@ -50,4 +50,4 @@ nodes:
     kind: JoinConfiguration
     nodeRegistration:
       kubeletExtraArgs:
-        node-labels: "failure-domain.beta.kubernetes.io/zone=eu-central-1c"
+        node-labels: "topology.kubernetes.io/zone=eu-central-1c"
