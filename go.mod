@@ -8,7 +8,8 @@ require (
 	github.com/go-test/deep v1.0.7
 	github.com/labstack/echo/v4 v4.6.1
 	github.com/pkg/errors v0.9.1
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	github.com/prometheus/client_golang v1.12.2 // indirect
+	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.18.6
 	k8s.io/apiextensions-apiserver v0.18.6
