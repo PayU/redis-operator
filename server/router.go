@@ -1,15 +1,11 @@
 package server
 
 import (
-	"net/http"
-
 	"github.com/PayU/redis-operator/controllers"
 	"github.com/labstack/echo/v4"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func register(e *echo.Echo) {
-	http.Handle("/metrics", promhttp.Handler())
 	e.GET("/state", controllers.ClusterState)
 	e.GET("/info", controllers.ClusterInfo)
 	e.POST("/rebalance", controllers.ClusterRebalance)
