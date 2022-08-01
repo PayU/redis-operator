@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
 var (
@@ -14,5 +15,6 @@ var (
 )
 
 func init(){
-	prometheus.MustRegister(NonHealthyReconcileLoopsMetric)
+	//prometheus.MustRegister(NonHealthyReconcileLoopsMetric)
+	metrics.Registry.MustRegister(NonHealthyReconcileLoopsMetric)
 }
