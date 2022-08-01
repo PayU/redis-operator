@@ -26,9 +26,8 @@ import (
 	"syscall"
 	"time"
 
+	metrics "github.com/PayU/redis-operator/controllers/custom_metrics"
 	"github.com/PayU/redis-operator/controllers/view"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -83,10 +82,6 @@ var (
 	requestUpgrade bool = false
 	setChannelOnSigTerm bool = true
 
-	nonHealthyReconcileLoopsMetric = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "non_healthy_reconcile_loops",
-		Help: "Exposes number of non healthy reconcile loops in row since last healthy one",
-	})
 )
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters,verbs=get;list;watch;create;update;patch;delete
@@ -162,10 +157,10 @@ func (r *RedisClusterReconciler) saveOperatorState(redisCluster *dbv1.RedisClust
 func (r *RedisClusterReconciler) saveClusterView(redisCluster *dbv1.RedisCluster) {
 	if redisCluster.Status.ClusterState == string(Ready) && r.RedisClusterStateView.ClusterState == view.ClusterOK {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster = 0
-		nonHealthyReconcileLoopsMetric.Set(0)
+		metrics.NonHealthyReconcileLoopsMetric.Set(0)
 	} else {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster++
-		nonHealthyReconcileLoopsMetric.Inc()
+		metrics.NonHealthyReconcileLoopsMetric.Inc()
 	}
 	r.saveClusterStateView(redisCluster)
 	v, ok := r.NewRedisClusterView(redisCluster)
@@ -205,7 +200,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if !ok {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster++
-		nonHealthyReconcileLoopsMetric.Inc()
+		metrics.NonHealthyReconcileLoopsMetric.Inc()
 		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
