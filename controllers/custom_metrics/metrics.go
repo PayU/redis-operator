@@ -1,4 +1,4 @@
-package metrics
+package custom_metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"

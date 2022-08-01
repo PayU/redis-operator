@@ -26,7 +26,7 @@ import (
 	"syscall"
 	"time"
 
-	metrics "github.com/PayU/redis-operator/controllers/custom_metrics"
+	custom_metrics "github.com/PayU/redis-operator/controllers/custom_metrics"
 	"github.com/PayU/redis-operator/controllers/view"
 
 	"github.com/go-logr/logr"
@@ -157,10 +157,10 @@ func (r *RedisClusterReconciler) saveOperatorState(redisCluster *dbv1.RedisClust
 func (r *RedisClusterReconciler) saveClusterView(redisCluster *dbv1.RedisCluster) {
 	if redisCluster.Status.ClusterState == string(Ready) && r.RedisClusterStateView.ClusterState == view.ClusterOK {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster = 0
-		metrics.NonHealthyReconcileLoopsMetric.Set(0)
+		custom_metrics.NonHealthyReconcileLoopsMetric.Set(0)
 	} else {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster++
-		metrics.NonHealthyReconcileLoopsMetric.Inc()
+		custom_metrics.NonHealthyReconcileLoopsMetric.Inc()
 	}
 	r.saveClusterStateView(redisCluster)
 	v, ok := r.NewRedisClusterView(redisCluster)
@@ -200,7 +200,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if !ok {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster++
-		metrics.NonHealthyReconcileLoopsMetric.Inc()
+		custom_metrics.NonHealthyReconcileLoopsMetric.Inc()
 		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
