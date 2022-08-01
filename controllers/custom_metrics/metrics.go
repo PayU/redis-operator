@@ -15,6 +15,5 @@ var (
 )
 
 func init(){
-	//prometheus.MustRegister(NonHealthyReconcileLoopsMetric)
 	metrics.Registry.MustRegister(NonHealthyReconcileLoopsMetric)
 }
