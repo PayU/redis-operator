@@ -1090,34 +1090,42 @@ func (r *RedisClusterReconciler) recoverRedisCluster(redisCluster *dbv1.RedisClu
 	case view.ClusterOK:
 		return r.detectNodeTableMissalignments(v), nil
 	case view.ClusterFix:
-		healthyLeaderName, found := r.findHealthyLeader(v)
-		if !found {
-			return true, errors.New("Could not find healthy reachable leader to serve cluster fix request")
-		}
-		healthyLeaderIp := v.Nodes[healthyLeaderName].Ip
-		_, stdout, e := r.RedisCLI.ClusterFix(healthyLeaderIp)
-		if e != nil && !strings.Contains(e.Error(), "[OK] All 16384 slots covered") && !strings.Contains(stdout, "[OK] All 16384 slots covered") {
-			return true, e
-		}
-		r.RedisClusterStateView.ClusterState = view.ClusterRebalance
-		return true, nil
+		return true, r.handleClusterFix(v)
 	case view.ClusterRebalance:
-		r.removeSoloLeaders(v)
-		r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
-		healthyLeaderName, found := r.findHealthyLeader(v)
-		if !found {
-			return true, errors.New("Could not find healthy reachable leader to serve cluster rebalance request")
-		}
-		healthyLeaderIp := v.Nodes[healthyLeaderName].Ip
-		rebalanced, _, e := r.RedisCLI.ClusterRebalance(healthyLeaderIp, true)
-		if !rebalanced || e != nil {
-			r.RedisClusterStateView.ClusterState = view.ClusterFix
-			return true, e
-		}
-		r.RedisClusterStateView.ClusterState = view.ClusterOK
-		return true, nil
+		return true, r.handleClusterRebalance(v)
 	}
 	return false, nil
+}
+
+func (r *RedisClusterReconciler) handleClusterFix(v *view.RedisClusterView) error{
+	healthyLeaderName, found := r.findHealthyLeader(v)
+	if !found {
+		return errors.New("Could not find healthy reachable leader to serve cluster fix request")
+	}
+	healthyLeaderIp := v.Nodes[healthyLeaderName].Ip
+	_, stdout, e := r.RedisCLI.ClusterFix(healthyLeaderIp)
+	if e != nil && !strings.Contains(e.Error(), "[OK] All 16384 slots covered") && !strings.Contains(stdout, "[OK] All 16384 slots covered") {
+		return e
+	}
+	r.RedisClusterStateView.ClusterState = view.ClusterRebalance
+	return nil
+}
+
+func (r *RedisClusterReconciler) handleClusterRebalance(v *view.RedisClusterView) error {
+	r.removeSoloLeaders(v)
+	r.waitForAllNodesAgreeAboutSlotsConfiguration(v, nil)
+	healthyLeaderName, found := r.findHealthyLeader(v)
+	if !found {
+		return errors.New("Could not find healthy reachable leader to serve cluster rebalance request")
+	}
+	healthyLeaderIp := v.Nodes[healthyLeaderName].Ip
+	rebalanced, _, e := r.RedisCLI.ClusterRebalance(healthyLeaderIp, true)
+	if !rebalanced || e != nil {
+		r.RedisClusterStateView.ClusterState = view.ClusterFix
+		return e
+	}
+	r.RedisClusterStateView.ClusterState = view.ClusterOK
+	return nil
 }
 
 func (r *RedisClusterReconciler) waitForNonReachablePodsTermination(redisCluster *dbv1.RedisCluster, v *view.RedisClusterView) bool {

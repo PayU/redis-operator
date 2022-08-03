@@ -5,11 +5,11 @@ import (
 )
 
 func StartServer() {
-	echo := echo.New()
+	echoMain := echo.New()
 
 	// Routes
-	register(echo)
+	register(echoMain)
 
 	// Start server
-	go echo.Logger.Fatal(echo.Start("0.0.0.0:8080"))
+	go echoMain.Logger.Fatal(echoMain.Start("0.0.0.0:8080"))
 }

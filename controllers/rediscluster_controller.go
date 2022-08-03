@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	custom_metrics "github.com/PayU/redis-operator/controllers/custom_metrics"
 	"github.com/PayU/redis-operator/controllers/view"
 
 	"github.com/go-logr/logr"
@@ -74,11 +75,14 @@ type RedisClusterReconciler struct {
 	RedisClusterStateView *view.RedisClusterStateView
 }
 
-var reconciler *RedisClusterReconciler
-var cluster *dbv1.RedisCluster
+var (
+	reconciler *RedisClusterReconciler
+	cluster *dbv1.RedisCluster
 
-var requestUpgrade bool = false
-var setChannelOnSigTerm bool = true
+	requestUpgrade bool = false
+	setChannelOnSigTerm bool = true
+
+)
 
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.payu.com,resources=redisclusters/status,verbs=get;update;patch
@@ -153,8 +157,10 @@ func (r *RedisClusterReconciler) saveOperatorState(redisCluster *dbv1.RedisClust
 func (r *RedisClusterReconciler) saveClusterView(redisCluster *dbv1.RedisCluster) {
 	if redisCluster.Status.ClusterState == string(Ready) && r.RedisClusterStateView.ClusterState == view.ClusterOK {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster = 0
+		custom_metrics.NonHealthyReconcileLoopsMetric.Set(0)
 	} else {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster++
+		custom_metrics.NonHealthyReconcileLoopsMetric.Inc()
 	}
 	r.saveClusterStateView(redisCluster)
 	v, ok := r.NewRedisClusterView(redisCluster)
@@ -194,6 +200,7 @@ func (r *RedisClusterReconciler) handleReadyState(redisCluster *dbv1.RedisCluste
 	v, ok := r.NewRedisClusterView(redisCluster)
 	if !ok {
 		r.RedisClusterStateView.NumOfReconcileLoopsSinceHealthyCluster++
+		custom_metrics.NonHealthyReconcileLoopsMetric.Inc()
 		r.RedisClusterStateView.NumOfHealthyReconcileLoopsInRow = 0
 		redisCluster.Status.ClusterState = string(Recovering)
 		return nil
