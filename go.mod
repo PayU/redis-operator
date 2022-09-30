@@ -6,7 +6,7 @@ require (
 	github.com/go-logr/logr v0.1.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-test/deep v1.0.7
-	github.com/labstack/echo/v4 v4.7.2
+	github.com/labstack/echo/v4 v4.9.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.12.2
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
